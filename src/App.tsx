@@ -8,7 +8,6 @@ import { Header } from './components/Header';
 import { PlayerControls } from './components/PlayerControls';
 import { PlaylistDrawer } from './components/PlaylistDrawer';
 import { InspectorDrawer } from './components/InspectorDrawer';
-import { TrackWatermark } from './components/TrackWatermark';
 import { AudioEngine } from './audio/AudioEngine';
 import { AudioAnalyzer } from './audio/AudioAnalyzer';
 import { VisualEngine } from './visualizer/VisualEngine';
@@ -99,17 +98,14 @@ export const App: React.FC = () => {
     quality: 'high',
     directorMode: 'auto',
     activeEffects: [
-      'starfield-warp',
-      'wireframe-core',
-      'waveform-ring',
-      'spectrum-bars',
-      'audio-ribbons',
-      'laser-beams',
+      'stage-structure',
+      'stage-lights',
+      'thin-lasers',
+      'fire-shooters',
+      'smoke-machines',
       'shockwave-rings',
+      'starfield-warp',
       'terrain-grid',
-      'torus-knot',
-      'dna-helix',
-      'particle-vortex',
     ],
   });
 
@@ -239,6 +235,7 @@ export const App: React.FC = () => {
 
       if (currentTrack?.id === track.id) {
         visualEngineRef.current?.setTrackProfile(track.seed, analysis);
+        visualEngineRef.current?.setTrackInfo(track.title, track.artist, analysis.descriptors?.mood);
         if (!duration && analysis.durationSeconds > 0) {
           setDuration(analysis.durationSeconds);
         }
@@ -258,6 +255,7 @@ export const App: React.FC = () => {
       setCurrentTime(0);
 
       visualEngineRef.current?.setTrackProfile(track.seed, track.analysis);
+      visualEngineRef.current?.setTrackInfo(track.title, track.artist, track.analysis?.descriptors?.mood);
 
       if (audioEngineRef.current) {
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
@@ -451,6 +449,9 @@ export const App: React.FC = () => {
           await doc.msExitFullscreen();
         }
       }
+
+      // Ensure instant and delayed canvas re-bleed sizing across browser fullscreen animations
+      visualEngineRef.current?.triggerResize();
     } catch (err) {
       console.warn('Fullscreen request failed:', err);
     }
@@ -497,13 +498,6 @@ export const App: React.FC = () => {
           opacity: windowFlashOpacity,
           backgroundColor: windowFlashColor,
         }}
-      />
-
-      {/* On-Canvas Cinematic Watermark HUD */}
-      <TrackWatermark
-        currentTrack={currentTrack}
-        currentSection={currentSection}
-        isPlaying={isPlaying}
       />
 
       {/* Top Header Bar (Attached flush to window top, auto-hides) */}
@@ -556,6 +550,7 @@ export const App: React.FC = () => {
             isDrop: false,
             dropIntensity: 0,
             musicMode: 'festival',
+            mood: 'euphoric-drop',
             frequencyData: new Uint8Array(1024),
             timeDomainData: new Uint8Array(1024),
           }

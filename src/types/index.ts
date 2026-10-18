@@ -31,6 +31,14 @@ export interface ColorPalette {
   ambientColor: string;  // Scene ambient lighting
 }
 
+export type MusicMood =
+  | 'euphoric-drop'
+  | 'chill-ambient'
+  | 'retro-groove'
+  | 'dark-aggressive'
+  | 'uplifting-melodic'
+  | 'deep-hypnotic';
+
 export interface AudioFeatures {
   timeSeconds: number;
   rms: number;               // 0.0 to 1.0 (signal loudness proxy)
@@ -48,6 +56,7 @@ export interface AudioFeatures {
   isDrop: boolean;           // True during massive festival drop climax
   dropIntensity: number;     // 0.0 to 1.0 (drop climax intensity)
   musicMode: 'calm' | 'festival'; // Detected music style: calm acoustic vs festival dubstep
+  mood: MusicMood;           // Detailed Librosa-inspired mood classification
   frequencyData: Uint8Array; // Raw FFT bins (0-255)
   timeDomainData: Uint8Array;// Raw PCM waveform samples (0-255)
 }
@@ -94,6 +103,7 @@ export interface TrackAnalysis {
     brightness: 'dark' | 'balanced' | 'bright';
     transientDensity: 'sparse' | 'moderate' | 'dense';
     rhythmicRegularity: 'steady' | 'variable' | 'uncertain';
+    mood: MusicMood;
   };
 }
 
@@ -124,6 +134,9 @@ export interface VisualEffectContext {
   palette: ColorPalette;
   intensity: number;      // 0.0 to 2.0 user multiplier
   wireframeOnly?: boolean;
+  trackTitle?: string;
+  trackArtist?: string;
+  mood?: MusicMood;
 }
 
 export interface VisualEffect {

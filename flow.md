@@ -3,19 +3,26 @@
 > **Project Name:** Synwave  
 > **Repository:** Synwave ([https://github.com/K-692/Synwave.git](https://github.com/K-692/Synwave.git))  
 > **Platform Target:** High-Performance Web & Cross-Platform Desktop (React 19 + TypeScript + Three.js + Web Audio API + Vite)  
-> **Test Music Corpus:** `My Music/Ambyion & Abandoned - Waves (4K Music Video).mp3`  
+> **Test Music Corpus:** Local `public/music/` test tracks (`Feel Something`, `Aaloshyo`, `Waves`)  
 > **Architecture Principle:** 100% Procedural Generation (Zero pre-rendered video, zero stock footage, local-first computation)
 
 ---
 
 ## 1. Abstract & System Philosophy
 
-**Synwave** is a real-time, genre-agnostic 3D procedural music visualizer and local audio player. Modern audiovisual synthesis tools often suffer from a false dichotomy: either they rely on heavy, static pre-rendered video clips that consume gigabytes of storage and fail to adapt dynamically, or they produce simplistic 2D equalizer bar graphs that lack artistic depth and musical structure.
+**Synwave** is a real-time, genre-agnostic 3D procedural music concert visualizer and local audio player. Conventional music visualizers either rely on pre-rendered video loops that fail to synchronize with dynamic musical phrasing, or simple 2D spectrum bars that lack depth.
 
-Synwave introduces a **dual-path hybrid architecture**:
-1. **Offline Pre-Analysis Engine:** Deconstructs decoded audio buffers into 20 FPS multi-band feature frames, computes dynamic range envelopes, estimates tempo candidates (BPM) via Inter-Onset Interval (IOI) histograms, segments musical sections (Intro, Build, Drop/Climax, Breakdown, Outro), and prepares a deterministic visual choreography schedule keyed to a stable 32-bit track seed.
-2. **Live Authoritative Playback Path:** Synchronizes rendering strictly to the authoritative media clock (`currentTime`). Low-latency real-time spectral FFT data (2048 samples, 1024 bins) and time-domain PCM waveforms are extracted frame-by-frame via Web Audio `AnalyserNode`, detecting instantaneous transient kick/snare impulses and driving real-time GPU shader deformations.
-3. **Smart Scene Choreographer & Mood Engine:** Rather than dumping all effects on screen simultaneously (which causes visual clutter), Synwave coordinates **100+ procedural effect permutations** across 8 art-directed cinematic compositions, dynamically cross-fading scenes on musical section transitions and automatically interpolating color palettes according to audio mood.
+Synwave delivers a **Music Festival Concert Stage Experience** viewed directly from the front-row VIP perspective:
+1. **Curved Jumbotron LED Screen:** A massive curved LED backdrop screen displaying **100+ audio-reactive procedural visual themes** (across 10 distinct families with 10 variations each). The screen features an integrated concert broadcast lower-third displaying track title and artist as the exclusive **"Now Playing"** display.
+2. **Concert Stage Infrastructure:** Elevated reflective stage platform, aluminum truss arches, overhead lighting grids, side towers, and curved line-array speaker towers pulsing to sub-bass.
+3. **Fixed Front-Row VIP Camera:** Fixed directly in front of the stage facing the Jumbotron screen, featuring smooth mouse-driven head-turn parallax and visceral sub-bass camera rumble on heavy drum kicks and festival drops.
+4. **Active Stage Pyrotechnics & Atmospherics:**
+   - **6 Flame Cannons (Fire Shooters):** Erupting with vertical flame plumes and dynamic warm light flashes during drum kicks and dubstep drops.
+   - **4 Cryo CO2 Smoke Jets:** Blasting dense cryogenic fog plumes high into the air on buildups, drops, and snare rolls.
+   - **14 Moving-Head Spotlights:** Sweeping volumetric light cones with dynamic pan/tilt choreographies.
+   - **24 Razor-Thin Concert Lasers:** Liquid sky sheets, stadium fans, scissor crosses, and drop frenzy strobes.
+5. **Mood & Genre Detection Engine:** Inspired by the Librosa-based `usr-wwelsh/Mood-Detector` pipeline, extracting acoustic descriptors (RMS energy, spectral centroid, sub-bass ratio, onset density, and tempo) to classify music into 6 dynamic mood profiles: `euphoric-drop`, `chill-ambient`, `retro-groove`, `dark-aggressive`, `uplifting-melodic`, and `deep-hypnotic`.
+6. **Edge-to-Edge Zero-Gap Fullscreen:** Pixel-perfect fullscreen with automated multi-frame re-measurement to prevent any bottom letterboxing or black gaps across macOS and all displays.
 
 ---
 
@@ -40,119 +47,95 @@ $$\text{RMS} = \sqrt{\frac{1}{W} \sum_{n=0}^{W-1} x[n]^2}$$
 The spectral centroid represents the barycenter of the magnitude spectrum:
 $$C_{\text{spectral}} = \frac{\sum_{k=0}^{K-1} k \cdot M[k]}{\sum_{k=0}^{K-1} M[k]}$$
 
-### 2.4 Dynamic Transient Onset Detection
-To detect percussive transients (kick, snare, drops) robustly across different audio volumes, Synwave calculates a rolling energy average $\mu_E$ and variance $\sigma^2_E$ over a 40-frame window:
-$$\text{Threshold} = \mu_E + \max(0.08, \sqrt{\sigma^2_E} \cdot 1.4)$$
-$$\text{Threshold} = \mu_E + \max(0.08, \sqrt{\sigma^2_E} \cdot 1.4)$$
-A transient beat event is triggered when:
-$$E_{\text{instant}} = 0.7 \cdot E_{\text{bass}} + 0.3 \cdot \text{RMS} > \text{Threshold} \quad \text{and} \quad \Delta t_{\text{last}} > 220\text{ ms}$$
-
-### 2.5 Drum Kick Transient Detection
-To detect specific physical percussive kick hits (sub-bass punch in the $20\text{ Hz} - 100\text{ Hz}$ register, bins 1 to 5), Synwave computes an ultra-low frequency sub-bass power envelope:
-$$\text{Kick Threshold} = 1.35 \cdot \mu_{\text{subBass}} + 0.12$$
-A kick event is registered when $E_{\text{subBass}} > \text{Kick Threshold}$ and $E_{\text{subBass}} > 0.32$ with minimum refractory delay $\Delta t_{\text{kick}} > 160\text{ ms}$. This triggers instantaneous full-window blinder flashes and explosive particle velocity impulses.
-
-### 2.6 Festival Drop Climax Detection
-In electronic dance music and melodic dubstep (e.g. *ILLENIUM & Excision — Feel Something*), drops represent massive sustained surges in sub-bass and RMS following a build. The drop confidence accumulator is evaluated:
-$$\Delta C_{\text{drop}} = \begin{cases} +0.15 & \text{if } E_{\text{subBass}} > 0.55 \text{ and } \text{RMS} > 0.42 \text{ and } \text{Mode} = \text{festival} \\ -0.05 & \text{otherwise} \end{cases}$$
-When $C_{\text{drop}} > 0.35$, Drop Mode engages: activating 32-beam high-speed laser scissor sweeps, strobe pulses, and radial particle shockwave detonations.
-
-### 2.7 Music-Mood Dynamic Classification (Calm vs Festival)
-Synwave continuously classifies incoming audio into two distinct aesthetic worlds:
-- **Calm Acoustic Sanctuary:** ($E_{\text{avg}} < 0.24$ and $E_{\text{subBass}} < 0.35$, e.g., acoustic songs like *Aaloshyo*). Yields serene flowing aurora ribbons, gentle breathing stardust, and warm gold/deep indigo hues. Zero harsh strobing or blinding lasers.
-- **Festival Concert Arena:** (High energy, rhythmic dubstep, e.g., *Feel Something* or *Waves*). Yields stadium laser rigs, kick blinder flashes, explosive bass shockwave particles, and camera bass rumble.
+### 2.4 Librosa-Inspired Mood Classification Pipeline
+Referencing audio feature extraction methodologies from `Mood-Detector` (Librosa):
+1. **Energy Metric ($E$):** Composite of RMS and bass power: $E = 0.5 \cdot \text{RMS} + 0.5 \cdot E_{\text{bass}}$.
+2. **Brightness Metric ($B$):** Normalized spectral centroid: $B = \frac{C_{\text{spectral}}}{K}$.
+3. **Onset Rate ($\Omega$):** Percussive onset frequency measured per second.
+4. **Classification Heuristics:**
+   - **`euphoric-drop`**: High energy ($E > 0.45$), intense sub-bass ($E_{\text{subBass}} > 0.52$), and fast onset rate or drop detected.
+   - **`chill-ambient`**: Low energy ($E < 0.22$), warm centroid ($B < 0.48$), and low onset rate ($\Omega < 1.6$).
+   - **`dark-aggressive`**: High energy ($E > 0.38$) with low spectral brightness ($B < 0.42$).
+   - **`uplifting-melodic`**: Moderate-high energy ($E > 0.30$) with high spectral brightness ($B > 0.55$).
+   - **`retro-groove`**: Prominent low-mid and mid warmth ($E_{\text{lowMid}} > 0.28$) with steady rhythmic pulse.
+   - **`deep-hypnotic`**: Sustained bass drones with low onset density.
 
 ---
 
-## 3. Music Festival Concert Experience & 100+ Procedural Combinations
+## 3. 100+ Procedural Stage Screen Visual Themes
 
-Synwave eliminates clumsy center shapes (avoiding awkward wireframe cages), opening up a magnificent concert festival arena:
+The backdrop Jumbotron screen renders 100 distinct procedural themes organized into 10 families ($10 \times 10 = 100$):
 
-| Effect ID | Family | Description | Reaction Mechanics |
+| Family Index | Theme Family | Theme Range | Aesthetic Characteristics |
 |---|---|---|---|
-| `laser-beams` | Lasers & Light Beams | 28–36 Volumetric Concert Laser Rig | Overhead truss, side scissor towers, and floor uplights. Scissor cross cuts, horizon fan sweeps, liquid sky sheets, and drop frenzy strobes. |
-| `starfield-warp` | Cosmic & Particles | Bass-Activated Shockwave Particle Field | 4,000+ sparks receiving explosive radial velocity on drum kicks ($\vec{v} += \vec{r}_{\text{norm}} \cdot I_{\text{kick}} \cdot 32.0$); gentle breathing stardust in calm music. |
-| `terrain-grid` | Geometry & Terrains | Open Concert Arena Floor / Horizon Grid | Wide center runway; outer flanks undulate dynamically to sub-bass; reflective stage floor. |
-| `spectrum-bars` | Waveforms & Frequency | Distant Horizon Equalizer Skyline | Positioned along the distant horizon ($Z = -28$), framing the concert arena. |
-| `shockwave-rings`| Bursts & Pulses | Concentric Chromatic Shockwave Rings | Triggered on drum kicks and drops; expands outwards with exponential velocity decay. |
-| `audio-ribbons` | Ribbons & Fluid Waves | Ethereal Flowing Silk Aurora Ribbons | Sinusoidal undulating ribbons dedicated to calm music and emotional melodic breakdowns. |
-| `waveform-ring` | Waveforms | 3D Circular Oscilloscope Loop | Directly mapped to live PCM time-domain samples; glowing neon rim. |
+| **0** | **Cyber Horizon & Tron Grid** | 00 – 09 | Undulating wireframe horizon grids, neon road perspectives, audio mountains. |
+| **1** | **Cosmic Warp & Hyperspace** | 10 – 19 | Relativistic star streaks, warp speed tunnels, spiral galaxy vortexes. |
+| **2** | **Sacred Geometry & Mandalas** | 20 – 29 | Multi-pointed audio-reactive stars, concentric mandalas, golden ratio wheels. |
+| **3** | **Liquid Plasma & Aurora Waves** | 30 – 39 | Multi-frequency sinusoidal waveforms, silk auroras, chromatic interference. |
+| **4** | **Stadium Equalizer Skylines** | 40 – 49 | Radial equalizers, segmented LED VU towers, circular oscilloscope rings. |
+| **5** | **Glitch Matrix & Cyber Data** | 50 – 59 | Digital matrix code rain, cyber runes, high-speed telemetry readouts. |
+| **6** | **Neon Radial Tunnels** | 60 – 69 | Infinite depth polygons (hexagons, octagons, triangles) pulsing to tempo. |
+| **7** | **Volcanic Inferno & Pyrotechnics** | 70 – 79 | Solar flares, magma plumes, fiery chromatic noise spikes. |
+| **8** | **Celestial Zen Sanctuary** | 80 – 89 | Organic breathing lotus rings, soft yin-yang waves, celestial constellations. |
+| **9** | **Strobe Rave & High-Energy Blinders** | 90 – 99 | High-velocity scissor vectors, radial starburst blinder pulses, strobe chaos. |
 
-### Curated Concert Scenes
-1. **`FESTIVAL ARENA`**: Stage floor grid + 32-beam lasers + bass shockwave particles + horizon equalizer + shockwave rings.
-2. **`DROP FRENZY`**: Full-power laser sweeps + explosive particle detonations + shockwave rings + stage floor.
-3. **`CELESTIAL SANCTUARY`**: Fluid aurora ribbons + breathing stardust + calm waveform ripples (dedicated for calm acoustic music).
-4. **`LASER CATHEDRAL`**: Concentrated concert lasers + bass shockwave particles + horizon skyline + shockwaves.
-5. **`HORIZON EQUALIZER`**: Terrain floor + horizon equalizer skyline + stardust + laser beams.
-
----
-
-## 4. Window Edge Attachment, Auto-Hiding UI & Native Fullscreen
-
-- **Edge Attachment:** Both the upper header and lower player dock attach directly to window boundaries (`top: 0`, `bottom: 0`, `border-radius: 0`, `width: 100%`) with zero gap.
-- **Independent Auto-Hiding Zones:**
-  - Cursor near top ($\le 65\text{px}$) $\to$ Upper header slides into view; lower dock stays hidden.
-  - Cursor near bottom ($\ge \text{windowHeight} - 75\text{px}$) $\to$ Player dock slides into view; header stays hidden.
-  - Inactive / middle canvas $\to$ Both bars slide out of view, presenting an uninterrupted visualizer canvas.
-- **Drum Kick Window Blinder Flash:** A dedicated overlay (`.festival-window-blinder`) with screen blending flashes on drum kicks and strobes during dubstep drops.
-- **Spacebar Transport & Native Fullscreen:**
-  - `Space`: Instant pause/play toggle (with input field protection).
-  - `KeyF` / Canvas Double-Click: Full-bleed cross-browser native fullscreen (WebKit, Gecko, Blink) with automatic icon state synchronization.
-- **Cinematic Watermark HUD:** Refined typography with title truncation and auto-fade to subtle opacity ($0.28$) after initial track presentation so the visuals remain unobstructed.
+### Integrated "Now Playing" Broadcast Lower-Third
+Track title and artist are rendered directly onto the stage screen's lower region with:
+- Cyberpunk status badge (`● LIVE BROADCAST | 4K HDR`).
+- High-contrast glowing track title in `Orbitron` display typography.
+- Artist attribution in `Outfit` secondary typography.
+- Real-time audio waveform bar integrated along the bottom border.
+- **Exclusive Display:** The canvas watermark was completely removed so the track info appears solely on the stage screen.
 
 ---
 
-## 5. Architectural Directory Structure
+## 4. Concert Stage 3D Effects Suite
 
-```text
-Synwave/
-├── icon.png                                <-- Official application branding icon (5000x5000)
-├── public/
-│   ├── icon.png                            <-- Web favicon and touch icon
-│   └── favicon.svg
-├── src/
-│   ├── audio/
-│   │   ├── AudioEngine.ts                  <-- Web Audio API live graph & master clock
-│   │   └── AudioAnalyzer.ts                <-- Headless offline PCM pre-analysis & segmentation
-│   ├── visualizer/
-│   │   ├── VisualEngine.ts                 <-- Three.js scene, dynamic camera, smart director
-│   │   ├── palettes.ts                     <-- 6 curated aesthetic color themes
-│   │   └── effects/
-│   │       ├── BaseEffect.ts               <-- Common lifecycle, PRNG, and disposal
-│   │       ├── TerrainGridEffect.ts        <-- Retro synthwave horizon grid
-│   │       ├── TorusKnotEffect.ts          <-- Mathematical 3D morphing torus knot
-│   │       ├── DNAHelixEffect.ts           <-- Procedural rotating double helix
-│   │       ├── ParticleVortexEffect.ts     <-- Logarithmic singularity spiral vortex
-│   │       ├── StarfieldEffect.ts          <-- Hyperspace warp particle field
-│   │       ├── WireframeCoreEffect.ts      <-- Audio-displaced crystalline polyhedron
-│   │       ├── WaveformRingEffect.ts       <-- Real-time 3D PCM circular oscilloscope
-│   │       ├── SpectrumBarsEffect.ts       <-- Horizon audio equalizer skyline
-│   │       ├── AudioRibbonsEffect.ts       <-- Sinusoidal flowing fluid ribbons
-│   │       ├── LaserBeamsEffect.ts         <-- Overhead concert stadium laser fans
-│   │       └── ShockwaveRingEffect.ts      <-- Expanding chromatic shockwave pulses
-│   ├── components/
-│   │   ├── Header.tsx                      <-- Top bar (attached flush, auto-hides)
-│   │   ├── PlayerControls.tsx              <-- Bottom dock (attached flush, auto-hides)
-│   │   ├── PlaylistDrawer.tsx              <-- Queue list, search filter, analysis status
-│   │   ├── InspectorDrawer.tsx             <-- Live 64-band FFT canvas, oscilloscope, telemetry
-│   │   └── TrackWatermark.tsx              <-- Cinematic on-canvas HUD watermark
-│   ├── types/
-│   │   └── index.ts                        <-- System-wide TypeScript contracts
-│   ├── index.css                           <-- Cyberpunk Glassmorphism Design System
-│   ├── App.tsx                             <-- Application root coordinator
-│   └── main.tsx
-├── Synwave_procedural_music_visualizer_blueprint.md
-├── flow.md                                 <-- Architectural journey & research notes
-├── LICENSE                                 <-- MIT License
-├── README.md                               <-- Comprehensive project documentation
-├── package.json
-└── vite.config.ts
-```
+1. **`StageStructureEffect`**:
+   - Elevated glossy reflective concert platform ($36\text{m} \times 18\text{m} \times 1.6\text{m}$) with neon edge lining.
+   - DJ console riser with mini real-time spectrum LED front panel.
+   - Curved LED Jumbotron mesh ($R = 26\text{m}, H = 12.5\text{m}, \theta = 93.6^\circ$).
+   - Aluminum truss arch, vertical towers, and overhead ceiling lighting bridge.
+   - Left & right line-array speaker towers with sub-bass vertical recoil.
+   - Front VIP crowd barrier establishing audience depth.
+2. **`FireShootersEffect`**:
+   - 6 heavy-duty pyro flame blasters mounted along the stage lip.
+   - Bursting vertical flame plumes up to $12\text{m}$ high on drum kicks ($E_{\text{subBass}} > 0.45$) and drops.
+   - Dynamic stage point lights casting real-time orange/red firelight across the venue.
+3. **`SmokeMachinesEffect`**:
+   - 4 high-velocity Cryo CO2 cannons blasting cryogenic fog plumes upward.
+   - Rolling stage haze drifting across the stage floor catching stage lights and lasers.
+4. **`ThinLasersEffect`**:
+   - 24 razor-thin concert laser projectors mounted on overhead truss, towers, and floor.
+   - Modes: Liquid Sky, Stadium Fan, Scissor Cross, and Drop Frenzy Strobe.
+5. **`StageLightsEffect`**:
+   - 14 automated moving-head spotlights with volumetric light cones.
+   - Beat-synchronized pan/tilt sweeps and blinder strobes.
+6. **`ShockwaveRingEffect`**:
+   - Bass-triggered chromatic ring shockwaves along the stage deck floor.
+7. **`StarfieldEffect`**:
+   - Deep night-sky arena backdrop behind the stage rig.
+
+---
+
+## 5. Viewport & Fullscreen Edge-to-Edge Guarantee
+
+### Letterboxing Root Cause & Resolution
+- **Issue:** Fullscreen toggle in macOS/Blink/WebKit caused a black letterboxing gap at the bottom of the screen.
+- **Root Cause:**
+  1. `renderer.setSize(width, height, false)` prevented Three.js from setting inline style dimensions on the canvas.
+  2. `#root` lacked explicit `100%` height constraints in CSS.
+  3. `resize` events fired prematurely before macOS fullscreen transition animations completed.
+- **Resolution:**
+  - Configured `html, body, #root, .synwave-app, .visualizer-canvas` with `width: 100% !important; height: 100% !important; min-width: 100vw; min-height: 100vh; margin: 0; padding: 0; overflow: hidden;`.
+  - Updated `renderer.setSize(width, height, true)` to explicitly enforce canvas style matching.
+  - Attached listeners to `fullscreenchange`, `webkitfullscreenchange`, `mozfullscreenchange`, and `MSFullscreenChange`.
+  - Implemented multi-stage delayed re-measurement (at $0\text{ms}, 60\text{ms}, 180\text{ms}, 350\text{ms}, 600\text{ms}$) to guarantee zero-gap fit throughout animations.
 
 ---
 
 ## 6. Current State & Verification
 
-- **Production Build:** `npm run build` succeeds cleanly (`tsc -b && vite build` built in ~321ms).
-- **Vite Local Dev Server:** Running at `http://localhost:5173/`.
-- **Git Repository:** Committed and synchronized with `https://github.com/K-692/Synwave.git`.
+- **Production Build:** `npm run build` compiles cleanly with code 0 (`tsc -b && vite build` bundled in ~430ms).
+- **Vite Local Dev Server:** Running continuously at `http://localhost:5173/`.
+- **Git Repository:** Ready for commit and push to `https://github.com/K-692/Synwave.git`.

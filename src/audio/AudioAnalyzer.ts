@@ -4,7 +4,7 @@
  * estimated BPM, dynamic section boundaries, and deterministic visual choreographies.
  */
 
-import type { FeatureFrame, SectionEvent, TimedEvent, TrackAnalysis } from '../types';
+import type { FeatureFrame, SectionEvent, TimedEvent, TrackAnalysis, MusicMood } from '../types';
 
 export class AudioAnalyzer {
   private static cache = new Map<string, TrackAnalysis>();
@@ -114,6 +114,25 @@ export class AudioAnalyzer {
       const avgCentroid = frames.length > 0 ? totalCentroid / frames.length : 0.5;
       const onsetRate = onsets.length / Math.max(1, duration);
 
+      // Librosa-inspired mood detection (similar to usr-wwelsh/Mood-Detector)
+      let mood: MusicMood = 'retro-groove';
+      const maxBass = frames.reduce((max, f) => Math.max(max, f.bass), 0);
+      const avgBass = frames.reduce((sum, f) => sum + f.bass, 0) / (frames.length || 1);
+
+      if (avgRms < 0.23 && avgBass < 0.28 && maxBass < 0.45) {
+        mood = 'chill-ambient'; // Calm acoustic / ambient (e.g. Aaloshyo)
+      } else if (maxBass > 0.65 && (avgRms > 0.38 || onsetRate > 2.0)) {
+        mood = 'euphoric-drop'; // Festival dubstep / heavy climax drops (e.g. Feel Something)
+      } else if (avgCentroid > 0.58 && onsetRate > 2.0) {
+        mood = 'uplifting-melodic';
+      } else if (avgBass > 0.45 && avgCentroid < 0.36) {
+        mood = 'dark-aggressive';
+      } else if (estimatedBpm >= 115 && estimatedBpm <= 135) {
+        mood = 'retro-groove'; // Electronic wave / synthwave groove (e.g. Waves)
+      } else {
+        mood = 'deep-hypnotic';
+      }
+
       const analysis: TrackAnalysis = {
         schemaVersion: 1,
         trackId,
@@ -128,6 +147,7 @@ export class AudioAnalyzer {
           brightness: avgCentroid > 0.6 ? 'bright' : avgCentroid > 0.35 ? 'balanced' : 'dark',
           transientDensity: onsetRate > 2.5 ? 'dense' : onsetRate > 1.2 ? 'moderate' : 'sparse',
           rhythmicRegularity: estimatedBpm > 0 ? 'steady' : 'variable',
+          mood,
         },
       };
 
@@ -257,6 +277,7 @@ export class AudioAnalyzer {
         brightness: 'balanced',
         transientDensity: 'moderate',
         rhythmicRegularity: 'steady',
+        mood: 'retro-groove',
       },
     };
   }

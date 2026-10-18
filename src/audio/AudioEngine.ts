@@ -3,7 +3,7 @@
  * Manages Web Audio API graph, authoritative media clock, and real-time audio feature extraction.
  */
 
-import type { AudioFeatures } from '../types';
+import type { AudioFeatures, MusicMood } from '../types';
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
@@ -191,6 +191,7 @@ export class AudioEngine {
         isDrop: false,
         dropIntensity: 0,
         musicMode: 'festival',
+        mood: 'retro-groove',
         frequencyData: this.frequencyData,
         timeDomainData: this.timeDomainData,
       };
@@ -320,6 +321,22 @@ export class AudioEngine {
       onsetStrength = Math.min(1, (instantEnergy - dynamicThreshold) * 3 + 0.4);
     }
 
+    // Dynamic Live Mood Classifier (Librosa / Mood-Detector inspired)
+    let mood: MusicMood = 'retro-groove';
+    if (isDrop) {
+      mood = 'euphoric-drop';
+    } else if (isCalm) {
+      mood = 'chill-ambient';
+    } else if (this.smoothedCentroid > 0.58 && onsetStrength > 0.4) {
+      mood = 'uplifting-melodic';
+    } else if (this.smoothedSubBass > 0.48 && this.smoothedCentroid < 0.38) {
+      mood = 'dark-aggressive';
+    } else if (this.smoothedRms > 0.32) {
+      mood = 'retro-groove';
+    } else {
+      mood = 'deep-hypnotic';
+    }
+
     return {
       timeSeconds: currentTime,
       rms: this.smoothedRms,
@@ -337,6 +354,7 @@ export class AudioEngine {
       isDrop,
       dropIntensity,
       musicMode,
+      mood,
       frequencyData: this.frequencyData,
       timeDomainData: this.timeDomainData,
     };
