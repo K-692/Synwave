@@ -13,7 +13,7 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
   <p align="center">
-    An immersive music festival concert stage visualizer that transforms local audio files into real-time, 3D stadium audiovisual performances with a curved LED Jumbotron, 100+ mood-adaptive themes, razor-thin lasers, flame cannons, cryo smoke jets, and moving-head spotlights.
+    An authentic stadium music festival concert visualizer that transforms local audio files into real-time, 3D stadium audiovisual performances with a solid 16:9 LED stage screen, heavy-duty aluminum truss roof, crowd silhouette with glowing smartphones, camera-directed lasers, moving-head lights, pyrotechnic fire blasters, cryo smoke jets, and 4-channel STEM separation.
   </p>
 
 </div>
@@ -22,27 +22,37 @@
 
 ## 🌟 Overview
 
-**Synwave** transforms any local audio file into a full-scale **music festival concert experience**. Rather than generic 2D graphs or disorienting spinning shapes, Synwave places you in the **front-row VIP audience** directly facing a colossal concert stage.
+**Synwave** transforms any local audio file into a full-scale **music festival concert experience**. Rather than generic 2D graphs or disorienting spinning shapes, Synwave places you in the **front-row audience** directly facing a colossal concert stage modeled after real-world stadium EDM and dubstep concerts.
 
 ### Concert Stage Highlights
-- **Curved Jumbotron LED Screen:** A massive backdrop screen running **100+ audio-activated procedural visual themes** dynamically selected by track mood and section dynamics.
-- **Exclusive "Now Playing" Broadcast HUD:** The track title and artist are integrated directly into the stage screen's broadcast lower-third — keeping the rest of the canvas clean and unobstructed.
-- **Fixed Front-Row VIP Perspective:** The camera is positioned in front of the stage, featuring responsive mouse-look parallax and visceral sub-bass camera vibration on heavy drum kicks and festival drops.
-- **Live Stage Pyrotechnics & Atmospherics:**
-  - **6 Pyro Flame Cannons:** Erupting with vertical fiery plumes and casting real-time warm illumination across the stage on kicks and drops.
-  - **4 Cryo CO2 Smoke Jets:** Blasting dense cryogenic fog high into the air on buildups, drops, and snare rolls.
-  - **14 Moving-Head Spotlights:** Volumetric light cones with beat-synced pan/tilt sweeps and blinder strobes.
-  - **24 Razor-Thin Lasers:** Liquid sky sheets, stadium fans, scissor crosses, and drop frenzy strobes.
-- **Mood & Genre Detection:** Analyzes energy, spectral brightness, sub-bass intensity, and tempo (Librosa-inspired heuristics) to classify songs into 6 distinct musical moods: `euphoric-drop`, `chill-ambient`, `retro-groove`, `dark-aggressive`, `uplifting-melodic`, and `deep-hypnotic`.
+- **Solid Pitch-Black Stage Arena:** Pitch-black background (`#000000`) with **zero revolving or spinning elements** — delivering clean, high-contrast concert realism.
+- **Solid Rectangular Jumbotron LED Screen (16:9):** Centered on stage displaying **100+ audio-activated procedural visual themes** (including the **Concert Phoenix Wings of Fire** visual matching live festival stages) and the exclusive **"Now Playing"** broadcast banner.
+- **Heavy-Duty Aluminum Box-Truss Roof Structure:** Industrial overhead roof grid with horizontal cross-beams and dual vertical column support towers flanking the stage.
+- **Authentic Foreground Concert Crowd:** Silhouette of audience heads, cheering raised arms/hands, and glowing mobile phone recording screens bobbing to the sub-bass pulse.
+- **Rock-Solid Fixed Camera Perspective:** Camera locked in front of the stage with zero mouse-hovering movement.
+- **Lasers & Lights Thrown Towards Camera & Audience:**
+  - **28 Razor-Thin Concert Lasers:** Directed outward along $+Z$ straight past the camera into the audience, as well as sweeping across stage in liquid-sky fans, stadium cones, and scissor crosses.
+  - **16 Moving-Head Volumetric Spotlights:** Overhead and ground-level moving heads angled forward towards the audience, sweeping dynamic pan/tilt choreographies.
+- **Active Stage Pyrotechnics & Atmospherics:**
+  - **8 Flame Cannons (Fire Shooters):** Flanking the LED screen and stage deck lip, blasting vertical fire plumes up to $14\text{m}$ high with real-time orange/red firelight.
+  - **Cryo CO2 Smoke Jets & Stage Haze:** Dense cryogenic fog plumes erupting upward on drops and vocals, with low-lying haze catching light beams.
+- **4-Channel STEM Separation Integration:**
+  - Integrated with the **KIE AI Suno Audio API** (`https://kieai.mintlify.app/suno-api/separate-vocals`) for multi-track separation.
+  - Instantaneous 60 FPS real-time multi-band STEM decomposition isolating **Kick**, **Bass**, **Instruments**, and **Vocals**.
+  - **Decoupled Visual Triggers:**
+    - **Kick STEM** $\to$ Kick flash lights (white blinder strobes) & pyro flame blasters.
+    - **Bass STEM** $\to$ Moving-head beam intensity, cone thickness, and stage floor wash.
+    - **Instrument STEM** $\to$ Razor-thin concert lasers & stage-sweeping light choreographies.
+    - **Vocal STEM** $\to$ Center stage LED screen visual energy (Phoenix Wings of Fire) & cryo smoke plumes.
 - **Edge-to-Edge Fullscreen Guarantee:** Engineered with multi-stage viewport re-measurements to ensure zero letterboxing, zero black bars, and pixel-perfect bleed across macOS and all displays.
 
 ---
 
 ## 🎨 100+ Stage Screen Procedural Themes
 
-The curved LED screen renders 100 distinct procedural themes categorized into 10 families:
+The solid rectangular LED screen renders 100 distinct procedural themes categorized into 10 families:
 
-| Theme Family | Themes | Visual Aesthetic |
+| Theme Family | Themes | Visual Aesthetic & STEM Reactivity |
 |---|---|---|
 | **Cyber Horizon & Tron Grid** | 00 – 09 | Undulating wireframe horizon grids, neon road perspectives, audio mountains. |
 | **Cosmic Warp & Hyperspace** | 10 – 19 | Relativistic star streaks, warp speed tunnels, spiral galaxy vortexes. |
@@ -51,7 +61,7 @@ The curved LED screen renders 100 distinct procedural themes categorized into 10
 | **Stadium Equalizer Skylines** | 40 – 49 | Radial equalizers, segmented LED VU towers, circular oscilloscope rings. |
 | **Glitch Matrix & Cyber Data** | 50 – 59 | Digital matrix code rain, cyber runes, high-speed telemetry readouts. |
 | **Neon Radial Tunnels** | 60 – 69 | Infinite depth polygons (hexagons, octagons, triangles) pulsing to tempo. |
-| **Volcanic Inferno & Pyrotechnics** | 70 – 79 | Solar flares, magma plumes, fiery chromatic noise spikes. |
+| **Concert Phoenix Wings & Inferno** | 70 – 79 | **Fiery Phoenix Wings spreading across the video wall (matching concert photo)**, central totem silhouette, rising ember particles; driven by Vocal & Kick STEMs. |
 | **Celestial Zen Sanctuary** | 80 – 89 | Organic breathing lotus rings, soft yin-yang waves, celestial constellations. |
 | **Strobe Rave & Blinders** | 90 – 99 | High-velocity scissor vectors, radial starburst blinder pulses, strobe chaos. |
 
@@ -64,7 +74,6 @@ The curved LED screen renders 100 distinct procedural themes categorized into 10
 | `Space` | **Play / Pause** | Toggle playback instantly (with text input protection). |
 | `F` | **Toggle Fullscreen** | Full-bleed native edge-to-edge fullscreen mode. |
 | `Double-Click` | **Toggle Fullscreen** | Double-clicking the canvas toggles fullscreen. |
-| `Mouse Move` | **Concert Parallax** | Subtly shifts front-row VIP perspective for realistic 3D depth. |
 | `Hover Top` | **Top Header** | Slide in top navigation bar (`Library`, `Inspector`, `Track Info`). |
 | `Hover Bottom` | **Player Dock** | Slide in transport controls and progress scrub bar. |
 
@@ -73,9 +82,9 @@ The curved LED screen renders 100 distinct procedural themes categorized into 10
 ## 🛠️ Tech Stack
 
 - **Frontend & UI:** React 19, TypeScript, Lucide Icons
-- **Styling:** Vanilla CSS (Glassmorphism, Neon Cyberpunk design system, zero UI bloat)
+- **Styling:** Vanilla CSS (Glassmorphism, Dark Concert aesthetic, zero UI bloat)
 - **3D Graphics & Rendering:** Three.js, WebGL2, Canvas2D Offscreen Procedural Textures
-- **Audio Processing:** Web Audio API (`AudioContext`, `AnalyserNode`, `AudioBuffer`)
+- **Audio & STEM Processing:** Web Audio API (`AudioContext`, `AnalyserNode`), KIE AI Suno API Client, 60 FPS Real-Time Multi-Band Decomposition
 - **Build Tooling:** Vite 8.3
 
 ---

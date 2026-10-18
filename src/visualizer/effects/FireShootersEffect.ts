@@ -1,9 +1,10 @@
 /**
  * Synwave Concert Pyro Fire Shooters Effect
  * 
- * 6 Heavy-duty stage flamethrowers positioned along the front edge of the concert platform.
- * Erupts with massive vertical flame plumes and dynamic stage-illuminating warm light flashes
- * triggered by bass kicks, drops, and high-energy music climaxes.
+ * 8 Heavy-duty stage flamethrowers positioned flanking the stage screen and along the deck lip
+ * matching the user's reference photo.
+ * Erupts with massive vertical flame plumes and dynamic warm light flashes
+ * triggered specifically by the KICK STEM, heavy drum transients, and festival drops.
  */
 
 import * as THREE from 'three';
@@ -30,22 +31,24 @@ export class FireShootersEffect extends BaseEffect {
   private cannons: FlameCannon[] = [];
   private flameLight1!: THREE.PointLight;
   private flameLight2!: THREE.PointLight;
-  private fireShaderUniforms = {
-    uTime: { value: 0 },
-    uNoiseScale: { value: 2.5 },
-  };
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // 6 Flame Cannons along front stage deck lip (x = -12.5 to +12.5, y = -0.2, z = 4.8)
+    // 8 Flame Cannons: Flanking both sides of the screen (matching photo) and along the stage lip
     const cannonPositions = [
-      new THREE.Vector3(-12.5, -0.2, 4.6),
-      new THREE.Vector3(-7.5, -0.2, 4.8),
-      new THREE.Vector3(-2.5, -0.2, 4.9),
-      new THREE.Vector3(2.5, -0.2, 4.9),
-      new THREE.Vector3(7.5, -0.2, 4.8),
-      new THREE.Vector3(12.5, -0.2, 4.6),
+      // Left Flank of screen (in photo)
+      new THREE.Vector3(-11.5, 0.4, -3.2),
+      new THREE.Vector3(-8.8, 0.1, -2.5),
+      // Left Front Lip
+      new THREE.Vector3(-5.5, -0.4, 4.2),
+      new THREE.Vector3(-2.0, -0.4, 4.4),
+      // Right Front Lip
+      new THREE.Vector3(2.0, -0.4, 4.4),
+      new THREE.Vector3(5.5, -0.4, 4.2),
+      // Right Flank of screen (in photo)
+      new THREE.Vector3(8.8, 0.1, -2.5),
+      new THREE.Vector3(11.5, 0.4, -3.2),
     ];
 
     // Shared Cannon Base Geometry
@@ -58,12 +61,11 @@ export class FireShootersEffect extends BaseEffect {
     this.disposables.push(baseGeo, baseMat);
 
     // Flame Plume Geometry (tapered cylinder stretching upwards)
-    const flameGeo = new THREE.CylinderGeometry(0.2, 1.2, 10, 16, 8, true);
-    // Anchor pivot at base of flame
-    flameGeo.translate(0, 5, 0);
+    const flameGeo = new THREE.CylinderGeometry(0.2, 1.4, 11, 16, 8, true);
+    flameGeo.translate(0, 5.5, 0); // Anchor pivot at base of flame
     this.disposables.push(flameGeo);
 
-    // Pilot flame geometry (subtle resting spark)
+    // Pilot flame geometry (resting spark)
     const pilotGeo = new THREE.SphereGeometry(0.12, 8, 8);
     const pilotMat = new THREE.MeshBasicMaterial({
       color: 0xff6600,
@@ -85,9 +87,9 @@ export class FireShootersEffect extends BaseEffect {
       pilotMesh.position.set(pos.x, pos.y + 0.3, pos.z);
       this.group.add(pilotMesh);
 
-      // Flame Plume Mesh with vibrant fiery additive shader material
+      // Flame Plume Mesh with vibrant fiery additive material
       const flameMat = new THREE.MeshBasicMaterial({
-        color: 0xff4500,
+        color: 0xff5500,
         transparent: true,
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
@@ -114,24 +116,24 @@ export class FireShootersEffect extends BaseEffect {
     }
 
     // Dynamic Pyro Stage Point Lights (illumination when flames burst)
-    this.flameLight1 = new THREE.PointLight(0xff5500, 0, 35, 1.8);
-    this.flameLight1.position.set(-6, 2.5, 5);
+    this.flameLight1 = new THREE.PointLight(0xff5500, 0, 45, 1.8);
+    this.flameLight1.position.set(-8, 3.5, 0);
     this.group.add(this.flameLight1);
 
-    this.flameLight2 = new THREE.PointLight(0xffaa00, 0, 35, 1.8);
-    this.flameLight2.position.set(6, 2.5, 5);
+    this.flameLight2 = new THREE.PointLight(0xffaa00, 0, 45, 1.8);
+    this.flameLight2.position.set(8, 3.5, 0);
     this.group.add(this.flameLight2);
   }
 
   public update(context: VisualEffectContext): void {
     const { features, deltaSeconds } = context;
-    this.fireShaderUniforms.uTime.value += deltaSeconds;
 
-    // Trigger logic: Kicks, drops, and high-energy onset
+    // STEM TRIGGER: KICK STEM directly triggers the flamethrowers!
+    const kickStem = features.stems.kick;
     const shouldErupt =
-      (features.isKick && features.kickIntensity > 0.45) ||
-      (features.isDrop && Math.random() < 0.45) ||
-      (features.onsetStrength > 0.75 && features.bass > 0.65);
+      (features.isKick && kickStem > 0.38) ||
+      kickStem > 0.62 ||
+      (features.isDrop && Math.random() < 0.55);
 
     let anyFiring = false;
     let maxFlameIntensity = 0;
@@ -140,22 +142,20 @@ export class FireShootersEffect extends BaseEffect {
       const cannon = this.cannons[i];
       cannon.cooldownTimer -= deltaSeconds;
 
-      // Check if this cannon should burst
       if (shouldErupt && cannon.cooldownTimer <= 0) {
-        // Center cannons burst on every kick, outer cannons on drops or heavy beats
-        const isCenter = i === 2 || i === 3;
-        const isMid = i === 1 || i === 4;
-        const triggerProbability = features.isDrop ? 1.0 : isCenter ? 0.95 : isMid ? 0.7 : 0.4;
+        // Screen flanking cannons (0, 1, 6, 7) fire heavily on drops and kicks (matching photo)
+        const isScreenFlank = i === 0 || i === 1 || i === 6 || i === 7;
+        const triggerProbability = features.isDrop ? 1.0 : isScreenFlank ? 0.9 : 0.65;
 
         if (Math.random() < triggerProbability) {
-          const power = features.isDrop ? 1.4 : Math.max(0.7, features.kickIntensity * 1.2);
+          const power = features.isDrop ? 1.5 : Math.max(0.8, kickStem * 1.35);
           cannon.targetHeight = power * (0.9 + Math.random() * 0.4);
           cannon.intensity = 1.0;
           cannon.cooldownTimer = features.isDrop ? 0.12 : 0.22;
         }
       }
 
-      // Smoothly interpolate flame height
+      // Smooth height interpolation
       if (cannon.intensity > 0.05) {
         anyFiring = true;
         cannon.flameHeight = this.lerp(cannon.flameHeight, cannon.targetHeight, deltaSeconds * 28);
@@ -169,31 +169,28 @@ export class FireShootersEffect extends BaseEffect {
 
       // Scale flame plume mesh
       const currentH = Math.max(0.001, cannon.flameHeight);
-      const flickerW = 1.0 + Math.sin(performance.now() * 0.02 + i) * 0.15;
+      const flickerW = 1.0 + Math.sin(performance.now() * 0.025 + i * 1.5) * 0.18;
       cannon.flameMesh.scale.set(flickerW, currentH, flickerW);
 
       // Color and opacity
       const mat = cannon.flameMesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = cannon.intensity * 0.9;
+      mat.opacity = cannon.intensity * 0.92;
       if (cannon.intensity > 0.6) {
-        // Blazing white-yellow at peak
-        mat.color.setHex(0xffdd66);
+        mat.color.setHex(0xffdd66); // Radiant white-yellow core
       } else if (cannon.intensity > 0.3) {
-        // Saturated flame orange
-        mat.color.setHex(0xff5500);
+        mat.color.setHex(0xff5500); // Fiery orange
       } else {
-        // Deep fiery crimson at decay
-        mat.color.setHex(0xdd1100);
+        mat.color.setHex(0xdd1100); // Deep crimson decay
       }
 
-      // Subtle pilot light flickering
+      // Pilot light spark
       const pilotMat = cannon.pilotMesh.material as THREE.MeshBasicMaterial;
       pilotMat.opacity = 0.5 + Math.sin(performance.now() * 0.015 + i * 2) * 0.3;
     }
 
     // Update dynamic stage pyro illumination
     if (anyFiring) {
-      const lightPower = maxFlameIntensity * 4.5 * (features.isDrop ? 1.5 : 1.0);
+      const lightPower = maxFlameIntensity * 5.0 * (features.isDrop ? 1.5 : 1.0);
       this.flameLight1.intensity = lightPower;
       this.flameLight2.intensity = lightPower;
     } else {

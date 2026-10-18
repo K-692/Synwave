@@ -388,26 +388,89 @@ export class StageScreenThemes {
   }
 
   // -------------------------------------------------------------
-  // Theme Family 7: Volcanic Inferno & Pyrotechnic Blaze (Themes 70-79)
+  // Theme Family 7: Concert Phoenix Wings of Fire & Volcanic Blaze (Themes 70-79)
+  // (Directly modeled after the attached concert photo visual)
   // -------------------------------------------------------------
   private renderPyroInferno(c: ScreenThemeContext, v: number): void {
     const { ctx, width: w, height: h, features, timeSeconds } = c;
 
-    // Upward shooting fire plasma tendrils
-    const flames = 24 + (v % 4) * 4;
-    for (let i = 0; i < flames; i++) {
-      const u = i / flames;
-      const x = u * w;
-      const height = (Math.sin(u * 12 + timeSeconds * 8) * 0.3 + 0.6) * (h * 0.75) * (1 + features.subBass * 0.6);
+    const cx = w / 2;
+    const cy = h * 0.52;
+    const wingSpread = 1.0 + features.stems.vocals * 0.6 + features.stems.bass * 0.4;
+    const wingFlap = Math.sin(timeSeconds * 4.0) * 15 * (1 + features.stems.kick);
 
-      const grad = ctx.createLinearGradient(x, h, x, h - height);
-      grad.addColorStop(0, '#ff1100');
-      grad.addColorStop(0.4, '#ff7700');
-      grad.addColorStop(0.8, '#ffea00');
-      grad.addColorStop(1, '#ffffff');
+    // Deep fiery ambient background glow
+    const bgGlow = ctx.createRadialGradient(cx, cy, 30, cx, cy, w * 0.65);
+    bgGlow.addColorStop(0, features.isDrop ? 'rgba(255, 120, 20, 0.85)' : 'rgba(255, 60, 0, 0.6)');
+    bgGlow.addColorStop(0.5, 'rgba(180, 20, 0, 0.35)');
+    bgGlow.addColorStop(1, 'rgba(0, 0, 0, 0.95)');
+    ctx.fillStyle = bgGlow;
+    ctx.fillRect(0, 0, w, h);
 
-      ctx.fillStyle = grad;
-      ctx.fillRect(x - 8, h - height, 16, height);
+    // Render Majestic Concert Phoenix Wings (Left & Right)
+    const featherCount = 28 + (v % 4) * 4;
+    for (let side = -1; side <= 1; side += 2) {
+      for (let i = 0; i < featherCount; i++) {
+        const u = i / featherCount;
+        const angle = (-0.15 + u * 1.1) * side;
+        const length = (w * 0.42) * (0.4 + u * 0.6) * wingSpread;
+
+        const startX = cx + side * (15 + u * 40);
+        const startY = cy + Math.sin(u * Math.PI) * 20;
+
+        const tipX = startX + Math.cos(angle) * length * side;
+        const tipY = startY - Math.sin(angle) * length * 0.75 + wingFlap * (1 - u);
+
+        // Feather curve control point
+        const ctrlX = startX + (tipX - startX) * 0.5 + Math.sin(timeSeconds * 6 + i) * 15 * side;
+        const ctrlY = startY - (startY - tipY) * 0.6 - (30 + u * 40);
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
+
+        const featherGrad = ctx.createLinearGradient(startX, startY, tipX, tipY);
+        featherGrad.addColorStop(0, '#ffffff');
+        featherGrad.addColorStop(0.2, '#ffee55');
+        featherGrad.addColorStop(0.6, '#ff4400');
+        featherGrad.addColorStop(1, '#880000');
+
+        ctx.strokeStyle = featherGrad;
+        ctx.lineWidth = 4 + (1 - u) * 8 + (features.isDrop ? 4 : 0);
+        ctx.stroke();
+      }
+    }
+
+    // Central Phoenix Core & Silhouette (Concert Performer / Totem)
+    const coreGrad = ctx.createRadialGradient(cx, cy - 20, 5, cx, cy - 20, 70);
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.4, '#ffdd44');
+    coreGrad.addColorStop(0.8, '#ff3300');
+    coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 20, 65 + features.stems.vocals * 25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Performer / Totem Silhouette in center of stage screen
+    ctx.fillStyle = '#05070c';
+    ctx.beginPath();
+    // Head & shoulders silhouette
+    ctx.arc(cx, cy - 45, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(cx - 20, cy - 30, 40, 70);
+
+    // Floating Rising Sparks / Embers
+    const emberCount = 35;
+    for (let e = 0; e < emberCount; e++) {
+      const ex = cx + (Math.sin(e * 7 + timeSeconds * 0.8) * w * 0.45);
+      const ey = (cy + 100 - ((timeSeconds * 140 + e * 35) % (h * 0.85)));
+      const rad = 2 + Math.sin(timeSeconds * 5 + e) * 1.5;
+
+      ctx.fillStyle = e % 2 === 0 ? '#ffea00' : '#ff4400';
+      ctx.beginPath();
+      ctx.arc(ex, ey, Math.max(1, rad), 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

@@ -551,6 +551,12 @@ export const App: React.FC = () => {
             dropIntensity: 0,
             musicMode: 'festival',
             mood: 'euphoric-drop',
+            stems: {
+              kick: 0,
+              bass: 0,
+              instruments: 0,
+              vocals: 0,
+            },
             frequencyData: new Uint8Array(1024),
             timeDomainData: new Uint8Array(1024),
           }

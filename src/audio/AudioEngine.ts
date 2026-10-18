@@ -3,7 +3,8 @@
  * Manages Web Audio API graph, authoritative media clock, and real-time audio feature extraction.
  */
 
-import type { AudioFeatures, MusicMood } from '../types';
+import type { AudioFeatures, AudioStems, MusicMood } from '../types';
+import { StemSeparationService } from './StemSeparationService';
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
@@ -33,6 +34,8 @@ export class AudioEngine {
   private lastBeatTime = 0;
   private lastKickTime = 0;
   private dropConfidence = 0;
+  private currentKickStem = 0;
+  private lastFeatureTime = performance.now();
 
   // Callbacks
   public onTimeUpdate?: (currentTime: number, duration: number) => void;
@@ -192,6 +195,12 @@ export class AudioEngine {
         dropIntensity: 0,
         musicMode: 'festival',
         mood: 'retro-groove',
+        stems: {
+          kick: 0,
+          bass: 0,
+          instruments: 0,
+          vocals: 0,
+        },
         frequencyData: this.frequencyData,
         timeDomainData: this.timeDomainData,
       };
@@ -337,6 +346,20 @@ export class AudioEngine {
       mood = 'deep-hypnotic';
     }
 
+    const deltaSeconds = Math.min(0.1, (now - this.lastFeatureTime) / 1000);
+    this.lastFeatureTime = now;
+
+    // Real-Time 4-STEM Decomposition (Kick, Bass, Instruments, Vocals)
+    const stems: AudioStems = StemSeparationService.extractRealtimeStems(
+      this.frequencyData,
+      this.timeDomainData,
+      isKick,
+      kickIntensity,
+      this.currentKickStem,
+      deltaSeconds
+    );
+    this.currentKickStem = stems.kick;
+
     return {
       timeSeconds: currentTime,
       rms: this.smoothedRms,
@@ -355,6 +378,7 @@ export class AudioEngine {
       dropIntensity,
       musicMode,
       mood,
+      stems,
       frequencyData: this.frequencyData,
       timeDomainData: this.timeDomainData,
     };

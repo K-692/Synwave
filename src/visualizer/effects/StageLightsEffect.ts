@@ -1,15 +1,13 @@
 /**
  * Synwave Concert Moving-Head Stage Lights Effect
  * 
- * 14 Professional moving-head spotlight fixtures with volumetric light beams:
- * - 8 fixtures mounted along the overhead rear truss
- * - 6 fixtures mounted along the front lighting truss
- * - Volumetric light cones with soft additive falloff
- * - Intelligent pan/tilt choreographies:
- *     1. Arena Audience Sweep
- *     2. Cross-Stage Braid
- *     3. Stage Floor Wash
- *     4. Blinder Strobe Drop Focus
+ * 16 Professional moving-head spotlight fixtures matching the user's reference photo:
+ * - Mounted along the overhead aluminum box-truss grid
+ * - Volumetric light cones THROWN DIRECTLY TOWARDS THE CAMERA and sweeping across the stage
+ * - Dedicated STEM Separation Activation:
+ *     1. BASS STEM: Drives moving-head light beam intensity, core glow, and stage floor wash!
+ *     2. KICK STEM: Drives instant blinding white flash strobes on drum hits!
+ *     3. INSTRUMENT STEM: Drives pan/tilt beam choreographies and dynamic sweeps across the crowd!
  */
 
 import * as THREE from 'three';
@@ -26,7 +24,6 @@ interface MovingHead {
   tiltAngle: number;
   targetPan: number;
   targetTilt: number;
-  beamLength: number;
   index: number;
 }
 
@@ -37,44 +34,45 @@ export class StageLightsEffect extends BaseEffect {
   readonly cost = 'medium';
 
   private fixtures: MovingHead[] = [];
-  private lightCount = 14;
+  private lightCount = 16;
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // Shared Fixture Geometries
-    const baseGeo = new THREE.CylinderGeometry(0.3, 0.35, 0.4, 10);
+    // Chassis geometry
+    const baseGeo = new THREE.CylinderGeometry(0.28, 0.35, 0.4, 10);
     const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x161922,
+      color: 0x141824,
       roughness: 0.4,
-      metalness: 0.8,
+      metalness: 0.85,
     });
     this.disposables.push(baseGeo, baseMat);
 
-    // Glowing Lens
-    const lensGeo = new THREE.SphereGeometry(0.2, 12, 12);
+    // High-power lens flare
+    const lensGeo = new THREE.SphereGeometry(0.22, 12, 12);
     this.disposables.push(lensGeo);
 
-    // Volumetric Light Cone
-    const coneLength = 35;
-    const coneGeo = new THREE.ConeGeometry(3.5, coneLength, 16, 1, true);
-    // Orient cone so apex is at fixture and it projects downwards/forwards
+    // Volumetric Light Cone thrown forward towards the camera (cone length 32m)
+    const coneLength = 32;
+    const coneGeo = new THREE.ConeGeometry(3.2, coneLength, 16, 1, true);
+    // Align cone so apex is at the fixture lens and body points along Z forward towards the camera
     coneGeo.translate(0, -coneLength / 2, 0);
+    coneGeo.rotateX(Math.PI / 2); // Orient forward along Z
     this.disposables.push(coneGeo);
 
-    // Setup 14 fixture positions
+    // 16 Fixtures mounted on the overhead box-truss (8 rear overhead, 8 front overhead)
     const fixturePositions: THREE.Vector3[] = [];
 
-    // Rear overhead truss (8 lights at y = 14.2, z = -5.0)
+    // Rear overhead truss (8 lights across x = -13 to +13, y = 12.2, z = -4.0)
     for (let i = 0; i < 8; i++) {
-      const x = -14 + i * (28 / 7);
-      fixturePositions.push(new THREE.Vector3(x, 14.2, -5.0));
+      const x = -13.0 + i * (26.0 / 7);
+      fixturePositions.push(new THREE.Vector3(x, 12.2, -4.0));
     }
 
-    // Front truss (6 lights at y = 12.8, z = 3.0)
-    for (let i = 0; i < 6; i++) {
-      const x = -12.5 + i * 5;
-      fixturePositions.push(new THREE.Vector3(x, 12.8, 3.0));
+    // Front overhead truss (8 lights across x = -12 to +12, y = 11.8, z = 1.0)
+    for (let i = 0; i < 8; i++) {
+      const x = -12.0 + i * (24.0 / 7);
+      fixturePositions.push(new THREE.Vector3(x, 11.8, 1.0));
     }
 
     this.lightCount = fixturePositions.length;
@@ -84,7 +82,7 @@ export class StageLightsEffect extends BaseEffect {
       const fixtureGroup = new THREE.Group();
       fixtureGroup.position.copy(pos);
 
-      // Chassis
+      // Fixture base chassis
       const baseMesh = new THREE.Mesh(baseGeo, baseMat);
       fixtureGroup.add(baseMesh);
 
@@ -96,21 +94,22 @@ export class StageLightsEffect extends BaseEffect {
       });
       this.disposables.push(lensMat);
       const lensMesh = new THREE.Mesh(lensGeo, lensMat);
-      lensMesh.position.set(0, -0.2, 0);
+      lensMesh.position.set(0, -0.15, 0.1);
       fixtureGroup.add(lensMesh);
 
-      // Volumetric Beam Cone
+      // Volumetric beam cone projecting forward towards the camera
       const coneMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.18,
+        opacity: 0.15,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       this.disposables.push(coneMat);
+
       const coneMesh = new THREE.Mesh(coneGeo, coneMat);
-      coneMesh.position.set(0, -0.2, 0);
+      coneMesh.position.set(0, -0.15, 0.1);
       fixtureGroup.add(coneMesh);
 
       this.group.add(fixtureGroup);
@@ -122,10 +121,9 @@ export class StageLightsEffect extends BaseEffect {
         coneMesh,
         basePos: pos,
         panAngle: 0,
-        tiltAngle: 0.5,
+        tiltAngle: 0.35,
         targetPan: 0,
-        targetTilt: 0.5,
-        beamLength: coneLength,
+        targetTilt: 0.35,
         index: i,
       });
     }
@@ -135,59 +133,72 @@ export class StageLightsEffect extends BaseEffect {
     const { features, deltaSeconds, palette } = context;
     const time = performance.now() * 0.001;
 
+    // STEM SEPARATION DRIVEN VISUALIZATIONS:
+    // 1. BASS STEM: Controls moving head light beam intensity & thickness
+    const bassStem = features.stems.bass;
+    // 2. KICK STEM: Triggers instant kick flash lights (blinder strobe)
+    const kickStem = features.stems.kick;
+    // 3. INSTRUMENT STEM: Drives pan/tilt sweeps and choreographies across the stage
+    const instStem = features.stems.instruments;
+
     const primaryCol = new THREE.Color(palette.primary);
     const secondaryCol = new THREE.Color(palette.secondary);
     const whiteCol = new THREE.Color(0xffffff);
 
-    // Audio responsiveness
-    const isStrobe = features.isDrop && (Math.floor(time * 16) % 2 === 0);
-    const beamBrightness = isStrobe
-      ? 0.55
-      : 0.15 + features.rms * 0.25 + (features.isKick ? 0.2 : 0);
+    // Kick flash blinder check
+    const isKickFlash = (features.isKick && kickStem > 0.45) || (features.isDrop && Math.floor(time * 18) % 2 === 0);
+
+    // Beam brightness directly driven by BASS STEM
+    const baseBrightness = 0.12 + bassStem * 0.45 + (features.isDrop ? 0.25 : 0);
+    const finalBrightness = isKickFlash ? 0.85 : baseBrightness;
 
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
 
-      // Pan & Tilt calculations based on music mode and rhythm
+      // Pan & Tilt choreographies driven by INSTRUMENT STEM & time
+      // The beams are THROWN TOWARDS THE CAMERA (tiltAngle pointing down & forward into the audience)
+      const sweepSpeed = 1.0 + instStem * 2.5;
+
       if (features.isDrop) {
-        // Drop: Dynamic criss-cross sweeps and crowd blinders
-        fix.targetPan = Math.sin(time * 3.5 + i * 0.8) * 0.8;
-        fix.targetTilt = 0.5 + Math.cos(time * 2.8 + i * 0.5) * 0.45;
-      } else if (features.musicMode === 'calm') {
-        // Calm: Slow, majestic breathing sweeps
-        fix.targetPan = Math.sin(time * 0.5 + i * 0.3) * 0.4;
-        fix.targetTilt = 0.6 + Math.cos(time * 0.4 + i * 0.2) * 0.2;
+        // Drop mode: Frantic criss-cross sweeps towards audience
+        fix.targetPan = Math.sin(time * 4.0 + i * 0.6) * 0.75;
+        fix.targetTilt = 0.32 + Math.cos(time * 3.5 + i * 0.4) * 0.25;
       } else {
-        // Standard Groove: Synchronized wave motions
+        // Standard groove: Wave motion sweeping across stage and crowd
         const offset = (i / this.fixtures.length) * Math.PI * 2;
-        fix.targetPan = Math.sin(time * 1.5 + offset) * 0.6;
-        fix.targetTilt = 0.65 + Math.sin(time * 2.0 + offset * 0.5) * 0.3;
+        fix.targetPan = Math.sin(time * sweepSpeed + offset) * 0.55;
+        // Tilt slightly down and forward towards the camera (z ~ 16.5)
+        fix.targetTilt = 0.35 + Math.sin(time * (sweepSpeed * 0.8) + offset * 0.5) * 0.22;
       }
 
       // Smooth interpolation
-      const smoothSpeed = features.isDrop ? deltaSeconds * 12 : deltaSeconds * 4.5;
-      fix.panAngle = this.lerp(fix.panAngle, fix.targetPan, smoothSpeed);
-      fix.tiltAngle = this.lerp(fix.tiltAngle, fix.targetTilt, smoothSpeed);
+      const smoothRate = deltaSeconds * (6.0 + instStem * 8.0);
+      fix.panAngle = this.lerp(fix.panAngle, fix.targetPan, smoothRate);
+      fix.tiltAngle = this.lerp(fix.tiltAngle, fix.targetTilt, smoothRate);
 
-      // Apply rotation to fixture group
+      // Apply rotation: Y is pan, X is tilt forward towards the camera
       fix.group.rotation.set(0, 0, 0);
       fix.group.rotation.y = fix.panAngle;
       fix.group.rotation.x = fix.tiltAngle;
 
-      // Color selection
+      // Color selection: Kick flash turns lights pure brilliant white; otherwise palette
       let lightCol = i % 2 === 0 ? primaryCol : secondaryCol;
-      if (isStrobe || (features.isKick && features.kickIntensity > 0.8)) {
+      if (isKickFlash) {
         lightCol = whiteCol;
       }
 
       // Update materials
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       lensMat.color.copy(lightCol);
-      lensMat.opacity = Math.min(1.0, beamBrightness * 2.5);
+      lensMat.opacity = Math.min(1.0, finalBrightness * 2.2);
 
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
       coneMat.color.copy(lightCol);
-      coneMat.opacity = beamBrightness;
+      coneMat.opacity = finalBrightness;
+
+      // Volumetric beam width expands with BASS STEM
+      const beamScale = 1.0 + bassStem * 0.4;
+      fix.coneMesh.scale.set(beamScale, beamScale, 1.0);
     }
   }
 }

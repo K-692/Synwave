@@ -126,9 +126,10 @@ export class SmokeMachinesEffect extends BaseEffect {
   public update(context: VisualEffectContext): void {
     const { features, deltaSeconds, palette } = context;
 
-    // Trigger cryo bursts on drops, snare rolls, or heavy energy buildups
+    // Trigger cryo bursts on drops, vocal climaxes, or heavy energy buildups
     const isCryoTrigger =
       features.isDrop ||
+      (features.stems.vocals > 0.62 && features.stems.kick > 0.3) ||
       (features.onsetStrength > 0.82 && features.highMid > 0.65) ||
       (features.isKick && Math.random() < 0.25);
 

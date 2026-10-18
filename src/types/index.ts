@@ -39,6 +39,13 @@ export type MusicMood =
   | 'uplifting-melodic'
   | 'deep-hypnotic';
 
+export interface AudioStems {
+  kick: number;        // 0.0 to 1.0 (Kick transient & punch -> triggers kick flash lights & flame blasters)
+  bass: number;        // 0.0 to 1.0 (Sub-bass & bass notes -> triggers moving head stage lights & floor wash)
+  instruments: number; // 0.0 to 1.0 (Synths, guitars, keys, melodies -> triggers razor-thin lasers & sweeps)
+  vocals: number;      // 0.0 to 1.0 (Vocal formants & upper harmonics -> triggers stage screen visuals & smoke)
+}
+
 export interface AudioFeatures {
   timeSeconds: number;
   rms: number;               // 0.0 to 1.0 (signal loudness proxy)
@@ -57,8 +64,35 @@ export interface AudioFeatures {
   dropIntensity: number;     // 0.0 to 1.0 (drop climax intensity)
   musicMode: 'calm' | 'festival'; // Detected music style: calm acoustic vs festival dubstep
   mood: MusicMood;           // Detailed Librosa-inspired mood classification
+  stems: AudioStems;         // 4-stem separated real-time signals: Kick, Bass, Instruments, Vocals
   frequencyData: Uint8Array; // Raw FFT bins (0-255)
   timeDomainData: Uint8Array;// Raw PCM waveform samples (0-255)
+}
+
+export interface KieStemSeparationRequest {
+  taskId?: string;
+  audioId?: string;
+  type?: 'separate_vocal' | 'split_stem';
+  callBackUrl?: string;
+}
+
+export interface KieStemSeparationResponse {
+  code: number;
+  msg: string;
+  data?: {
+    task_id?: string;
+    vocal_separation_info?: {
+      vocal_url?: string;
+      instrumental_url?: string;
+      drums_url?: string;
+      bass_url?: string;
+      guitar_url?: string;
+      keyboard_url?: string;
+      synth_url?: string;
+      percussion_url?: string;
+      fx_url?: string;
+    };
+  };
 }
 
 export interface FeatureFrame {

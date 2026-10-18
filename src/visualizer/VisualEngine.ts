@@ -1,16 +1,19 @@
 /**
  * Synwave 3D Concert Stage Visual Engine
  * 
- * Orchestrates a music festival stage visualization:
- * - Camera fixed directly in front of the stage from audience/VIP perspective
- * - Curved Jumbotron LED screen with 100+ audio-reactive visual themes & Now Playing HUD
- * - 14 Moving-head volumetric stage spotlights
- * - 24 Razor-thin concert lasers (Liquid sky, stadium fan, scissor cross, drop strobe)
- * - 6 Front-stage pyro flame blasters bursting fire plumes on kicks & drops
- * - 4 High-velocity Cryo CO2 cannons and rolling stage fog
- * - Bass floor shockwaves and stadium arena backdrop
- * - Zero center spiral/particle clutter
- * - Edge-to-edge true fullscreen guarantee with zero black gaps
+ * Orchestrates a real-world music festival concert stage visualization:
+ * - Solid pitch-black stadium background with ZERO revolving elements
+ * - Fixed audience camera locked in front of the stage (NO mouse hovering movement)
+ * - Solid rectangular Jumbotron LED screen displaying the song title and audio visualizer
+ * - 16 Moving-head volumetric stage lights THROWN TOWARDS THE CAMERA & sweeping across stage
+ * - 28 Razor-thin concert lasers THROWN TOWARDS THE CAMERA & audience
+ * - 8 Pyro flame cannons flanking the screen and stage lip
+ * - 4 High-velocity Cryo CO2 smoke cannons and rolling stage haze
+ * - Dedicated STEM Separation Activation:
+ *     - Kick STEM -> Kick flash lights (blinders) & pyro flame blasters
+ *     - Bass STEM -> Moving-head light beam intensity & stage floor wash
+ *     - Instrument STEM -> Razor-thin lasers & pan/tilt sweeps
+ *     - Vocal STEM -> Stage screen visual energy & cryo smoke plumes
  */
 
 import * as THREE from 'three';
@@ -30,8 +33,6 @@ import { ThinLasersEffect } from './effects/ThinLasersEffect';
 import { FireShootersEffect } from './effects/FireShootersEffect';
 import { SmokeMachinesEffect } from './effects/SmokeMachinesEffect';
 import { ShockwaveRingEffect } from './effects/ShockwaveRingEffect';
-import { StarfieldEffect } from './effects/StarfieldEffect';
-import { TerrainGridEffect } from './effects/TerrainGridEffect';
 
 export interface VisualSceneConfig {
   id: string;
@@ -43,7 +44,7 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   {
     id: 'stadium-mainstage',
     name: 'MAINSTAGE FESTIVAL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers', 'fire-shooters', 'smoke-machines', 'starfield-warp', 'shockwave-rings'],
+    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers', 'fire-shooters', 'smoke-machines', 'shockwave-rings'],
   },
   {
     id: 'pyro-drop-frenzy',
@@ -53,17 +54,12 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   {
     id: 'laser-cathedral',
     name: 'LASER CATHEDRAL',
-    activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights', 'smoke-machines', 'starfield-warp'],
+    activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights', 'smoke-machines'],
   },
   {
     id: 'ambient-sanctuary',
     name: 'CELESTIAL CHILL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'smoke-machines', 'starfield-warp'],
-  },
-  {
-    id: 'cryo-horizon',
-    name: 'CRYO STADIUM',
-    activeEffectIds: ['stage-structure', 'smoke-machines', 'stage-lights', 'thin-lasers', 'terrain-grid', 'starfield-warp'],
+    activeEffectIds: ['stage-structure', 'stage-lights', 'smoke-machines'],
   },
 ];
 
@@ -78,7 +74,7 @@ export class VisualEngine {
   private stageKeyLight!: THREE.PointLight;
   private stageFillLight!: THREE.PointLight;
 
-  // Effects Catalogue
+  // Effects Catalogue (Zero revolving elements)
   private effects: VisualEffect[] = [];
   private activePalette: ColorPalette;
   private targetPalette: ColorPalette;
@@ -99,18 +95,15 @@ export class VisualEngine {
   private sceneTimer = 0;
   private lastDetectedSection = '';
 
-  // Camera Dynamics (Fixed in front of the stage with subtle parallax and bass rumble)
+  // Camera Dynamics (Fixed solidly in front of the stage; NO mouse hovering movement)
   private cameraBaseX = 0;
   private cameraBaseY = 1.4;
-  private cameraBaseZ = 17.5;
+  private cameraBaseZ = 16.5;
   private cameraTargetFov = 60;
-  private mouseX = 0;
-  private mouseY = 0;
 
   // Settings
   private quality: QualityPreset = 'high';
   private effectIntensity = 1.0;
-  private cameraSpeedMultiplier = 1.0;
 
   // Live state callbacks
   public onCurrentSectionChange?: (section: string) => void;
@@ -144,38 +137,37 @@ export class VisualEngine {
     this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x020308);
-    this.scene.fog = new THREE.FogExp2(0x020308, 0.014);
+    // Pure solid black outdoor stadium background
+    this.scene.background = new THREE.Color(0x000000);
+    this.scene.fog = new THREE.FogExp2(0x000000, 0.012);
 
-    // Fixed camera in front of the stage (Audience VIP View)
+    // Fixed camera in front of the stage (Audience View matching reference photo)
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 600);
     this.camera.position.set(this.cameraBaseX, this.cameraBaseY, this.cameraBaseZ);
-    this.camera.lookAt(0, 3.8, -4.0);
+    this.camera.lookAt(0, 4.4, -4.5);
 
     // Dynamic Concert Stage Lighting
-    this.ambientLight = new THREE.AmbientLight(0x0a1020, 1.4);
+    this.ambientLight = new THREE.AmbientLight(0x05070f, 1.2);
     this.scene.add(this.ambientLight);
 
-    this.stageKeyLight = new THREE.PointLight(0x00f0ff, 4.0, 60);
-    this.stageKeyLight.position.set(12, 14, 2);
+    this.stageKeyLight = new THREE.PointLight(0x00f0ff, 4.0, 50);
+    this.stageKeyLight.position.set(10, 12, 1);
     this.scene.add(this.stageKeyLight);
 
-    this.stageFillLight = new THREE.PointLight(0xff007f, 3.5, 60);
-    this.stageFillLight.position.set(-12, 14, 2);
+    this.stageFillLight = new THREE.PointLight(0xff007f, 3.5, 50);
+    this.stageFillLight.position.set(-10, 12, 1);
     this.scene.add(this.stageFillLight);
   }
 
   private initEffects(): void {
-    // Modular concert stage architecture
+    // Modular concert stage architecture (Zero revolving elements)
     this.effects = [
-      new StageStructureEffect(), // Curved LED Jumbotron Screen, 100+ Themes, Deck, Truss, Speakers
-      new StageLightsEffect(),     // 14 Moving-head volumetric spotlights
-      new ThinLasersEffect(),      // 24 Razor-thin lasers
-      new FireShootersEffect(),    // 6 Front-stage flame blasters
-      new SmokeMachinesEffect(),   // 4 Cryo CO2 jets & rolling stage haze
+      new StageStructureEffect(), // Solid rectangular LED screen, box truss, crowd silhouette
+      new StageLightsEffect(),     // 16 Moving-head volumetric lights thrown forward towards camera
+      new ThinLasersEffect(),      // 28 Razor-thin lasers thrown forward towards camera & audience
+      new FireShootersEffect(),    // 8 Front & flank flame blasters (Kick STEM activated)
+      new SmokeMachinesEffect(),   // 4 Cryo CO2 smoke cannons & rolling stage haze
       new ShockwaveRingEffect(),   // Bass stage floor shockwave ripples
-      new StarfieldEffect(),       // Stadium arena night sky
-      new TerrainGridEffect(),     // Horizon stage grid
     ];
 
     const context = this.createEffectContext(
@@ -197,6 +189,12 @@ export class VisualEngine {
         dropIntensity: 0,
         musicMode: 'festival',
         mood: 'euphoric-drop',
+        stems: {
+          kick: 0,
+          bass: 0,
+          instruments: 0,
+          vocals: 0,
+        },
         frequencyData: new Uint8Array(1024),
         timeDomainData: new Uint8Array(1024),
       },
@@ -248,16 +246,12 @@ export class VisualEngine {
     document.addEventListener('mozfullscreenchange', this.triggerResize);
     document.addEventListener('MSFullscreenChange', this.triggerResize);
     window.addEventListener('orientationchange', this.triggerResize);
-
-    window.addEventListener('mousemove', (e) => {
-      this.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
-      this.mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
-    });
+    // Mouse hover screen movement is removed per user request:
+    // Camera stays firmly fixed in front of the stage!
   }
 
   /**
    * Resizes renderer with zero-gap full bleed guarantee.
-   * Dispatches multiple micro-delays to account for macOS fullscreen transition animation.
    */
   public triggerResize = (): void => {
     this.handleResize();
@@ -299,7 +293,6 @@ export class VisualEngine {
 
   private applyScene(sceneConfig: VisualSceneConfig): void {
     for (const effect of this.effects) {
-      // Stage structure is always active
       if (effect.id === 'stage-structure') {
         effect.enabled = true;
       } else {
@@ -320,7 +313,7 @@ export class VisualEngine {
 
     let targetIndex = 0;
     if (mood === 'chill-ambient') {
-      targetIndex = 3; // Deep Space Indigo / Chill
+      targetIndex = 3; // Deep Space Indigo
     } else if (mood === 'euphoric-drop' || features.isDrop) {
       targetIndex = 4; // Solar Flare Amber / Fiery Rave
     } else if (mood === 'dark-aggressive') {
@@ -440,30 +433,25 @@ export class VisualEngine {
     // 2. Smart Scene Choreographer
     this.updateSmartChoreographer(trackTimeSeconds, features, deltaSeconds);
 
-    // 3. Concert Front View Camera (Fixed in front of the stage with subtle parallax and bass rumble)
-    const targetX = this.cameraBaseX + this.mouseX * 1.5;
-    const targetY = this.cameraBaseY + this.mouseY * 0.7;
-    const targetZ = this.cameraBaseZ;
-
-    const camLerp = deltaSeconds * 4.0 * this.cameraSpeedMultiplier;
-    this.camera.position.x += (targetX - this.camera.position.x) * camLerp;
-    this.camera.position.y += (targetY - this.camera.position.y) * camLerp;
-    this.camera.position.z += (targetZ - this.camera.position.z) * camLerp;
+    // 3. Concert Front View Camera (Locked solidly in front of the stage; NO mouse hovering movement)
+    this.camera.position.x = this.cameraBaseX;
+    this.camera.position.y = this.cameraBaseY;
+    this.camera.position.z = this.cameraBaseZ;
 
     // Sub-bass rumble / vibration on heavy kicks and drops (gives visceral festival chest-thump)
     let rumble = 0;
     if (features.isDrop) {
-      rumble = 0.16 * (1 + features.subBass);
-    } else if (features.isKick) {
-      rumble = features.kickIntensity * 0.12;
+      rumble = 0.14 * (1 + features.stems.bass);
+    } else if (features.stems.kick > 0.45 || features.isKick) {
+      rumble = features.stems.kick * 0.10;
     }
     if (rumble > 0) {
       this.camera.position.x += (Math.random() - 0.5) * rumble;
       this.camera.position.y += (Math.random() - 0.5) * rumble * 0.8;
     }
 
-    // Always look directly at the center of the concert stage screen
-    this.camera.lookAt(0, 3.8, -4.0);
+    // Always look directly at the center of the solid rectangular concert stage screen
+    this.camera.lookAt(0, 4.4, -4.5);
 
     // Dynamic FOV punch on kicks/drops
     const fovPunch = features.isDrop ? 3.5 : (features.isKick ? features.kickIntensity * 2.5 : 0);
@@ -472,28 +460,24 @@ export class VisualEngine {
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // 4. Strobe Blinder Flash on drops and kick attacks
-    if (features.isDrop) {
-      const isStrobe = Math.sin(trackTimeSeconds * 36.0) > 0.3;
-      const flashVal = isStrobe ? 0.9 : 0.0;
-      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.2;
+    // 4. Strobe Blinder Flash on KICK STEM spikes and drops (Kick flash lights!)
+    const kickFlash = (features.isKick && features.stems.kick > 0.45) || (features.isDrop && Math.sin(trackTimeSeconds * 36.0) > 0.25);
+    if (kickFlash) {
+      const flashVal = Math.min(0.9, features.stems.kick * 0.8 + 0.3);
+      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.3;
       this.onWindowFlash?.(flashVal, '#ffffff');
-    } else if (features.isKick && features.kickIntensity > 0.6) {
-      const flashVal = features.kickIntensity * 0.5;
-      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.0;
-      this.onWindowFlash?.(flashVal, features.musicMode === 'calm' ? '#00f0ff' : '#ffffff');
     } else {
       this.renderer.toneMappingExposure = this.lerp(
         this.renderer.toneMappingExposure,
         1.15,
-        deltaSeconds * 12.0
+        deltaSeconds * 14.0
       );
       this.onWindowFlash?.(0, '#ffffff');
     }
 
-    // Dynamic stage lighting intensity
-    this.stageKeyLight.intensity = 3.0 + features.subBass * 4.5;
-    this.stageFillLight.intensity = 2.5 + features.highMid * 3.5;
+    // Dynamic stage key lighting intensity driven by Bass STEM
+    this.stageKeyLight.intensity = 2.5 + features.stems.bass * 4.5;
+    this.stageFillLight.intensity = 2.0 + features.stems.instruments * 3.5;
 
     // 5. Update and render active effects
     const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds);
@@ -545,8 +529,8 @@ export class VisualEngine {
     }
   }
 
-  public setCameraSpeed(val: number): void {
-    this.cameraSpeedMultiplier = Math.max(0.2, Math.min(2.5, val));
+  public setCameraSpeed(_val: number): void {
+    // Camera is fixed per user request
   }
 
   public dispose(): void {
