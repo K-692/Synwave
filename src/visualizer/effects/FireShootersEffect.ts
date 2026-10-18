@@ -226,8 +226,8 @@ export class FireShootersEffect extends BaseEffect {
         outerMat.color.setHex(0xdd1100); // Crimson flame edge
       }
 
-      // Dynamic point light illumination
-      cannon.fireLight.intensity = cannon.intensity * 8.5;
+      // Dynamic point light illumination (subtle warm flicker, non-overexposing)
+      cannon.fireLight.intensity = cannon.intensity * 1.5;
 
       // Pilot spark
       const pilotMat = cannon.pilotMesh.material as THREE.MeshBasicMaterial;

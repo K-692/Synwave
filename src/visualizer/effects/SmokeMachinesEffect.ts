@@ -81,7 +81,7 @@ export class SmokeMachinesEffect extends BaseEffect {
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
       });
       this.disposables.push(plumeMat);
 
@@ -98,7 +98,7 @@ export class SmokeMachinesEffect extends BaseEffect {
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
       });
       this.disposables.push(innerCoreMat);
 
@@ -189,13 +189,13 @@ export class SmokeMachinesEffect extends BaseEffect {
       jet.plumeMesh.scale.set(spread, currentH, spread);
       jet.innerCoreMesh.scale.set(spread * 0.6, currentH * 0.85, spread * 0.6);
 
-      // Colors & Opacity
+      // Colors & Opacity (Controlled, translucent, non-overexposing)
       const plumeMat = jet.plumeMesh.material as THREE.MeshBasicMaterial;
-      plumeMat.opacity = jet.intensity * 0.78;
+      plumeMat.opacity = jet.intensity * 0.38;
       plumeMat.color.set(palette.secondary).lerp(new THREE.Color(0xffffff), 0.75);
 
       const coreMat = jet.innerCoreMesh.material as THREE.MeshBasicMaterial;
-      coreMat.opacity = jet.intensity * 0.92;
+      coreMat.opacity = jet.intensity * 0.45;
       coreMat.color.setHex(0xffffff);
     }
 
@@ -204,8 +204,8 @@ export class SmokeMachinesEffect extends BaseEffect {
     const hazeTime = performance.now() * 0.0005;
     const hazeMat = this.floorHazeMesh.material as THREE.MeshBasicMaterial;
 
-    // Distinctly visible smoke opacity that increases with volume and drops
-    const targetHazeOpacity = 0.24 + features.rms * 0.15 + (features.isDrop ? 0.18 : 0);
+    // Translucent soft floor haze
+    const targetHazeOpacity = 0.07 + features.rms * 0.05 + (features.isDrop ? 0.04 : 0);
     hazeMat.opacity = this.lerp(hazeMat.opacity, targetHazeOpacity, deltaSeconds * 4);
     // Haze softly tinted by primary stage light color
     hazeMat.color.set(palette.primary).lerp(new THREE.Color(0xd0e4ff), 0.55);

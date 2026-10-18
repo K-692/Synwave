@@ -96,26 +96,21 @@ export class StageScreenThemes {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Spotlight Ambient Glow:
-    // As spotlights throw light towards the camera, the screen catches that light color
-    const glowIntensity = Math.min(
-      0.85,
-      0.18 + features.stems.bass * 0.45 + (features.isDrop ? 0.35 : 0) + (features.isKick ? 0.25 : 0)
-    );
+    // 2. Subtle Spotlight Ambient Tint (Keeps screen predominantly pitch-black):
+    const glowIntensity = Math.min(0.18, 0.04 + features.stems.bass * 0.08 + (features.isDrop ? 0.06 : 0));
 
-    // Dynamic radial flare from stage spotlights
+    // Dynamic subtle radial flare
     const cx = w / 2;
     const cy = h / 2;
-    const glowRadius = w * 0.48;
+    const glowRadius = w * 0.42;
 
-    const spotGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, glowRadius);
-    // Convert hex lightColor to rgba
+    const spotGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, glowRadius);
     const r = parseInt(lightColor.slice(1, 3), 16) || 255;
     const g = parseInt(lightColor.slice(3, 5), 16) || 120;
     const b = parseInt(lightColor.slice(5, 7), 16) || 0;
 
-    spotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${glowIntensity * 0.55})`);
-    spotGrad.addColorStop(0.45, `rgba(${r}, ${g}, ${b}, ${glowIntensity * 0.22})`);
+    spotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${glowIntensity})`);
+    spotGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${glowIntensity * 0.25})`);
     spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
     ctx.fillStyle = spotGrad;
@@ -176,10 +171,10 @@ export class StageScreenThemes {
     const displayTitle = (title || 'SYNWAVE CONCERT').toUpperCase();
     const cleanTitle = displayTitle.length > 28 ? displayTitle.slice(0, 28) + '...' : displayTitle;
 
-    // Title glowing drop shadow
+    // Title with sharp contrast shadow
     ctx.save();
-    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.75)`;
-    ctx.shadowBlur = 24 + features.stems.bass * 16;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+    ctx.shadowBlur = 10;
     ctx.fillStyle = '#ffffff';
     ctx.font = '900 52px "Orbitron", -apple-system, sans-serif';
     ctx.fillText(cleanTitle, cx, cy - 40);

@@ -150,11 +150,11 @@ export class VisualEngine {
     this.ambientLight = new THREE.AmbientLight(0x05070f, 1.2);
     this.scene.add(this.ambientLight);
 
-    this.stageKeyLight = new THREE.PointLight(0x00f0ff, 4.0, 50);
+    this.stageKeyLight = new THREE.PointLight(0x00f0ff, 1.2, 35, 1.8);
     this.stageKeyLight.position.set(10, 12, 1);
     this.scene.add(this.stageKeyLight);
 
-    this.stageFillLight = new THREE.PointLight(0xff007f, 3.5, 50);
+    this.stageFillLight = new THREE.PointLight(0xff007f, 1.0, 35, 1.8);
     this.stageFillLight.position.set(-10, 12, 1);
     this.scene.add(this.stageFillLight);
   }
@@ -460,9 +460,9 @@ export class VisualEngine {
     this.renderer.toneMappingExposure = 1.15;
     this.onWindowFlash?.(0, '#ffffff');
 
-    // Dynamic stage key lighting intensity driven by Bass STEM
-    this.stageKeyLight.intensity = 2.5 + features.stems.bass * 4.5;
-    this.stageFillLight.intensity = 2.0 + features.stems.instruments * 3.5;
+    // Dynamic stage key lighting intensity driven by Bass STEM (balanced, non-overexposing)
+    this.stageKeyLight.intensity = 0.8 + features.stems.bass * 0.8;
+    this.stageFillLight.intensity = 0.6 + features.stems.instruments * 0.6;
 
     // 5. Update and render active effects
     const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds);

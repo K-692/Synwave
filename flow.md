@@ -113,17 +113,18 @@ $$V_{\text{stem}} = \min\left(1.0, \left(\frac{1}{174 \cdot 255} \sum_{k=37}^{21
 - Dual vertical structural truss towers flanking the stage ($X = \pm 12\text{m}, H = 16\text{m}$) with cross-bracing.
 - Center down-hang truss sections supporting overhead moving heads and blinder arrays.
 
-### 3.4 Camera-Thrown Lighting & Laser Systems
-- **Heavyweight 3D Lasers (`ThinLasersEffect`):** 28 dual-core volumetric cylinders projecting outward along $+Z$ past the camera into the crowd ($Z = 22.0\text{m}$).
-- **Moving Heads (`StageLightsEffect`):** 16 volumetric light cones angled forward towards the audience, dynamically expanding with Bass STEM.
-- **White Kick Spotlights (`StageLightsEffect`):** 8 dedicated blinder fixtures aimed directly at the camera lens, blasting on drum kicks.
-- **Pyrotechnics (`FireShootersEffect`):** 8 flame blasters launching towering fire plumes up to $15\text{m}$ high at energetic drops.
-- **Atmospherics (`SmokeMachinesEffect`):** 6 cryo CO2 cannons blasting dense fog plumes + rolling low-lying stage haze.
+### 3.4 Camera-Thrown Lighting & Laser Systems (Calibrated & Blowout-Free)
+- **Heavyweight 3D Lasers (`ThinLasersEffect`):** 28 dual-core volumetric cylinders projecting outward along $+Z$ past the camera into the venue ($Z = 24.0\text{m}$). Built with `FrontSide` rendering and calibrated opacity ($0.15 - 0.22$) to ensure bold, razor-sharp luminous beams without additive haze saturation.
+- **Moving Heads (`StageLightsEffect`):** 16 volumetric light cones angled forward towards the audience. Calibrated cone geometry ($R = 1.2\text{m}, L = 24\text{m}$) and subtle opacity ($0.08 - 0.16$) ensure transparent atmospheric rays through which the stage and screen remain crystal clear.
+- **White Kick Spotlights (`StageLightsEffect`):** 8 dedicated blinder fixtures fanned forward across the audience space. Narrow beam geometry ($R = 0.7\text{m}$) with controlled peak opacity ($0.16$) delivers crisp optical kick blinders without camera blowout.
+- **Pyrotechnics (`FireShootersEffect`):** 8 flame blasters launching towering fire plumes up to $15\text{m}$ high at energetic drops, with balanced dynamic firelight.
+- **Atmospherics (`SmokeMachinesEffect`):** 6 cryo CO2 cannons blasting dense fog plumes + rolling low-lying stage haze with balanced transparency ($0.08 - 0.12$).
+- **Screen Contrast Guarantee (`StageScreenThemes`):** Black LED background (`#000000`) with subtle spotlight ambient tint ($0.04 - 0.18$) and dark shadow backing, ensuring the centered song title, artist, and STEM telemetry remain 100% sharp, readable, and high-contrast at all times.
 
 ---
 
 ## 4. Current Implementation State
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 469ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 528ms).
 - **Vite Development Server:** Active at `http://localhost:5173/`.
-- **Git Repository:** Clean and staged locally (ready to push when instructed).
+- **Git Repository:** Committed locally (ready to push when instructed).
