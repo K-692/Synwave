@@ -65,8 +65,60 @@ export interface AudioFeatures {
   musicMode: 'calm' | 'festival'; // Detected music style: calm acoustic vs festival dubstep
   mood: MusicMood;           // Detailed Librosa-inspired mood classification
   stems: AudioStems;         // 4-stem separated real-time signals: Kick, Bass, Instruments, Vocals
+  estimatedBpm: number;      // Current estimated tempo / BPM
+  beatIndex: number;         // Monotonic beat counter
+  barIndex: number;          // Bar index (1 to 4/8 in current phrase)
+  beatPhase: number;         // 0.0 to 1.0 within active beat
+  isBar: boolean;            // True on downbeat (every 4 beats)
+  isPhrase: boolean;         // True on phrase boundary (every 8/16 beats)
   frequencyData: Uint8Array; // Raw FFT bins (0-255)
   timeDomainData: Uint8Array;// Raw PCM waveform samples (0-255)
+}
+
+export type ShowSection = 'intro' | 'verse' | 'buildup' | 'drop' | 'breakdown' | 'outro';
+export type StageProfile = 'festival-mainstage' | 'industrial-underground' | 'rock-arena' | 'cinematic-ambient';
+
+export interface EnabledEffectsConfig {
+  lights: boolean;
+  lasers: boolean;
+  flames: boolean;
+  smoke: boolean;
+  screen: boolean;
+}
+
+export interface AudioVisualRoutingConfig {
+  kickSensitivity: number;      // 0.2 to 2.0 (default 1.0)
+  bassToBeamIntensity: number;  // 0.2 to 2.0 (default 1.0)
+  vocalToScreenGlow: number;    // 0.2 to 2.0 (default 1.0)
+  pyroThreshold: number;        // 0.2 to 1.0 (default 0.45)
+  laserDensity: number;         // 0.2 to 2.0 (default 1.0)
+  effectDecay: number;          // 0.5 to 2.0 (default 1.0)
+  cameraShakeStrength: number;  // 0.0 to 2.0 (default 1.0)
+  reducedFlash: boolean;        // true/false
+  disablePyrotechnics: boolean; // true/false
+  maxBrightnessLimit: number;   // 0.3 to 1.0 (default 1.0)
+  enabledEffects: EnabledEffectsConfig;
+}
+
+export interface BeatGridState {
+  bpm: number;
+  beatIndex: number;
+  barIndex: number;
+  beatPhase: number;
+  isBeat: boolean;
+  isBar: boolean;
+  isPhrase: boolean;
+  confidence: number;
+}
+
+export interface ShowDirectorState {
+  currentSection: ShowSection;
+  sectionProgress: number; // 0.0 to 1.0
+  activeProfile: StageProfile;
+  choreographyPattern: string;
+  allowedEffects: EnabledEffectsConfig;
+  intensityMultiplier: number;
+  beatGrid: BeatGridState;
 }
 
 export interface KieStemSeparationRequest {
@@ -171,6 +223,8 @@ export interface VisualEffectContext {
   trackTitle?: string;
   trackArtist?: string;
   mood?: MusicMood;
+  directorState?: ShowDirectorState;
+  routingConfig?: AudioVisualRoutingConfig;
 }
 
 export interface VisualEffect {

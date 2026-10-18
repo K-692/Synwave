@@ -3,8 +3,9 @@
  * Manages Web Audio API graph, authoritative media clock, and real-time audio feature extraction.
  */
 
-import type { AudioFeatures, AudioStems, MusicMood } from '../types';
+import type { AudioFeatures, AudioStems, BeatGridState, MusicMood } from '../types';
 import { StemSeparationService } from './StemSeparationService';
+import { BeatGridEngine } from './BeatGridEngine';
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
@@ -12,6 +13,7 @@ export class AudioEngine {
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
+  private beatGridEngine: BeatGridEngine = new BeatGridEngine();
 
   private frequencyData: Uint8Array<ArrayBuffer>;
   private timeDomainData: Uint8Array<ArrayBuffer>;
@@ -201,6 +203,12 @@ export class AudioEngine {
           instruments: 0,
           vocals: 0,
         },
+        estimatedBpm: this.beatGridEngine.getBpm(),
+        beatIndex: 0,
+        barIndex: 1,
+        beatPhase: 0,
+        isBar: false,
+        isPhrase: false,
         frequencyData: this.frequencyData,
         timeDomainData: this.timeDomainData,
       };
@@ -360,6 +368,9 @@ export class AudioEngine {
     );
     this.currentKickStem = stems.kick;
 
+    // Beat Grid Synchronization (Continuous phase, monotonic beat & bar indexing)
+    const beatGrid = this.beatGridEngine.update(currentTime, isBeat, onsetStrength);
+
     return {
       timeSeconds: currentTime,
       rms: this.smoothedRms,
@@ -370,8 +381,8 @@ export class AudioEngine {
       treble: this.smoothedTreble,
       spectralCentroid: this.smoothedCentroid,
       onsetStrength,
-      beatConfidence: isBeat ? 0.9 : 0.2,
-      isBeat,
+      beatConfidence: beatGrid.confidence,
+      isBeat: beatGrid.isBeat,
       isKick,
       kickIntensity,
       isDrop,
@@ -379,9 +390,27 @@ export class AudioEngine {
       musicMode,
       mood,
       stems,
+      estimatedBpm: beatGrid.bpm,
+      beatIndex: beatGrid.beatIndex,
+      barIndex: beatGrid.barIndex,
+      beatPhase: beatGrid.beatPhase,
+      isBar: beatGrid.isBar,
+      isPhrase: beatGrid.isPhrase,
       frequencyData: this.frequencyData,
       timeDomainData: this.timeDomainData,
     };
+  }
+
+  public setTrackBeatGrid(trackId: string, preAnalyzedBpm?: number, confidence?: number): void {
+    this.beatGridEngine.setTrack(trackId, preAnalyzedBpm, confidence);
+  }
+
+  public setManualBpm(bpm: number): void {
+    this.beatGridEngine.setBpm(bpm, true);
+  }
+
+  public getBeatGridState(): BeatGridState {
+    return this.beatGridEngine.getState();
   }
 
   public dispose(): void {

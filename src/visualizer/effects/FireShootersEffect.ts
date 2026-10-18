@@ -151,44 +151,58 @@ export class FireShootersEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds } = context;
+    const { features, deltaSeconds, directorState, routingConfig } = context;
     const time = performance.now() * 0.001;
 
-    // Energetic song detection:
-    const isEnergeticMode =
-      features.musicMode === 'festival' ||
-      features.mood === 'euphoric-drop' ||
-      features.mood === 'dark-aggressive' ||
-      features.rms > 0.25 ||
-      features.subBass > 0.38;
+    // Check if pyrotechnics are allowed by routing settings and show director
+    const isFlamesAllowed =
+      !(routingConfig?.disablePyrotechnics) &&
+      (routingConfig?.enabledEffects?.flames ?? true) &&
+      (directorState?.allowedEffects?.flames ?? true);
 
-    // AT THE DROP OF AN ENERGETIC SONG:
-    // Fire flames throw heavily and continuously/rhythmically!
-    const isDropFiring = features.isDrop && (isEnergeticMode || features.rms > 0.22);
-    const isKickSpike = features.isKick && features.stems.kick > 0.35;
-    const isHeavySubBass = features.stems.kick > 0.65;
+    if (!isFlamesAllowed) {
+      for (const cannon of this.cannons) {
+        cannon.height = 0;
+        cannon.targetHeight = 0;
+        cannon.intensity = 0;
+        cannon.fireLight.intensity = 0;
+        cannon.coreMesh.scale.set(0.001, 0.001, 0.001);
+        cannon.outerFlameMesh.scale.set(0.001, 0.001, 0.001);
+        (cannon.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (cannon.outerFlameMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      return;
+    }
+
+    const pyroThreshold = routingConfig?.pyroThreshold ?? 0.45;
+    const kickSens = routingConfig?.kickSensitivity ?? 1.0;
+    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+
+    // Energetic drop & kick detection:
+    const isDropFiring = features.isDrop && directorState?.currentSection === 'drop';
+    const isKickSpike = features.isKick && (features.stems.kick * kickSens) > pyroThreshold;
 
     for (let i = 0; i < this.cannons.length; i++) {
       const cannon = this.cannons[i];
       cannon.cooldownTimer -= deltaSeconds;
 
-      // Trigger logic:
+      // Trigger logic with cooldowns:
       if (cannon.cooldownTimer <= 0) {
         if (isDropFiring) {
-          // Drop mode: Continuous rhythmic massive fire throwing!
-          const beatSync = Math.sin(time * 12.0 + i * 0.8) > -0.2;
-          if (beatSync) {
-            cannon.targetHeight = 1.0 + Math.random() * 0.35;
+          // Drop mode: rhythmic bursts synchronized on drum kicks or beat hits
+          const beatSync = features.beatPhase < 0.22 && features.stems.kick > 0.35;
+          if (beatSync || Math.random() < 0.25) {
+            cannon.targetHeight = 0.95 + Math.random() * 0.4;
             cannon.intensity = 1.0;
-            cannon.cooldownTimer = 0.10;
+            cannon.cooldownTimer = 0.22;
           }
-        } else if (isEnergeticMode && (isKickSpike || isHeavySubBass)) {
-          // Energetic song kick hits: Massive fire erupts
+        } else if (isKickSpike) {
+          // Energetic song kick hits: Screen flank cannons and select front cannons burst
           const isScreenFlank = i === 0 || i === 1 || i === 6 || i === 7;
-          if (isScreenFlank || Math.random() < 0.75) {
-            cannon.targetHeight = 0.85 + Math.random() * 0.4;
+          if (isScreenFlank || Math.random() < 0.70) {
+            cannon.targetHeight = 0.85 + Math.random() * 0.35;
             cannon.intensity = 1.0;
-            cannon.cooldownTimer = 0.18;
+            cannon.cooldownTimer = 0.28;
           }
         }
       }
@@ -196,8 +210,7 @@ export class FireShootersEffect extends BaseEffect {
       // Smooth height interpolation
       if (cannon.intensity > 0.04) {
         cannon.height = this.lerp(cannon.height, cannon.targetHeight, deltaSeconds * 26);
-        // During drops, fire stays roaring; otherwise sharp decay
-        const decayRate = isDropFiring ? 1.6 : 3.8;
+        const decayRate = (isDropFiring ? 2.0 : 4.0) / (routingConfig?.effectDecay ?? 1.0);
         cannon.intensity = Math.max(0, cannon.intensity - deltaSeconds * decayRate);
       } else {
         cannon.height = this.lerp(cannon.height, 0, deltaSeconds * 14);
@@ -213,10 +226,10 @@ export class FireShootersEffect extends BaseEffect {
 
       // Colors and opacities
       const coreMat = cannon.coreMesh.material as THREE.MeshBasicMaterial;
-      coreMat.opacity = cannon.intensity * 0.95;
+      coreMat.opacity = cannon.intensity * 0.95 * maxBri;
 
       const outerMat = cannon.outerFlameMesh.material as THREE.MeshBasicMaterial;
-      outerMat.opacity = cannon.intensity * 0.88;
+      outerMat.opacity = cannon.intensity * 0.88 * maxBri;
 
       if (cannon.intensity > 0.55) {
         coreMat.color.setHex(0xffffff); // White-hot core
@@ -226,8 +239,8 @@ export class FireShootersEffect extends BaseEffect {
         outerMat.color.setHex(0xdd1100); // Crimson flame edge
       }
 
-      // Dynamic point light illumination (subtle warm flicker, non-overexposing)
-      cannon.fireLight.intensity = cannon.intensity * 1.5;
+      // Dynamic point light illumination
+      cannon.fireLight.intensity = cannon.intensity * 1.5 * maxBri;
 
       // Pilot spark
       const pilotMat = cannon.pilotMesh.material as THREE.MeshBasicMaterial;

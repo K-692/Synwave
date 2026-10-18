@@ -145,8 +145,8 @@ export class StageScreenThemes {
     const cx = w / 2;
     const cy = h / 2;
 
-    // A. Center Status Badge
-    const badgeText = features.isDrop ? '⚡ LIVE CONCERT • FESTIVAL DROP' : '● LIVE STAGE • NOW PLAYING';
+    // A. Center Status Badge (REAL-TIME VISUALS / LIVE REACTIVE MODE)
+    const badgeText = features.isDrop ? '⚡ LIVE REACTIVE MODE • FESTIVAL DROP' : '● REAL-TIME VISUALS • NOW PLAYING';
     ctx.font = 'bold 16px "Orbitron", -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

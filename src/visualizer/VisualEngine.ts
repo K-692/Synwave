@@ -19,9 +19,12 @@
 import * as THREE from 'three';
 import type {
   AudioFeatures,
+  AudioVisualRoutingConfig,
+  BeatGridState,
   ColorPalette,
   MusicMood,
   QualityPreset,
+  ShowDirectorState,
   TrackAnalysis,
   VisualEffect,
   VisualEffectContext,
@@ -33,6 +36,8 @@ import { ThinLasersEffect } from './effects/ThinLasersEffect';
 import { FireShootersEffect } from './effects/FireShootersEffect';
 import { SmokeMachinesEffect } from './effects/SmokeMachinesEffect';
 import { ShockwaveRingEffect } from './effects/ShockwaveRingEffect';
+import { ShowDirector } from './director/ShowDirector';
+import { RoutingStore } from './director/RoutingStore';
 
 export interface VisualSceneConfig {
   id: string;
@@ -89,6 +94,11 @@ export class VisualEngine {
   private trackTitle = 'Feel Something';
   private trackArtist = 'ILLENIUM, Excision, I Prevail';
   private currentMood: MusicMood = 'euphoric-drop';
+
+  // Procedural Show Director & Track Duration
+  private showDirector = new ShowDirector();
+  private trackDuration = 240;
+  private currentDirectorState: ShowDirectorState | null = null;
 
   // Scene Choreography
   private currentSceneIndex = 0;
@@ -195,6 +205,12 @@ export class VisualEngine {
           instruments: 0,
           vocals: 0,
         },
+        estimatedBpm: 128,
+        beatIndex: 0,
+        barIndex: 1,
+        beatPhase: 0,
+        isBar: false,
+        isPhrase: false,
         frequencyData: new Uint8Array(1024),
         timeDomainData: new Uint8Array(1024),
       },
@@ -220,7 +236,9 @@ export class VisualEngine {
   private createEffectContext(
     features: AudioFeatures,
     deltaSeconds: number,
-    trackTimeSeconds: number
+    trackTimeSeconds: number,
+    directorState?: ShowDirectorState,
+    routingConfig?: AudioVisualRoutingConfig
   ): VisualEffectContext {
     return {
       renderer: this.renderer,
@@ -236,6 +254,8 @@ export class VisualEngine {
       trackTitle: this.trackTitle,
       trackArtist: this.trackArtist,
       mood: this.currentMood || features.mood || 'euphoric-drop',
+      directorState: directorState || this.currentDirectorState || undefined,
+      routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
     };
   }
 
@@ -423,6 +443,33 @@ export class VisualEngine {
     const trackTimeSeconds = getCurrentTime();
     const features = getLiveFeatures();
 
+    const routingStore = RoutingStore.getInstance();
+    const routingConfig = routingStore.getConfig();
+
+    // Beat grid extraction from features
+    const beatGrid: BeatGridState = {
+      bpm: features.estimatedBpm || 128,
+      beatIndex: features.beatIndex || 0,
+      barIndex: features.barIndex || 1,
+      beatPhase: features.beatPhase || 0,
+      isBeat: features.isBeat,
+      isBar: features.isBar || false,
+      isPhrase: features.isPhrase || false,
+      confidence: features.beatConfidence || 0.5,
+    };
+
+    // Update procedural Show Director
+    const directorState = this.showDirector.update(
+      trackTimeSeconds,
+      this.trackDuration,
+      features,
+      beatGrid,
+      this.trackAnalysis
+    );
+    this.currentDirectorState = directorState;
+
+    this.onCurrentSectionChange?.(directorState.currentSection.toUpperCase());
+
     // 1. Mood-driven Palette
     this.evaluateMusicMoodPalette(features, deltaSeconds);
 
@@ -434,23 +481,28 @@ export class VisualEngine {
     this.camera.position.y = this.cameraBaseY;
     this.camera.position.z = this.cameraBaseZ;
 
-    // Sub-bass rumble / vibration on heavy kicks and drops (gives visceral festival chest-thump)
+    // Sub-bass rumble / vibration on heavy kicks and drops (governed by routingConfig)
     let rumble = 0;
-    if (features.isDrop) {
-      rumble = 0.14 * (1 + features.stems.bass);
-    } else if (features.stems.kick > 0.45 || features.isKick) {
-      rumble = features.stems.kick * 0.10;
-    }
-    if (rumble > 0) {
-      this.camera.position.x += (Math.random() - 0.5) * rumble;
-      this.camera.position.y += (Math.random() - 0.5) * rumble * 0.8;
+    const shakeMult = routingConfig.cameraShakeStrength;
+    if (shakeMult > 0 && !routingConfig.reducedFlash) {
+      if (features.isDrop) {
+        rumble = 0.14 * (1 + features.stems.bass) * shakeMult;
+      } else if (features.stems.kick > 0.45 || features.isKick) {
+        rumble = features.stems.kick * 0.10 * shakeMult;
+      }
+      if (rumble > 0) {
+        this.camera.position.x += (Math.random() - 0.5) * rumble;
+        this.camera.position.y += (Math.random() - 0.5) * rumble * 0.8;
+      }
     }
 
     // Always look directly at the center of the solid rectangular concert stage screen
     this.camera.lookAt(0, 4.4, -4.5);
 
     // Dynamic FOV punch on kicks/drops
-    const fovPunch = features.isDrop ? 3.5 : (features.isKick ? features.kickIntensity * 2.5 : 0);
+    const fovPunch = routingConfig.reducedFlash
+      ? 0
+      : (features.isDrop ? 3.5 : (features.isKick ? features.kickIntensity * 2.5 : 0));
     const desiredFov = 60 + fovPunch;
     this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 14.0;
     this.camera.fov = this.cameraTargetFov;
@@ -460,12 +512,14 @@ export class VisualEngine {
     this.renderer.toneMappingExposure = 1.15;
     this.onWindowFlash?.(0, '#ffffff');
 
-    // Dynamic stage key lighting intensity driven by Bass STEM (balanced, non-overexposing)
-    this.stageKeyLight.intensity = 0.8 + features.stems.bass * 0.8;
-    this.stageFillLight.intensity = 0.6 + features.stems.instruments * 0.6;
+    // Dynamic stage key lighting intensity driven by Bass STEM and RoutingConfig
+    const maxBri = routingConfig.maxBrightnessLimit || 1.0;
+    const beamSens = routingConfig.bassToBeamIntensity || 1.0;
+    this.stageKeyLight.intensity = Math.min(1.6 * maxBri, (0.7 + features.stems.bass * 0.7 * beamSens) * maxBri);
+    this.stageFillLight.intensity = Math.min(1.4 * maxBri, (0.5 + features.stems.instruments * 0.6 * beamSens) * maxBri);
 
     // 5. Update and render active effects
-    const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds);
+    const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds, directorState, routingConfig);
     for (const effect of this.effects) {
       if (effect.enabled) {
         effect.update(context);
@@ -516,6 +570,14 @@ export class VisualEngine {
 
   public setCameraSpeed(_val: number): void {
     // Camera is fixed per user request
+  }
+
+  public setTrackDuration(dur: number): void {
+    if (dur > 0) this.trackDuration = dur;
+  }
+
+  public getDirectorState(): ShowDirectorState | null {
+    return this.currentDirectorState;
   }
 
   public dispose(): void {

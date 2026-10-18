@@ -11,9 +11,13 @@ import { InspectorDrawer } from './components/InspectorDrawer';
 import { AudioEngine } from './audio/AudioEngine';
 import { AudioAnalyzer } from './audio/AudioAnalyzer';
 import { VisualEngine } from './visualizer/VisualEngine';
+import { RoutingConsole } from './components/RoutingConsole';
+import { DiagnosticOverlay } from './components/DiagnosticOverlay';
+import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
 import type {
   QualityPreset,
   RepeatMode,
+  StageProfile,
   TrackRecord,
   VisualSettings,
 } from './types';
@@ -83,10 +87,23 @@ export const App: React.FC = () => {
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
 
-  // UI Drawer State
+  // UI Drawer & Console State
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isRoutingOpen, setIsRoutingOpen] = useState(false);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [activeProfile, setActiveProfile] = useState<StageProfile>(
+    RoutingStore.getInstance().getActiveProfile()
+  );
   const [currentSection, setCurrentSection] = useState('GROOVE');
+
+  // Subscribe to RoutingStore profile changes
+  useEffect(() => {
+    const unsub = RoutingStore.getInstance().subscribe((_, prof) => {
+      setActiveProfile(prof);
+    });
+    return unsub;
+  }, []);
 
   // Visual Settings
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
@@ -236,6 +253,8 @@ export const App: React.FC = () => {
       if (currentTrack?.id === track.id) {
         visualEngineRef.current?.setTrackProfile(track.seed, analysis);
         visualEngineRef.current?.setTrackInfo(track.title, track.artist, analysis.descriptors?.mood);
+        visualEngineRef.current?.setTrackDuration(analysis.durationSeconds);
+        audioEngineRef.current?.setTrackBeatGrid(track.id, analysis.estimatedBpm, analysis.bpmConfidence);
         if (!duration && analysis.durationSeconds > 0) {
           setDuration(analysis.durationSeconds);
         }
@@ -256,8 +275,12 @@ export const App: React.FC = () => {
 
       visualEngineRef.current?.setTrackProfile(track.seed, track.analysis);
       visualEngineRef.current?.setTrackInfo(track.title, track.artist, track.analysis?.descriptors?.mood);
+      if (track.duration > 0) {
+        visualEngineRef.current?.setTrackDuration(track.duration);
+      }
 
       if (audioEngineRef.current) {
+        audioEngineRef.current.setTrackBeatGrid(track.id, track.analysis?.estimatedBpm, track.analysis?.bpmConfidence);
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
       }
 
@@ -457,7 +480,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 4. Spacebar Play/Pause and 'F' Fullscreen Key Listeners
+  // 4. Keyboard Show Controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -474,12 +497,50 @@ export const App: React.FC = () => {
       } else if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         handleToggleFullscreen();
+      } else if (e.code === 'Digit1') {
+        e.preventDefault();
+        RoutingStore.getInstance().setProfile('festival-mainstage');
+      } else if (e.code === 'Digit2') {
+        e.preventDefault();
+        RoutingStore.getInstance().setProfile('industrial-underground');
+      } else if (e.code === 'Digit3') {
+        e.preventDefault();
+        RoutingStore.getInstance().setProfile('rock-arena');
+      } else if (e.code === 'Digit4') {
+        e.preventDefault();
+        RoutingStore.getInstance().setProfile('cinematic-ambient');
+      } else if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        setIsDiagnosticOpen((prev) => !prev);
+      } else if (e.code === 'KeyC' || e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        setIsRoutingOpen((prev) => !prev);
+      } else if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        const currentCfg = RoutingStore.getInstance().getConfig();
+        RoutingStore.getInstance().updateConfig({
+          disablePyrotechnics: !currentCfg.disablePyrotechnics,
+        });
+      } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        const currentCfg = RoutingStore.getInstance().getConfig();
+        RoutingStore.getInstance().updateConfig({
+          reducedFlash: !currentCfg.reducedFlash,
+        });
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        const seekTarget = Math.max(0, currentTime - 5);
+        handleSeek(seekTarget);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        const seekTarget = Math.min(duration || 9999, currentTime + 5);
+        handleSeek(seekTarget);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying]);
+  }, [isPlaying, currentTime, duration]);
 
   return (
     <div className="synwave-app">
@@ -505,11 +566,64 @@ export const App: React.FC = () => {
         currentTrackTitle={currentTrack?.title}
         isPlaylistOpen={isPlaylistOpen}
         isInspectorOpen={isInspectorOpen}
+        isRoutingOpen={isRoutingOpen}
+        isDiagnosticOpen={isDiagnosticOpen}
+        activeProfileName={STAGE_PROFILES[activeProfile]?.name}
         isVisible={isTopBarVisible}
         onTogglePlaylist={() => setIsPlaylistOpen((prev) => !prev)}
         onToggleInspector={() => setIsInspectorOpen((prev) => !prev)}
+        onToggleRouting={() => setIsRoutingOpen((prev) => !prev)}
+        onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
         onFilesSelected={handleFilesSelected}
         onMouseEnter={() => setIsTopBarVisible(true)}
+      />
+
+      {/* Audio-to-Visual Routing Console Modal */}
+      <RoutingConsole
+        isOpen={isRoutingOpen}
+        onClose={() => setIsRoutingOpen(false)}
+      />
+
+      {/* Telemetry & Synchronization HUD Diagnostic Overlay */}
+      <DiagnosticOverlay
+        isVisible={isDiagnosticOpen}
+        getLiveFeatures={() =>
+          audioEngineRef.current?.getLiveFeatures() || {
+            timeSeconds: 0,
+            rms: 0,
+            bass: 0,
+            subBass: 0,
+            lowMid: 0,
+            highMid: 0,
+            treble: 0,
+            spectralCentroid: 0.5,
+            onsetStrength: 0,
+            beatConfidence: 0,
+            isBeat: false,
+            isKick: false,
+            kickIntensity: 0,
+            isDrop: false,
+            dropIntensity: 0,
+            musicMode: 'festival',
+            mood: 'euphoric-drop',
+            stems: {
+              kick: 0,
+              bass: 0,
+              instruments: 0,
+              vocals: 0,
+            },
+            estimatedBpm: 128,
+            beatIndex: 0,
+            barIndex: 1,
+            beatPhase: 0,
+            isBar: false,
+            isPhrase: false,
+            frequencyData: new Uint8Array(1024),
+            timeDomainData: new Uint8Array(1024),
+          }
+        }
+        getDirectorState={() => visualEngineRef.current?.getDirectorState() ?? null}
+        onClose={() => setIsDiagnosticOpen(false)}
       />
 
       {/* Left Drawer: Playlist & Library */}
@@ -557,6 +671,12 @@ export const App: React.FC = () => {
               instruments: 0,
               vocals: 0,
             },
+            estimatedBpm: 128,
+            beatIndex: 0,
+            barIndex: 1,
+            beatPhase: 0,
+            isBar: false,
+            isPhrase: false,
             frequencyData: new Uint8Array(1024),
             timeDomainData: new Uint8Array(1024),
           }
@@ -575,6 +695,7 @@ export const App: React.FC = () => {
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={duration}
+        currentSection={currentSection}
         volume={volume}
         isMuted={isMuted}
         shuffle={shuffle}

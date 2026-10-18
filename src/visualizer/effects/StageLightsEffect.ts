@@ -202,8 +202,33 @@ export class StageLightsEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds, palette } = context;
+    const { features, deltaSeconds, palette, directorState, routingConfig } = context;
     const time = performance.now() * 0.001;
+
+    // Check if lights are disabled by routing console or show director
+    const isLightsEnabled =
+      (routingConfig?.enabledEffects?.lights ?? true) &&
+      (directorState?.allowedEffects?.lights ?? true);
+
+    if (!isLightsEnabled) {
+      for (const fix of this.fixtures) {
+        (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      for (const blinder of this.kickBlinders) {
+        (blinder.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (blinder.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      this.washLight1.intensity = 0;
+      this.washLight2.intensity = 0;
+      return;
+    }
+
+    // Routing multipliers
+    const bassBeamMult = routingConfig?.bassToBeamIntensity ?? 1.0;
+    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+    const isReducedFlash = routingConfig?.reducedFlash ?? false;
+    const kickSens = routingConfig?.kickSensitivity ?? 1.0;
 
     // STEM ACTIVATIONS:
     const bassStem = features.stems.bass;
@@ -213,23 +238,35 @@ export class StageLightsEffect extends BaseEffect {
     const primaryCol = new THREE.Color(palette.primary);
     const secondaryCol = new THREE.Color(palette.secondary);
 
-    // Dynamic moving-head beam brightness (controlled and translucent)
-    const baseBrightness = 0.07 + bassStem * 0.08 + (features.isDrop ? 0.05 : 0);
+    // Rhythmic pulse on beat phase: breathing pulse synchronized to tempo
+    const beatPulse = Math.sin(features.beatPhase * Math.PI) * 0.025;
+
+    // Dynamic moving-head beam brightness (controlled, translucent, non-overexposing)
+    const rawBrightness = 0.06 + (bassStem * 0.08 * bassBeamMult) + beatPulse + (features.isDrop ? 0.05 : 0);
+    const baseBrightness = Math.min(0.16 * maxBri, rawBrightness * maxBri);
 
     // 1. Moving Heads Sweeping across Venue
-    const sweepSpeed = 1.0 + instStem * 2.2;
+    const sweepSpeed = 0.8 + instStem * 1.8;
+    const isBuildup = directorState?.currentSection === 'buildup';
 
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
 
       if (features.isDrop) {
-        // High-energy drop sweeps
+        // High-energy drop sweeps: wide, aggressive multi-angle fans
         const spreadX = Math.sin(time * 3.2 + i * 0.6) * 11.0;
         const spreadY = 2.0 + Math.cos(time * 2.8 + i * 0.4) * 2.2;
         const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
         fix.targetPos.set(spreadX, spreadY, spreadZ);
+      } else if (isBuildup) {
+        // Buildup: moving heads tighten focus inward towards center stage
+        const tightenFactor = 1.0 - (directorState?.sectionProgress ?? 0.5) * 0.5;
+        const sweepX = Math.sin(time * 4.0 + i * 0.4) * (4.5 * tightenFactor);
+        const sweepY = 3.5 + Math.cos(time * 3.5 + i * 0.3) * 1.2;
+        const sweepZ = 12.0;
+        fix.targetPos.set(sweepX, sweepY, sweepZ);
       } else {
-        // Standard groove: dynamic waves fanning forward through the arena
+        // Standard groove: rhythmic waves fanning forward through the arena
         const offset = (i / this.fixtures.length) * Math.PI * 2;
         const sweepX = Math.sin(time * sweepSpeed + offset) * 9.0;
         const sweepY = 2.0 + Math.sin(time * (sweepSpeed * 0.6) + offset * 0.5) * 1.8;
@@ -249,19 +286,19 @@ export class StageLightsEffect extends BaseEffect {
 
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       lensMat.color.copy(lightCol);
-      lensMat.opacity = Math.min(0.9, baseBrightness * 4.0);
+      lensMat.opacity = Math.min(0.9 * maxBri, baseBrightness * 4.0);
 
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
       coneMat.color.copy(lightCol);
-      coneMat.opacity = Math.min(0.16, baseBrightness);
+      coneMat.opacity = Math.min(0.16 * maxBri, baseBrightness);
 
       // Beam cone width expands slightly with BASS STEM
-      const beamScale = 1.0 + bassStem * 0.35;
+      const beamScale = 1.0 + bassStem * 0.35 * bassBeamMult;
       fix.coneMesh.scale.set(beamScale, beamScale, 1.0);
     }
 
-    // 2. White Spotlights Activated by Sharp Kicks
-    const isKickTrigger = features.isKick && kickStem > 0.45;
+    // 2. White Spotlights Activated by Sharp Kicks (Blinders)
+    const isKickTrigger = features.isKick && (kickStem * kickSens) > 0.42;
 
     for (let i = 0; i < this.kickBlinders.length; i++) {
       const blinder = this.kickBlinders[i];
@@ -269,24 +306,27 @@ export class StageLightsEffect extends BaseEffect {
       if (isKickTrigger) {
         blinder.intensity = 1.0;
       } else {
-        blinder.intensity = Math.max(0, blinder.intensity - deltaSeconds * 7.5);
+        const decaySpeed = (7.5 / (routingConfig?.effectDecay ?? 1.0));
+        blinder.intensity = Math.max(0, blinder.intensity - deltaSeconds * decaySpeed);
       }
 
+      const maxBlinderOpacity = isReducedFlash ? 0.05 : (0.15 * maxBri);
+
       const bLensMat = blinder.lensMesh.material as THREE.MeshBasicMaterial;
-      bLensMat.opacity = blinder.intensity * 0.85;
+      bLensMat.opacity = blinder.intensity * 0.85 * maxBri;
 
       const bConeMat = blinder.coneMesh.material as THREE.MeshBasicMaterial;
-      bConeMat.opacity = blinder.intensity * 0.15; // Controlled translucency (never blinds camera)
+      bConeMat.opacity = blinder.intensity * maxBlinderOpacity;
 
       const scale = 1.0 + blinder.intensity * 0.25;
       blinder.coneMesh.scale.set(scale, scale, 1.0);
     }
 
-    // 3. Wash Lights Making Screen & Stage Glow with Spotlight Color (Subtle, never washed out)
+    // 3. Wash Lights Making Screen & Stage Glow with Spotlight Color
     this.washLight1.color.copy(primaryCol);
-    this.washLight1.intensity = 0.5 + bassStem * 0.5;
+    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.5 + bassStem * 0.5 * bassBeamMult) * maxBri);
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = 0.5 + instStem * 0.5;
+    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.5 + instStem * 0.5 * bassBeamMult) * maxBri);
   }
 }

@@ -20,12 +20,14 @@ import {
   Cpu,
 } from 'lucide-react';
 import type { QualityPreset, RepeatMode, TrackRecord } from '../types';
+import { SongTimeline } from './SongTimeline';
 
 interface PlayerControlsProps {
   currentTrack: TrackRecord | null;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  currentSection?: string;
   volume: number;
   isMuted: boolean;
   shuffle: boolean;
@@ -50,6 +52,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   isPlaying,
   currentTime,
   duration,
+  currentSection,
   volume,
   isMuted,
   shuffle,
@@ -68,8 +71,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onMouseEnter,
   onMouseLeave,
 }) => {
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
-  const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const formatTime = (secs: number): string => {
@@ -77,21 +78,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     const mins = Math.floor(secs / 60);
     const remainingSecs = Math.floor(secs % 60);
     return `${mins}:${remainingSecs < 10 ? '0' : ''}${remainingSecs}`;
-  };
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  const handleSeekMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoverTime(ratio * duration);
-    setHoverPosition(e.clientX - rect.left);
-  };
-
-  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    onSeek(ratio * duration);
   };
 
   useEffect(() => {
@@ -182,46 +168,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Seek Progress Bar with Section Indicators */}
-      <div
-        className="seek-bar-container"
-        onMouseMove={handleSeekMouseMove}
-        onMouseLeave={() => setHoverTime(null)}
-        onClick={handleSeekClick}
-      >
-        <div className="seek-track">
-          <div
-            className="seek-progress"
-            style={{ width: `${progressPercent}%` }}
-          />
-
-          {/* Render section markers if pre-analyzed */}
-          {currentTrack?.analysis?.sections.map((sec, idx) => (
-            <div
-              key={idx}
-              className={`section-marker marker-${sec.type}`}
-              style={{ left: `${(sec.startTime / (duration || 1)) * 100}%` }}
-              title={`${sec.label} (${formatTime(sec.startTime)})`}
-            />
-          ))}
-
-          {/* Thumb handle */}
-          <div
-            className="seek-thumb"
-            style={{ left: `${progressPercent}%` }}
-          />
-        </div>
-
-        {/* Hover Time Tooltip */}
-        {hoverTime !== null && (
-          <div
-            className="seek-tooltip"
-            style={{ left: `${hoverPosition}px` }}
-          >
-            {formatTime(hoverTime)}
-          </div>
-        )}
-      </div>
+      {/* Synchronized Song Timeline with Waveform Peaks & Section Zones */}
+      <SongTimeline
+        currentTime={currentTime}
+        duration={duration}
+        analysis={currentTrack?.analysis}
+        currentSection={currentSection}
+        onSeek={onSeek}
+      />
 
       <div className="dock-content">
         {/* Left: Track Information */}

@@ -9,15 +9,22 @@ import {
   FileAudio,
   Sliders,
   ListMusic,
+  Activity,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface HeaderProps {
   currentTrackTitle?: string;
   isPlaylistOpen: boolean;
   isInspectorOpen: boolean;
+  isRoutingOpen?: boolean;
+  isDiagnosticOpen?: boolean;
+  activeProfileName?: string;
   isVisible: boolean;
   onTogglePlaylist: () => void;
   onToggleInspector: () => void;
+  onToggleRouting?: () => void;
+  onToggleDiagnostic?: () => void;
   onFilesSelected: (files: FileList | File[]) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -27,9 +34,14 @@ export const Header: React.FC<HeaderProps> = ({
   currentTrackTitle,
   isPlaylistOpen,
   isInspectorOpen,
+  isRoutingOpen = false,
+  isDiagnosticOpen = false,
+  activeProfileName,
   isVisible,
   onTogglePlaylist,
   onToggleInspector,
+  onToggleRouting,
+  onToggleDiagnostic,
   onFilesSelected,
   onMouseEnter,
   onMouseLeave,
@@ -45,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`synwave-header glass-panel ${isVisible || isPlaylistOpen || isInspectorOpen ? 'visible' : ''}`}
+      className={`synwave-header glass-panel ${isVisible || isPlaylistOpen || isInspectorOpen || isRoutingOpen || isDiagnosticOpen ? 'visible' : ''}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -59,12 +71,24 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="brand-title">SYNWAVE</span>
           {currentTrackTitle && (
             <span className="brand-subtitle" title={currentTrackTitle}>
-              {currentTrackTitle.length > 36
-                ? `${currentTrackTitle.substring(0, 36)}...`
+              {currentTrackTitle.length > 32
+                ? `${currentTrackTitle.substring(0, 32)}...`
                 : currentTrackTitle}
             </span>
           )}
         </div>
+
+        {/* Active Stage Profile Badge */}
+        {activeProfileName && (
+          <div
+            className="header-profile-badge"
+            onClick={onToggleRouting}
+            title="Active Stage Profile (Click to open Routing Console)"
+          >
+            <span className="profile-indicator-dot" />
+            <span>{activeProfileName}</span>
+          </div>
+        )}
       </div>
 
       {/* Hidden File Inputs */}
@@ -108,8 +132,28 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Right Drawer Toggles */}
+      {/* Right Drawer & Console Toggles */}
       <div className="header-toggles">
+        {onToggleRouting && (
+          <button
+            className={`btn-icon ${isRoutingOpen ? 'active' : ''}`}
+            onClick={onToggleRouting}
+            title="Audio-to-Visual Routing Console (Hotkey: C)"
+          >
+            <SlidersHorizontal size={18} />
+          </button>
+        )}
+
+        {onToggleDiagnostic && (
+          <button
+            className={`btn-icon ${isDiagnosticOpen ? 'active' : ''}`}
+            onClick={onToggleDiagnostic}
+            title="Real-Time Telemetry & Synchronization HUD (Hotkey: D)"
+          >
+            <Activity size={18} />
+          </button>
+        )}
+
         <button
           className={`btn-icon ${isPlaylistOpen ? 'active' : ''}`}
           onClick={onTogglePlaylist}

@@ -30,7 +30,6 @@ export class ThinLasersEffect extends BaseEffect {
 
   private lasers: LaserFixture[] = [];
   private currentPattern = 0;
-  private patternTimer = 0;
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
@@ -126,20 +125,37 @@ export class ThinLasersEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds, palette } = context;
+    const { features, deltaSeconds, palette, directorState, routingConfig } = context;
     const time = performance.now() * 0.001;
+
+    // Check if lasers are enabled by routing console and show director
+    const isLasersEnabled =
+      (routingConfig?.enabledEffects?.lasers ?? true) &&
+      (directorState?.allowedEffects?.lasers ?? true);
+
+    if (!isLasersEnabled) {
+      for (const laser of this.lasers) {
+        (laser.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (laser.sheathMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      return;
+    }
+
+    const laserDensity = routingConfig?.laserDensity ?? 1.0;
+    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
 
     // STEM TRIGGER: Instrument STEM directly controls laser brightness and bold thickness!
     const instStem = features.stems.instruments;
     const kickStem = features.stems.kick;
 
-    // Pattern rotation
-    this.patternTimer += deltaSeconds;
+    // Quantized Pattern Rotation: Changes on every 4th or 8th beat!
     if (features.isDrop) {
       this.currentPattern = 3; // Drop frenzy
-    } else if (this.patternTimer > 8) {
-      this.currentPattern = (this.currentPattern + 1) % 3;
-      this.patternTimer = 0;
+    } else if (directorState?.currentSection === 'buildup') {
+      this.currentPattern = 4; // Converging tunnel
+    } else {
+      // Rotates every 8 beats (2 bars)
+      this.currentPattern = (Math.floor(features.beatIndex / 8)) % 3;
     }
 
     // Laser colors
@@ -148,11 +164,21 @@ export class ThinLasersEffect extends BaseEffect {
     const whiteLaser = new THREE.Color(0xffffff);
 
     // Controlled brightness and thickness from Instrument STEM
-    const baseLaserBrightness = 0.25 + instStem * 0.35 + (features.isDrop ? 0.15 : 0);
-    const beamThickness = 1.0 + instStem * 0.45;
+    const baseLaserBrightness = (0.22 + instStem * 0.35 + (features.isDrop ? 0.15 : 0)) * maxBri;
+    const beamThickness = (1.0 + instStem * 0.45) * Math.min(1.4, laserDensity);
+
+    // Active count determined by laserDensity slider
+    const activeLaserCount = Math.max(4, Math.min(this.lasers.length, Math.round(this.lasers.length * Math.min(1.0, laserDensity))));
 
     for (let i = 0; i < this.lasers.length; i++) {
       const laser = this.lasers[i];
+
+      if (i >= activeLaserCount) {
+        (laser.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (laser.sheathMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        continue;
+      }
+
       const target = laser.target;
 
       let endX = target.x;
@@ -165,7 +191,7 @@ export class ThinLasersEffect extends BaseEffect {
         endX = target.x + sweep;
         endY = target.y + Math.cos(time * 2.0 + i) * 1.4;
       } else if (this.currentPattern === 1) {
-        // Pattern 1: Scissor Matrix
+        // Pattern 1: Scissor Matrix (crosses on every 4 beats)
         const cross = Math.sin(time * 3.0 + (i % 2 === 0 ? 0 : Math.PI)) * 8.5;
         endX = (i % 2 === 0 ? 1 : -1) * cross;
         endY = target.y + Math.sin(time * 1.8 + i * 0.3) * 2.0;
@@ -173,12 +199,17 @@ export class ThinLasersEffect extends BaseEffect {
         // Pattern 2: Stadium Liquid Sky Fan
         endX = target.x + Math.sin(time * 1.8 + i * 0.2) * 3.5;
         endY = 3.0 + Math.sin(time * 3.5) * 0.4;
-      } else {
+      } else if (this.currentPattern === 3) {
         // Pattern 3: Drop Frenzy
         const franticX = Math.sin(time * 6.5 + i * 1.2) * 10.5;
         const franticY = Math.cos(time * 5.5 + i * 1.0) * 3.8 + 2.0;
         endX = franticX;
         endY = franticY;
+      } else {
+        // Pattern 4: Buildup Converging Tunnel
+        const tunnelRadius = 2.2 * (1.0 - (directorState?.sectionProgress ?? 0.5) * 0.5);
+        endX = Math.cos(i * (Math.PI * 2 / this.lasers.length)) * tunnelRadius;
+        endY = 2.4 + Math.sin(i * (Math.PI * 2 / this.lasers.length)) * tunnelRadius;
       }
 
       // Smooth target interpolation
@@ -208,11 +239,11 @@ export class ThinLasersEffect extends BaseEffect {
       // Material updates: Translucent, controlled, vibrant
       const coreMat = laser.coreMesh.material as THREE.MeshBasicMaterial;
       coreMat.color.copy(whiteLaser).lerp(activeCol, 0.4);
-      coreMat.opacity = Math.min(0.70, baseLaserBrightness * 1.6);
+      coreMat.opacity = Math.min(0.70 * maxBri, baseLaserBrightness * 1.6);
 
       const sheathMat = laser.sheathMesh.material as THREE.MeshBasicMaterial;
       sheathMat.color.copy(activeCol);
-      sheathMat.opacity = Math.min(0.22, baseLaserBrightness * 0.45);
+      sheathMat.opacity = Math.min(0.22 * maxBri, baseLaserBrightness * 0.45);
     }
   }
 }

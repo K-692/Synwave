@@ -151,12 +151,30 @@ export class SmokeMachinesEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds, palette } = context;
+    const { features, deltaSeconds, palette, directorState, routingConfig } = context;
     const time = performance.now() * 0.001;
+
+    // Check if smoke / atmospherics are allowed
+    const isSmokeEnabled =
+      (routingConfig?.enabledEffects?.smoke ?? true) &&
+      (directorState?.allowedEffects?.smoke ?? true);
+
+    if (!isSmokeEnabled) {
+      for (const jet of this.cryoJets) {
+        jet.height = 0;
+        jet.targetHeight = 0;
+        jet.intensity = 0;
+        (jet.plumeMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (jet.innerCoreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      (this.floorHazeMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      return;
+    }
 
     // Trigger cryo fog blasts on drops, energetic kick rolls, and vocal peaks
     const isCryoTrigger =
       features.isDrop ||
+      (directorState?.currentSection === 'buildup' && features.beatPhase > 0.85 && Math.random() < 0.4) ||
       (features.stems.vocals > 0.55 && features.stems.kick > 0.3) ||
       (features.stems.kick > 0.55 && Math.random() < 0.6) ||
       (features.subBass + features.rms) > 0.75;
