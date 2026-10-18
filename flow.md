@@ -43,59 +43,61 @@ $$C_{\text{spectral}} = \frac{\sum_{k=0}^{K-1} k \cdot M[k]}{\sum_{k=0}^{K-1} M[
 ### 2.4 Dynamic Transient Onset Detection
 To detect percussive transients (kick, snare, drops) robustly across different audio volumes, Synwave calculates a rolling energy average $\mu_E$ and variance $\sigma^2_E$ over a 40-frame window:
 $$\text{Threshold} = \mu_E + \max(0.08, \sqrt{\sigma^2_E} \cdot 1.4)$$
+$$\text{Threshold} = \mu_E + \max(0.08, \sqrt{\sigma^2_E} \cdot 1.4)$$
 A transient beat event is triggered when:
 $$E_{\text{instant}} = 0.7 \cdot E_{\text{bass}} + 0.3 \cdot \text{RMS} > \text{Threshold} \quad \text{and} \quad \Delta t_{\text{last}} > 220\text{ ms}$$
 
-### 2.5 Music-Mood Dynamic Palette Vector
-The lighting and scene palette is calculated live based on an audio mood vector:
-- **High Energy / Drop** ($E_{\text{energy}} > 0.62$): Solar Flare / Volcanic Crimson (`#ff0055`, `#ffb703`, `#ffffff`).
-- **Rhythmic / Cyber Groove** ($0.42 < E_{\text{energy}} \le 0.62$): Cyberpunk Neon (`#00f0ff`, `#ff007f`, `#ffe600`).
-- **High Brightness / Treble** ($C_{\text{spectral}} > 0.55$): Matrix Emerald (`#00ff88`, `#00b4d8`, `#70e000`).
-- **Warm / Melodic Mid-range** ($E_{\text{lowMid}} > 0.35$): Synthwave Sunset (`#ff5e3a`, `#b800ff`, `#ff0078`).
-- **Ambient / Quiet** ($E_{\text{energy}} \le 0.42$): Deep Space (`#1d3557`, `#7209b7`, `#4cc9f0`).
+### 2.5 Drum Kick Transient Detection
+To detect specific physical percussive kick hits (sub-bass punch in the $20\text{ Hz} - 100\text{ Hz}$ register, bins 1 to 5), Synwave computes an ultra-low frequency sub-bass power envelope:
+$$\text{Kick Threshold} = 1.35 \cdot \mu_{\text{subBass}} + 0.12$$
+A kick event is registered when $E_{\text{subBass}} > \text{Kick Threshold}$ and $E_{\text{subBass}} > 0.32$ with minimum refractory delay $\Delta t_{\text{kick}} > 160\text{ ms}$. This triggers instantaneous full-window blinder flashes and explosive particle velocity impulses.
 
-All palette transitions are continuously smoothed using delta-time linear interpolation (`THREE.Color.lerp(target, delta * 2.5)`) across all background fog, ambient lighting, and shader uniforms.
+### 2.6 Festival Drop Climax Detection
+In electronic dance music and melodic dubstep (e.g. *ILLENIUM & Excision — Feel Something*), drops represent massive sustained surges in sub-bass and RMS following a build. The drop confidence accumulator is evaluated:
+$$\Delta C_{\text{drop}} = \begin{cases} +0.15 & \text{if } E_{\text{subBass}} > 0.55 \text{ and } \text{RMS} > 0.42 \text{ and } \text{Mode} = \text{festival} \\ -0.05 & \text{otherwise} \end{cases}$$
+When $C_{\text{drop}} > 0.35$, Drop Mode engages: activating 32-beam high-speed laser scissor sweeps, strobe pulses, and radial particle shockwave detonations.
+
+### 2.7 Music-Mood Dynamic Classification (Calm vs Festival)
+Synwave continuously classifies incoming audio into two distinct aesthetic worlds:
+- **Calm Acoustic Sanctuary:** ($E_{\text{avg}} < 0.24$ and $E_{\text{subBass}} < 0.35$, e.g., acoustic songs like *Aaloshyo*). Yields serene flowing aurora ribbons, gentle breathing stardust, and warm gold/deep indigo hues. Zero harsh strobing or blinding lasers.
+- **Festival Concert Arena:** (High energy, rhythmic dubstep, e.g., *Feel Something* or *Waves*). Yields stadium laser rigs, kick blinder flashes, explosive bass shockwave particles, and camera bass rumble.
 
 ---
 
-## 3. 100+ Procedural Effects Library & Smart Scene Choreographer
+## 3. Music Festival Concert Experience & 100+ Procedural Combinations
 
-Synwave organizes graphics across 11 core modular effect architectures, supporting over 100 distinctive parameter, geometry, and shader permutations:
+Synwave eliminates clumsy center shapes (avoiding awkward wireframe cages), opening up a magnificent concert festival arena:
 
 | Effect ID | Family | Description | Reaction Mechanics |
 |---|---|---|---|
-| `terrain-grid` | Geometry & Terrains | Infinite retro synthwave wireframe grid extending to horizon | Outer mountain flanks undulate dynamically with sub-bass and RMS; runway center stays smooth. |
-| `torus-knot` | Mathematical Geometry | 3D Torus Knot with wireframe overlay | Twisting continuous rotation modulated by mid/high harmonics; scale pulses on kicks. |
-| `dna-helix` | Ribbons & Fluid Waves | Double-helix rotating strands with cross rungs | Intertwined dual-strand rotation; rungs strobe with multi-frequency band energy. |
-| `particle-vortex` | Cosmic & Spatial | Swirling spiral particle vortex | Gravitational Keplerian orbital dynamics around center singularity; radial surge on beats. |
-| `starfield-warp` | Cosmic & Dust | Pinpoint stardust hyperspace warp particles | Relativistic elongation proportional to bass + RMS; position bounded behind camera lens to eliminate occlusions. |
-| `wireframe-core` | Geometry | Central 3D Icosahedron & solid crystal core with 3 gimbal rings | Vertex displacement shader displaced by sub-bass; gyroscopic multi-axis rotations. |
-| `waveform-ring` | Waveforms | 3D Circular Oscilloscope loop (256–512 vertices) | Direct geometric radial displacement mapped 1-to-1 to live PCM time-domain samples; glowing neon rim. |
-| `spectrum-bars` | Waveforms & Frequency | Horizon equalizer skyline (48–64 extruded bars) | Situated in distant horizon ($Z = -25\text{ to }-33$), framing the central scene without blocking the camera lens. |
-| `audio-ribbons` | Ribbons & Fluid Waves | Sinusoidal flowing silk ribbons | Harmonic sinusoidal waves modulated by mid-range frequencies; dynamic spatial curvature and hue shifts. |
-| `laser-beams` | Lasers & Light Beams | Overhead concert stadium laser fans | Originating from rear overhead truss, scanning downwards and strobing on rhythm transients. |
-| `shockwave-rings`| Bursts & Pulses | Concentric expanding chromatic shockwave rings | Instantiated on beat transient spikes; expand outwards with rapid exponential decay. |
+| `laser-beams` | Lasers & Light Beams | 28–36 Volumetric Concert Laser Rig | Overhead truss, side scissor towers, and floor uplights. Scissor cross cuts, horizon fan sweeps, liquid sky sheets, and drop frenzy strobes. |
+| `starfield-warp` | Cosmic & Particles | Bass-Activated Shockwave Particle Field | 4,000+ sparks receiving explosive radial velocity on drum kicks ($\vec{v} += \vec{r}_{\text{norm}} \cdot I_{\text{kick}} \cdot 32.0$); gentle breathing stardust in calm music. |
+| `terrain-grid` | Geometry & Terrains | Open Concert Arena Floor / Horizon Grid | Wide center runway; outer flanks undulate dynamically to sub-bass; reflective stage floor. |
+| `spectrum-bars` | Waveforms & Frequency | Distant Horizon Equalizer Skyline | Positioned along the distant horizon ($Z = -28$), framing the concert arena. |
+| `shockwave-rings`| Bursts & Pulses | Concentric Chromatic Shockwave Rings | Triggered on drum kicks and drops; expands outwards with exponential velocity decay. |
+| `audio-ribbons` | Ribbons & Fluid Waves | Ethereal Flowing Silk Aurora Ribbons | Sinusoidal undulating ribbons dedicated to calm music and emotional melodic breakdowns. |
+| `waveform-ring` | Waveforms | 3D Circular Oscilloscope Loop | Directly mapped to live PCM time-domain samples; glowing neon rim. |
 
-### Curated Cinematic Scenes
-The Smart Choreographer automatically activates clean, non-competing effect compositions:
-1. **RETRO HORIZON:** `terrain-grid` + `spectrum-bars` + `starfield-warp`
-2. **CRYSTAL SINGULARITY:** `wireframe-core` + `waveform-ring` + `starfield-warp` + `shockwave-rings`
-3. **HYPERDRIVE DROP:** `starfield-warp` + `laser-beams` + `shockwave-rings`
-4. **FLUID AURORA:** `audio-ribbons` + `waveform-ring` + `starfield-warp`
-5. **TORUS KNOT:** `torus-knot` + `laser-beams` + `starfield-warp` + `shockwave-rings`
-6. **DNA HELIX:** `dna-helix` + `particle-vortex` + `shockwave-rings`
-7. **QUANTUM VORTEX:** `particle-vortex` + `waveform-ring` + `terrain-grid`
-8. **STADIUM ARENA:** `terrain-grid` + `spectrum-bars` + `laser-beams` + `shockwave-rings`
+### Curated Concert Scenes
+1. **`FESTIVAL ARENA`**: Stage floor grid + 32-beam lasers + bass shockwave particles + horizon equalizer + shockwave rings.
+2. **`DROP FRENZY`**: Full-power laser sweeps + explosive particle detonations + shockwave rings + stage floor.
+3. **`CELESTIAL SANCTUARY`**: Fluid aurora ribbons + breathing stardust + calm waveform ripples (dedicated for calm acoustic music).
+4. **`LASER CATHEDRAL`**: Concentrated concert lasers + bass shockwave particles + horizon skyline + shockwaves.
+5. **`HORIZON EQUALIZER`**: Terrain floor + horizon equalizer skyline + stardust + laser beams.
 
 ---
 
-## 4. Window Edge Attachment & Intelligent Auto-Hiding UI
+## 4. Window Edge Attachment, Auto-Hiding UI & Native Fullscreen
 
-- **Edge Attachment:** Both the upper header and lower player dock are attached directly to the window boundaries (`top: 0`, `bottom: 0`, `border-radius: 0`, `width: 100%`) with zero gap.
+- **Edge Attachment:** Both the upper header and lower player dock attach directly to window boundaries (`top: 0`, `bottom: 0`, `border-radius: 0`, `width: 100%`) with zero gap.
 - **Independent Auto-Hiding Zones:**
-  - Cursor in top zone ($\le 65\text{px}$) $\to$ Upper bar slides down smoothly into view; lower bar remains hidden.
-  - Cursor in bottom zone ($\ge \text{windowHeight} - 75\text{px}$) $\to$ Lower player dock slides up into view; upper bar remains hidden.
-  - Cursor in middle or inactive for $> 1.8\text{s}$ $\to$ Both bars slide out of view (`transform: translateY(-100%)` / `translateY(100%)`), presenting a completely clean, distraction-free visualizer canvas.
+  - Cursor near top ($\le 65\text{px}$) $\to$ Upper header slides into view; lower dock stays hidden.
+  - Cursor near bottom ($\ge \text{windowHeight} - 75\text{px}$) $\to$ Player dock slides into view; header stays hidden.
+  - Inactive / middle canvas $\to$ Both bars slide out of view, presenting an uninterrupted visualizer canvas.
+- **Drum Kick Window Blinder Flash:** A dedicated overlay (`.festival-window-blinder`) with screen blending flashes on drum kicks and strobes during dubstep drops.
+- **Spacebar Transport & Native Fullscreen:**
+  - `Space`: Instant pause/play toggle (with input field protection).
+  - `KeyF` / Canvas Double-Click: Full-bleed cross-browser native fullscreen (WebKit, Gecko, Blink) with automatic icon state synchronization.
 - **Cinematic Watermark HUD:** Refined typography with title truncation and auto-fade to subtle opacity ($0.28$) after initial track presentation so the visuals remain unobstructed.
 
 ---

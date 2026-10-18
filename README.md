@@ -25,9 +25,11 @@
 **Synwave** transforms any local audio file or folder into an immersive, living audiovisual experience. Unlike conventional visualizers that loop pre-rendered video clips or draw simple 2D spectrum bars, Synwave generates **100% of its visual scenes procedurally at runtime** using GPU shaders, particles, dynamic 3D geometry, and real-time audio signal analysis.
 
 ### Core Principles
-- **100% Procedural Generation:** Stars, lasers, waveforms, polyhedral cores, fluid ribbons, retro grids, torus knots, and shockwave pulses are mathematically rendered live.
-- **Smart Scene Choreographer:** Over 100 procedural effect combinations orchestrated across 8 curated cinematic scenes that crossfade dynamically on musical section transitions without visual clutter.
-- **Automatic Mood-Driven Color Palette:** Real-time spectral analysis automatically determines and smoothly interpolates scene lighting, fog, and materials to match the track's emotional intensity.
+- **Music Festival Concert Experience:** Transforms high-energy tracks and melodic dubstep drops into an electrifying festival light show with 32-beam concert laser rigs, scissor cuts, liquid sky sheets, drum-kick window blinder flashes, and camera bass rumble.
+- **Dual Aesthetic Universes (Calm vs Festival):** Automatically distinguishes calm acoustic songs (e.g. *Aaloshyo*) with serene celestial auroras, floating stardust, and warm candlelight hues from high-energy festival dubstep (e.g. *Feel Something*) with blazing lasers, strobe blinders, and explosive bass shockwaves.
+- **Bass-Activated Particle Dynamics:** 4,000+ sparks receiving explosive radial velocity on drum kicks and sub-bass impacts — replacing aimless floating particles with high-energy physical shockwaves.
+- **Open Center Stage Architecture:** Eliminates awkward center wireframe clutter, keeping the arena wide open for sweeping lasers, particle detonations, and horizon skylines.
+- **Spacebar Play/Pause & Native Fullscreen:** Instant `Space` keyboard transport toggle, `F` key or canvas double-click for full-bleed native fullscreen.
 - **Zero-Gap Edge-Attached UI:** Minimalist top and bottom bars attached directly to window boundaries with intelligent independent hover auto-hide zones.
 - **Dual-Path Audio Processing:** Combines offline predictive pre-analysis (BPM candidate estimation, dynamic range, section boundaries) with an authoritative live Web Audio playback clock.
 
@@ -35,41 +37,26 @@
 
 ## 🚀 Key Features
 
+- **Festival Concert Laser Rig:** 28–36 volumetric beams across overhead truss, side scissor towers, and floor uplights. Scissor cross cuts, horizon fan sweeps, liquid sky sheets, and drop frenzy strobes.
+- **Drum Kick Window Blinder Flash:** High-impact full-window blinder flashes on drum kicks and synchronized strobe sequences during festival drops.
+- **Bass-Activated Shockwave Particles:** Radial detonations on bass kicks, sub-bass expansion, and fluid drag deceleration.
+- **Calm Acoustic Sanctuary:** Dedicated peaceful world for calm, vocal, and acoustic tracks with fluid silk ribbons and breathing stardust.
 - **Local Music Library & Queue:** Ingest single audio files (`.mp3`, `.wav`, `.ogg`, `.m4a`, `.flac`) or import entire music directories via native folder selection or drag-and-drop.
-- **Smart Scene Choreographer:** Automatically sequences clean, non-competing effect compositions in sync with musical sections (`INTRO`, `BUILD`, `DROP / CLIMAX`, `BREAKDOWN`, `OUTRO`).
-- **Precision Transport Controls:** Play/Pause, Next/Previous, Shuffle, Repeat (Off, One, All), Volume, Mute, and an interactive seek bar with live hover timestamp preview and section markers.
+- **Precision Transport Controls:** Play/Pause (`Space`), Next/Previous, Shuffle, Repeat (Off, One, All), Volume, Mute, and an interactive seek bar with live hover timestamp preview and section markers.
 - **Live Signal & Visual Inspector:** Real-time 64-band FFT frequency spectrum, PCM time-domain oscilloscope, multi-band gauges (RMS, Sub-bass, Mid, Treble, Spectral Brightness), and detected BPM readout.
-- **Performance Tiers:** Configurable quality presets (`Low`, `Medium`, `High 60 FPS`, `Ultra`) for integrated laptops up to dedicated desktop GPUs.
+- **Full-Bleed Fullscreen Mode:** Toggle native fullscreen with `F`, the fullscreen icon, or double-clicking the visualizer canvas.
 
 ---
 
-## 🎨 100+ Procedural Effects & Curated Scenes
+## 🎨 Curated Concert Scenes & Effects
 
-Synwave organizes graphics across 11 core modular effect architectures, supporting over 100 distinctive parameter, geometry, and shader permutations:
-
-| Effect | Family | Description |
-|---|---|---|
-| **Horizon Synthwave Grid** | Geometry & Terrains | Infinite retro wireframe grid extending into the horizon with audio mountain ridges undulating to bass. |
-| **Morphing Torus Knot** | Mathematical Geometry | 3D mathematical knot with audio-driven radial displacement and continuous twisting. |
-| **Double Helix Symphony** | Ribbons & Fluid Waves | Intertwined rotating double-helix strands with interconnected glowing audio-reactive rungs. |
-| **Singularity Spiral Vortex** | Cosmic & Spatial | Swirling spiral particle vortex orbiting a central gravitational singularity. |
-| **Hyperspace Starfield** | Cosmic & Dust | Pinpoint stardust hyperspace warp particles with relativistic elongation on audio energy surges. |
-| **Geometric Core & Gimbal** | Geometry | 3D wireframe icosahedron with inner solid crystal octahedron and 3 concentric gyroscopic gimbal rings. |
-| **Circular Oscilloscope** | Waveforms | 3D circular audio loop displaced 1-to-1 by live PCM time-domain samples with glowing neon edges. |
-| **3D Horizon Equalizer Skyline**| Waveforms & Frequency | Horizon equalizer skyline framing the background without blocking the camera lens. |
-| **Fluid Audio Ribbons** | Ribbons & Fluid Waves | Flowing sinusoidal ribbon paths undulating through 3D space with harmonic propagation. |
-| **Concert Stadium Lasers** | Lasers & Light Beams | Overhead concert stadium laser fans scanning across the arena floor and strobing on rhythm transients. |
-| **Shockwave Pulses** | Bursts & Pulses | Concentric expanding chromatic shockwave rings emitted on detected bass kicks and drops. |
-
-### Curated Cinematic Scenes
-1. **RETRO HORIZON:** `terrain-grid` + `spectrum-bars` + `starfield-warp`
-2. **CRYSTAL SINGULARITY:** `wireframe-core` + `waveform-ring` + `starfield-warp` + `shockwave-rings`
-3. **HYPERDRIVE DROP:** `starfield-warp` + `laser-beams` + `shockwave-rings`
-4. **FLUID AURORA:** `audio-ribbons` + `waveform-ring` + `starfield-warp`
-5. **TORUS KNOT:** `torus-knot` + `laser-beams` + `starfield-warp` + `shockwave-rings`
-6. **DNA HELIX:** `dna-helix` + `particle-vortex` + `shockwave-rings`
-7. **QUANTUM VORTEX:** `particle-vortex` + `waveform-ring` + `terrain-grid`
-8. **STADIUM ARENA:** `terrain-grid` + `spectrum-bars` + `laser-beams` + `shockwave-rings`
+| Scene | Aesthetic Universe | Effect Composition | Experience |
+|---|---|---|---|
+| **FESTIVAL ARENA** | Festival Stage | `terrain-grid` + `laser-beams` + `starfield-warp` + `spectrum-bars` + `shockwave-rings` | Slicing concert lasers over reflective arena floor with horizon audio skyline and bass shockwaves. |
+| **DROP FRENZY** | Climax Drop | `laser-beams` + `starfield-warp` + `shockwave-rings` + `terrain-grid` | 32-beam high-speed scissor cuts, 180° sweeps, window strobe blinders, and explosive particle detonations. |
+| **CELESTIAL SANCTUARY** | Calm Acoustic | `audio-ribbons` + `starfield-warp` + `waveform-ring` | Serene flowing aurora ribbons, gentle breathing stardust, and calm waveform ripples. |
+| **LASER CATHEDRAL** | Laser Focus | `laser-beams` + `starfield-warp` + `spectrum-bars` + `shockwave-rings` | Dense overhead laser fans and scissor rays cutting through concert haze. |
+| **HORIZON EQUALIZER** | Groove / Verse | `terrain-grid` + `spectrum-bars` + `starfield-warp` + `laser-beams` | Ambient synthwave horizon with bass mountain flanks and skyline frequency bars. |
 
 ---
 

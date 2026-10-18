@@ -35,6 +35,7 @@ export interface AudioFeatures {
   timeSeconds: number;
   rms: number;               // 0.0 to 1.0 (signal loudness proxy)
   bass: number;              // 0.0 to 1.0 (sub-bass + bass: 20-250 Hz)
+  subBass: number;           // 0.0 to 1.0 (sub-bass punch: 20-100 Hz)
   lowMid: number;            // 0.0 to 1.0 (250-500 Hz)
   highMid: number;           // 0.0 to 1.0 (500-2000 Hz)
   treble: number;            // 0.0 to 1.0 (2000-16000 Hz)
@@ -42,6 +43,11 @@ export interface AudioFeatures {
   onsetStrength: number;     // 0.0 to 1.0 (energy flux transient)
   beatConfidence: number;    // 0.0 to 1.0
   isBeat: boolean;           // True on transient beat spike
+  isKick: boolean;           // True specifically on heavy drum kick transient
+  kickIntensity: number;     // 0.0 to 1.0 (intensity of the drum kick hit)
+  isDrop: boolean;           // True during massive festival drop climax
+  dropIntensity: number;     // 0.0 to 1.0 (drop climax intensity)
+  musicMode: 'calm' | 'festival'; // Detected music style: calm acoustic vs festival dubstep
   frequencyData: Uint8Array; // Raw FFT bins (0-255)
   timeDomainData: Uint8Array;// Raw PCM waveform samples (0-255)
 }

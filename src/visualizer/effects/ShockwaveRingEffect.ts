@@ -69,9 +69,11 @@ export class ShockwaveRingEffect extends BaseEffect {
 
     const { features, deltaSeconds, palette } = context;
 
-    // Trigger new ring on beat
-    if (features.isBeat) {
-      this.triggerShockwave(palette.accent, 18.0 + features.bass * 12.0);
+    // Trigger new ring on kick or drop
+    if (features.isKick || (features.isDrop && features.isBeat)) {
+      const speed = 22.0 + features.subBass * 16.0;
+      const color = features.isDrop ? palette.laserColor : (features.isKick ? '#ffffff' : palette.accent);
+      this.triggerShockwave(color, speed);
     }
 
     // Update active rings

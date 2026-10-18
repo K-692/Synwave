@@ -80,6 +80,38 @@ html, body {
   z-index: 1;
 }
 
+/* Festival Window Blinder Flash Overlay */
+.festival-window-blinder {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 10;
+  mix-blend-mode: screen;
+  transition: opacity 0.05s ease-out;
+}
+
+/* Fullscreen Edge-to-Edge Guarantee */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background-color: #000 !important;
+}
+
+:fullscreen .synwave-app,
+:-webkit-full-screen .synwave-app {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
 /* Glassmorphism Panel */
 .glass-panel {
   background: var(--bg-surface);

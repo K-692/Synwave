@@ -19,19 +19,45 @@ import type {
   VisualSettings,
 } from './types';
 
-// Bundled test track configuration from local "My Music" directory
-const BUNDLED_TEST_TRACK: TrackRecord = {
-  id: 'waves-test-track',
-  name: 'Ambyion & Abandoned - Waves.mp3',
-  title: 'Waves',
-  artist: 'Ambyion & Abandoned',
-  album: '4K Music Video',
-  duration: 224, // ~3m 44s
-  url: '/music/Ambyion & Abandoned - Waves.mp3',
-  sizeBytes: 3367827,
-  analysisStatus: 'unscanned',
-  seed: 133742,
-};
+// Bundled test track configurations from local "My Music" directory
+const BUNDLED_TEST_TRACKS: TrackRecord[] = [
+  {
+    id: 'feel-something-track',
+    name: 'ILLENIUM, Excision, I Prevail - Feel Something.mp3',
+    title: 'Feel Something',
+    artist: 'ILLENIUM, Excision, I Prevail',
+    album: 'Festival Melodic Dubstep',
+    duration: 219,
+    url: '/music/Feel Something.mp3',
+    sizeBytes: 5296941,
+    analysisStatus: 'unscanned',
+    seed: 99482,
+  },
+  {
+    id: 'aaloshyo-track',
+    name: 'Aaloshyo (আলস্য) - Anupam Roy.mp3',
+    title: 'Aaloshyo (আলস্য)',
+    artist: 'Anupam Roy & SVF',
+    album: 'Calm Melodic Acoustic',
+    duration: 296,
+    url: '/music/Aaloshyo.mp3',
+    sizeBytes: 7122861,
+    analysisStatus: 'unscanned',
+    seed: 48271,
+  },
+  {
+    id: 'waves-test-track',
+    name: 'Ambyion & Abandoned - Waves.mp3',
+    title: 'Waves',
+    artist: 'Ambyion & Abandoned',
+    album: 'Melodic Wave / Chill',
+    duration: 224,
+    url: '/music/Ambyion & Abandoned - Waves.mp3',
+    sizeBytes: 3367827,
+    analysisStatus: 'unscanned',
+    seed: 133742,
+  },
+];
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,8 +65,8 @@ export const App: React.FC = () => {
   const visualEngineRef = useRef<VisualEngine | null>(null);
 
   // Playback State
-  const [tracks, setTracks] = useState<TrackRecord[]>([BUNDLED_TEST_TRACK]);
-  const [currentTrack, setCurrentTrack] = useState<TrackRecord | null>(BUNDLED_TEST_TRACK);
+  const [tracks, setTracks] = useState<TrackRecord[]>(BUNDLED_TEST_TRACKS);
+  const [currentTrack, setCurrentTrack] = useState<TrackRecord | null>(BUNDLED_TEST_TRACKS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -48,6 +74,10 @@ export const App: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+
+  // Festival Window Blinder Flash State
+  const [windowFlashOpacity, setWindowFlashOpacity] = useState(0);
+  const [windowFlashColor, setWindowFlashColor] = useState('#ffffff');
 
   // UI Visibility & Auto-Hide State
   const [isTopBarVisible, setIsTopBarVisible] = useState(false);
@@ -155,6 +185,11 @@ export const App: React.FC = () => {
         setCurrentSection(section);
       };
 
+      visualEngine.onWindowFlash = (opacity, colorHex) => {
+        setWindowFlashOpacity(opacity);
+        setWindowFlashColor(colorHex);
+      };
+
       setEffectsList(visualEngine.getEffectsList());
 
       // Start continuous Three.js render loop with authoritative media clock
@@ -165,7 +200,7 @@ export const App: React.FC = () => {
     }
 
     // Load initial default test track
-    loadTrack(BUNDLED_TEST_TRACK, false);
+    loadTrack(BUNDLED_TEST_TRACKS[0], false);
 
     return () => {
       audioEngine.dispose();
@@ -369,10 +404,100 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleToggleFullscreen = async () => {
+    try {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+        msFullscreenElement?: Element;
+        exitFullscreen?: () => Promise<void>;
+        webkitExitFullscreen?: () => Promise<void>;
+        mozCancelFullScreen?: () => Promise<void>;
+        msExitFullscreen?: () => Promise<void>;
+      };
+      const docEl = document.documentElement as unknown as {
+        requestFullscreen?: () => Promise<void>;
+        webkitRequestFullscreen?: () => Promise<void>;
+        mozRequestFullScreen?: () => Promise<void>;
+        msRequestFullscreen?: () => Promise<void>;
+      };
+
+      const isFull = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+
+      if (!isFull) {
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Fullscreen request failed:', err);
+    }
+  };
+
+  // 4. Spacebar Play/Pause and 'F' Fullscreen Key Listeners
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        handlePlayPause();
+      } else if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        handleToggleFullscreen();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying]);
+
   return (
     <div className="synwave-app">
       {/* Three.js 3D Procedural Canvas */}
-      <canvas ref={canvasRef} className="visualizer-canvas" />
+      <canvas
+        ref={canvasRef}
+        className="visualizer-canvas"
+        onDoubleClick={handleToggleFullscreen}
+        title="Double-click to toggle fullscreen (or press 'F', Space to Play/Pause)"
+      />
+
+      {/* Festival Window Blinder Strobe Flash */}
+      <div
+        className="festival-window-blinder"
+        style={{
+          opacity: windowFlashOpacity,
+          backgroundColor: windowFlashColor,
+        }}
+      />
 
       {/* On-Canvas Cinematic Watermark HUD */}
       <TrackWatermark
@@ -403,10 +528,8 @@ export const App: React.FC = () => {
         onSelectTrack={(t) => loadTrack(t, true)}
         onClearPlaylist={() => setTracks([])}
         onLoadTestTrack={() => {
-          if (!tracks.some((t) => t.id === BUNDLED_TEST_TRACK.id)) {
-            setTracks((prev) => [...prev, BUNDLED_TEST_TRACK]);
-          }
-          loadTrack(BUNDLED_TEST_TRACK, true);
+          setTracks(BUNDLED_TEST_TRACKS);
+          loadTrack(BUNDLED_TEST_TRACKS[0], true);
         }}
         onDropFiles={handleFilesSelected}
       />
@@ -420,6 +543,7 @@ export const App: React.FC = () => {
             timeSeconds: 0,
             rms: 0,
             bass: 0,
+            subBass: 0,
             lowMid: 0,
             highMid: 0,
             treble: 0,
@@ -427,6 +551,11 @@ export const App: React.FC = () => {
             onsetStrength: 0,
             beatConfidence: 0,
             isBeat: false,
+            isKick: false,
+            kickIntensity: 0,
+            isDrop: false,
+            dropIntensity: 0,
+            musicMode: 'festival',
             frequencyData: new Uint8Array(1024),
             timeDomainData: new Uint8Array(1024),
           }

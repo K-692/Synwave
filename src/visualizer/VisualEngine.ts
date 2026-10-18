@@ -39,68 +39,44 @@ export interface VisualSceneConfig {
 
 const CINEMATIC_SCENES: VisualSceneConfig[] = [
   {
-    id: 'cyber-horizon',
-    name: 'RETRO HORIZON',
-    activeEffectIds: ['terrain-grid', 'spectrum-bars', 'starfield-warp'],
-    cameraDistance: 22.0,
-    cameraElevation: 2.5,
-    cameraOrbitSpeed: 0.12,
-  },
-  {
-    id: 'crystalline-core',
-    name: 'CRYSTAL SINGULARITY',
-    activeEffectIds: ['wireframe-core', 'waveform-ring', 'starfield-warp', 'shockwave-rings'],
-    cameraDistance: 23.0,
-    cameraElevation: 3.5,
+    id: 'stadium-arena',
+    name: 'FESTIVAL ARENA',
+    activeEffectIds: ['terrain-grid', 'laser-beams', 'starfield-warp', 'spectrum-bars', 'shockwave-rings'],
+    cameraDistance: 24.0,
+    cameraElevation: 3.8,
     cameraOrbitSpeed: 0.22,
   },
   {
-    id: 'hyperdrive-warp',
-    name: 'HYPERDRIVE DROP',
-    activeEffectIds: ['starfield-warp', 'laser-beams', 'shockwave-rings'],
-    cameraDistance: 19.0,
-    cameraElevation: 2.0,
-    cameraOrbitSpeed: 0.35,
+    id: 'hyperdrive-drop',
+    name: 'DROP FRENZY',
+    activeEffectIds: ['laser-beams', 'starfield-warp', 'shockwave-rings', 'terrain-grid'],
+    cameraDistance: 19.5,
+    cameraElevation: 2.2,
+    cameraOrbitSpeed: 0.45,
   },
   {
-    id: 'fluid-aurora',
-    name: 'FLUID AURORA',
-    activeEffectIds: ['audio-ribbons', 'waveform-ring', 'starfield-warp'],
-    cameraDistance: 24.0,
-    cameraElevation: 4.0,
-    cameraOrbitSpeed: 0.15,
+    id: 'celestial-sanctuary',
+    name: 'CELESTIAL SANCTUARY',
+    activeEffectIds: ['audio-ribbons', 'starfield-warp', 'waveform-ring'],
+    cameraDistance: 23.0,
+    cameraElevation: 3.2,
+    cameraOrbitSpeed: 0.12,
   },
   {
-    id: 'torus-dimension',
-    name: 'TORUS KNOT',
-    activeEffectIds: ['torus-knot', 'laser-beams', 'starfield-warp', 'shockwave-rings'],
-    cameraDistance: 21.0,
-    cameraElevation: 3.0,
-    cameraOrbitSpeed: 0.25,
-  },
-  {
-    id: 'dna-symphony',
-    name: 'DNA HELIX',
-    activeEffectIds: ['dna-helix', 'particle-vortex', 'shockwave-rings'],
+    id: 'laser-cathedral',
+    name: 'LASER CATHEDRAL',
+    activeEffectIds: ['laser-beams', 'starfield-warp', 'spectrum-bars', 'shockwave-rings'],
     cameraDistance: 22.0,
-    cameraElevation: 2.5,
-    cameraOrbitSpeed: 0.18,
-  },
-  {
-    id: 'quantum-vortex',
-    name: 'QUANTUM VORTEX',
-    activeEffectIds: ['particle-vortex', 'waveform-ring', 'terrain-grid'],
-    cameraDistance: 24.0,
-    cameraElevation: 5.0,
-    cameraOrbitSpeed: 0.2,
-  },
-  {
-    id: 'stadium-concert',
-    name: 'STADIUM ARENA',
-    activeEffectIds: ['terrain-grid', 'spectrum-bars', 'laser-beams', 'shockwave-rings'],
-    cameraDistance: 25.0,
-    cameraElevation: 4.5,
+    cameraElevation: 3.0,
     cameraOrbitSpeed: 0.28,
+  },
+  {
+    id: 'cyber-horizon',
+    name: 'HORIZON EQUALIZER',
+    activeEffectIds: ['terrain-grid', 'spectrum-bars', 'starfield-warp', 'laser-beams'],
+    cameraDistance: 23.5,
+    cameraElevation: 2.6,
+    cameraOrbitSpeed: 0.16,
   },
 ];
 
@@ -142,8 +118,9 @@ export class VisualEngine {
   private effectIntensity = 1.0;
   private cameraSpeedMultiplier = 1.0;
 
-  // Live state callback
+  // Live state callbacks
   public onCurrentSectionChange?: (section: string) => void;
+  public onWindowFlash?: (opacity: number, colorHex: string) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -213,6 +190,7 @@ export class VisualEngine {
         timeSeconds: 0,
         rms: 0,
         bass: 0,
+        subBass: 0,
         lowMid: 0,
         highMid: 0,
         treble: 0,
@@ -220,6 +198,11 @@ export class VisualEngine {
         onsetStrength: 0,
         beatConfidence: 0,
         isBeat: false,
+        isKick: false,
+        kickIntensity: 0,
+        isDrop: false,
+        dropIntensity: 0,
+        musicMode: 'festival',
         frequencyData: new Uint8Array(1024),
         timeDomainData: new Uint8Array(1024),
       },
@@ -296,6 +279,10 @@ export class VisualEngine {
     }
   }
 
+  private lerp(a: number, b: number, t: number): number {
+    return a + (b - a) * t;
+  }
+
   /**
    * Automatic Music-Mood Driven Color Palette Evaluator.
    * Smoothly transitions lighting and scene colors according to audio dynamics.
@@ -306,14 +293,14 @@ export class VisualEngine {
 
     // Pick target palette based on audio mood
     let targetIndex = 0;
-    if (energy > 0.62 || features.isBeat) {
+    if (features.musicMode === 'calm') {
+      targetIndex = features.lowMid > 0.28 ? 1 : 3; // Warm Sunset or Deep Space Sanctuary
+    } else if (features.isDrop || features.isKick) {
       targetIndex = 4; // Solar Flare (fiery, intense drop)
     } else if (energy > 0.42) {
       targetIndex = 0; // Cyberpunk Neon (cyan/magenta groove)
     } else if (brightness > 0.55) {
       targetIndex = 2; // Matrix Emerald (high treble / bright)
-    } else if (features.lowMid > 0.35) {
-      targetIndex = 1; // Synthwave Sunset (warm mid-range)
     } else {
       targetIndex = 3; // Deep Space (chill, ambient, dark)
     }
@@ -366,6 +353,22 @@ export class VisualEngine {
     let sectionType: SectionType = 'build';
     let sectionLabel = 'GROOVE';
 
+    if (features.musicMode === 'calm') {
+      sectionType = 'intro';
+      sectionLabel = 'CALM SANCTUARY';
+      this.onCurrentSectionChange?.(sectionLabel);
+      this.switchScene('celestial-sanctuary');
+      return;
+    }
+
+    if (features.isDrop) {
+      sectionType = 'drop';
+      sectionLabel = 'CLIMAX / DROP';
+      this.onCurrentSectionChange?.(sectionLabel);
+      this.switchScene('hyperdrive-drop');
+      return;
+    }
+
     if (this.trackAnalysis && this.trackAnalysis.sections.length > 0) {
       const activeSection = this.trackAnalysis.sections.find(
         (s) => trackTimeSeconds >= s.startTime && trackTimeSeconds < s.endTime
@@ -376,15 +379,15 @@ export class VisualEngine {
       }
     } else {
       // Dynamic live inference
-      if (features.bass > 0.65 || features.rms > 0.6) {
+      if (features.subBass > 0.55 || features.rms > 0.55) {
         sectionType = 'drop';
         sectionLabel = 'CLIMAX / DROP';
       } else if (features.rms < 0.22) {
         sectionType = 'intro';
-        sectionLabel = 'AMBIENT';
+        sectionLabel = 'ATMOSPHERE';
       } else {
         sectionType = 'build';
-        sectionLabel = 'RHYTHM';
+        sectionLabel = 'FESTIVAL BUILD';
       }
     }
 
@@ -397,25 +400,25 @@ export class VisualEngine {
 
       switch (sectionType) {
         case 'intro':
-          this.switchScene('fluid-aurora');
+          this.switchScene('cyber-horizon');
           break;
         case 'build':
-          this.switchScene('torus-dimension');
+          this.switchScene('laser-cathedral');
           break;
         case 'drop':
-          this.switchScene('hyperdrive-warp');
+          this.switchScene('hyperdrive-drop');
           break;
         case 'breakdown':
-          this.switchScene('dna-symphony');
+          this.switchScene('cyber-horizon');
           break;
         case 'outro':
-          this.switchScene('cyber-horizon');
+          this.switchScene('stadium-arena');
           break;
       }
     } else {
-      // Natural phrase interval switch (every ~26 seconds if in long section)
+      // Natural phrase interval switch (every ~24 seconds if in long section)
       this.sceneTimer += deltaSeconds;
-      if (this.sceneTimer > 26.0) {
+      if (this.sceneTimer > 24.0) {
         this.sceneTimer = 0;
         this.currentSceneIndex = (this.currentSceneIndex + 1) % CINEMATIC_SCENES.length;
         this.applyScene(CINEMATIC_SCENES[this.currentSceneIndex]);
@@ -448,7 +451,7 @@ export class VisualEngine {
     // 2. Smart Scene Choreographer
     this.updateSmartChoreographer(trackTimeSeconds, features, deltaSeconds);
 
-    // 3. Cinematic Camera Movement
+    // 3. Cinematic Camera Movement & Bass Shake
     const sceneConfig = CINEMATIC_SCENES[this.currentSceneIndex];
     this.cameraAngle +=
       deltaSeconds *
@@ -464,20 +467,54 @@ export class VisualEngine {
     this.camera.position.x += (targetCamX - this.camera.position.x) * deltaSeconds * 3.5;
     this.camera.position.y += (targetCamY - this.camera.position.y) * deltaSeconds * 3.5;
     this.camera.position.z += (targetCamZ - this.camera.position.z) * deltaSeconds * 3.5;
+
+    // Bass Camera Vibration / Tremor on heavy drum kicks and festival drops
+    let cameraShake = 0;
+    if (features.isDrop) {
+      cameraShake = 0.52 * (1 + features.subBass);
+    } else if (features.isKick) {
+      cameraShake = features.kickIntensity * 0.38;
+    }
+    if (cameraShake > 0) {
+      this.camera.position.x += (Math.random() - 0.5) * cameraShake;
+      this.camera.position.y += (Math.random() - 0.5) * cameraShake * 0.75;
+    }
+
     this.camera.lookAt(0, 0, 0);
 
-    // Dynamic Micro-FOV Pulse on beat
-    const beatFovBoost = features.isBeat ? 3.5 : features.bass * 1.5;
+    // Dynamic Micro-FOV Pulse on drum kick or drop
+    const beatFovBoost = features.isDrop ? 6.0 : (features.isKick ? features.kickIntensity * 4.5 : features.bass * 1.5);
     const desiredFov = 60 + beatFovBoost;
-    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 10.0;
+    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 12.0;
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
+    // 4. Drum Kick Window Flash & ToneMapping Exposure Spikes
+    if (features.isDrop) {
+      // Rapid blinding stroboscopic pulses during drop
+      const isStrobePeak = Math.sin(trackTimeSeconds * 36.0) > 0.25;
+      const flashVal = isStrobePeak ? 0.92 : 0.0;
+      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.5;
+      this.onWindowFlash?.(flashVal, '#ffffff');
+    } else if (features.isKick) {
+      // Instant punchy blinder flash on drum kick
+      const flashVal = Math.min(0.85, features.kickIntensity * 0.72);
+      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.4;
+      this.onWindowFlash?.(flashVal, features.musicMode === 'calm' ? '#00f0ff' : '#ffffff');
+    } else {
+      this.renderer.toneMappingExposure = this.lerp(
+        this.renderer.toneMappingExposure,
+        1.15,
+        deltaSeconds * 12.0
+      );
+      this.onWindowFlash?.(0, '#ffffff');
+    }
+
     // Lights pulsation
-    this.pointLight1.intensity = 2.5 + features.bass * 3.5;
+    this.pointLight1.intensity = 2.5 + features.subBass * 4.0;
     this.pointLight2.intensity = 2.0 + features.highMid * 3.0;
 
-    // 4. Update and render active effects
+    // 5. Update and render active effects
     const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds);
     for (const effect of this.effects) {
       if (effect.enabled) {
@@ -485,7 +522,7 @@ export class VisualEngine {
       }
     }
 
-    // 5. Render Three.js pass
+    // 6. Render Three.js pass
     this.renderer.render(this.scene, this.camera);
   }
 

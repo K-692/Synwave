@@ -18,15 +18,21 @@ export class AudioEngine {
   // Smoothed feature caches for visual continuity
   private smoothedRms = 0;
   private smoothedBass = 0;
+  private smoothedSubBass = 0;
   private smoothedLowMid = 0;
   private smoothedHighMid = 0;
   private smoothedTreble = 0;
   private smoothedCentroid = 0;
 
-  // Transient beat detection state
+  // Transient beat and drum kick detection state
   private energyHistory: number[] = [];
+  private subBassHistory: number[] = [];
+  private recentEnergyWindow: number[] = [];
   private beatHoldFrames = 0;
+  private kickHoldFrames = 0;
   private lastBeatTime = 0;
+  private lastKickTime = 0;
+  private dropConfidence = 0;
 
   // Callbacks
   public onTimeUpdate?: (currentTime: number, duration: number) => void;
@@ -172,6 +178,7 @@ export class AudioEngine {
         timeSeconds: currentTime,
         rms: Math.max(0, this.smoothedRms * 0.9),
         bass: Math.max(0, this.smoothedBass * 0.9),
+        subBass: Math.max(0, this.smoothedSubBass * 0.9),
         lowMid: Math.max(0, this.smoothedLowMid * 0.9),
         highMid: Math.max(0, this.smoothedHighMid * 0.9),
         treble: Math.max(0, this.smoothedTreble * 0.9),
@@ -179,6 +186,11 @@ export class AudioEngine {
         onsetStrength: 0,
         beatConfidence: 0,
         isBeat: false,
+        isKick: false,
+        kickIntensity: 0,
+        isDrop: false,
+        dropIntensity: 0,
+        musicMode: 'festival',
         frequencyData: this.frequencyData,
         timeDomainData: this.timeDomainData,
       };
@@ -198,7 +210,8 @@ export class AudioEngine {
 
     // Frequency bands:
     // Sample rate ~44100Hz -> Nyquist 22050Hz across 1024 bins (~21.5 Hz per bin)
-    // Sub-bass & Bass: 20 - 250 Hz -> bins 1 to 12
+    // Sub-bass: 20 - 100 Hz -> bins 1 to 5
+    // Bass: 100 - 250 Hz -> bins 5 to 12
     // Low-mid: 250 - 500 Hz -> bins 12 to 24
     // Mid & High-mid: 500 - 2000 Hz -> bins 24 to 95
     // Treble: 2000 - 16000 Hz -> bins 95 to 750
@@ -212,6 +225,7 @@ export class AudioEngine {
       return sum / count / 255;
     };
 
+    const rawSubBass = Math.min(1, calcBandAverage(1, 6) * 1.85);
     const rawBass = Math.min(1, calcBandAverage(1, 14) * 1.5);
     const rawLowMid = Math.min(1, calcBandAverage(14, 28) * 1.3);
     const rawHighMid = Math.min(1, calcBandAverage(28, 100) * 1.4);
@@ -233,13 +247,55 @@ export class AudioEngine {
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
     this.smoothedRms = lerp(this.smoothedRms, rawRms, 0.35);
     this.smoothedBass = lerp(this.smoothedBass, rawBass, 0.45);
+    this.smoothedSubBass = lerp(this.smoothedSubBass, rawSubBass, 0.45);
     this.smoothedLowMid = lerp(this.smoothedLowMid, rawLowMid, 0.35);
     this.smoothedHighMid = lerp(this.smoothedHighMid, rawHighMid, 0.35);
     this.smoothedTreble = lerp(this.smoothedTreble, rawTreble, 0.35);
     this.smoothedCentroid = lerp(this.smoothedCentroid, rawCentroid, 0.25);
 
+    // Track dynamic rolling sub-bass baseline for Drum Kick Detection
+    this.subBassHistory.push(rawSubBass);
+    if (this.subBassHistory.length > 30) {
+      this.subBassHistory.shift();
+    }
+    const avgSubBass = this.subBassHistory.reduce((a, b) => a + b, 0) / this.subBassHistory.length;
+
+    // Track rolling energy for calm vs festival mode classification
+    this.recentEnergyWindow.push(rawRms * 0.4 + rawBass * 0.6);
+    if (this.recentEnergyWindow.length > 80) {
+      this.recentEnergyWindow.shift();
+    }
+    const avgEnergyWindow = this.recentEnergyWindow.reduce((a, b) => a + b, 0) / this.recentEnergyWindow.length;
+    const isCalm = avgEnergyWindow < 0.24 && rawSubBass < 0.35 && avgSubBass < 0.22;
+    const musicMode: 'calm' | 'festival' = isCalm ? 'calm' : 'festival';
+
+    // Drum Kick Detection (Specifically low-frequency percussive transient)
+    let isKick = false;
+    let kickIntensity = 0;
+    const now = performance.now();
+
+    if (this.kickHoldFrames > 0) {
+      this.kickHoldFrames--;
+    }
+    const kickThreshold = avgSubBass * 1.35 + 0.12;
+    if (rawSubBass > kickThreshold && rawSubBass > 0.32 && this.kickHoldFrames === 0 && (now - this.lastKickTime > 160)) {
+      isKick = true;
+      this.kickHoldFrames = 6;
+      this.lastKickTime = now;
+      kickIntensity = Math.min(1.0, (rawSubBass - kickThreshold) * 3.0 + 0.4);
+    }
+
+    // Drop Climax Detection (Massive wall of sub-bass in EDM / Melodic Dubstep)
+    const isDropCondition = rawSubBass > 0.55 && rawRms > 0.42 && musicMode === 'festival';
+    if (isDropCondition) {
+      this.dropConfidence = Math.min(1.0, this.dropConfidence + 0.15);
+    } else {
+      this.dropConfidence = Math.max(0, this.dropConfidence - 0.05);
+    }
+    const isDrop = this.dropConfidence > 0.35;
+    const dropIntensity = isDrop ? Math.min(1.0, rawSubBass * 0.6 + rawRms * 0.4) : 0;
+
     // Transient & Beat Onset Detection
-    // Combines bass surge + sudden broadband flux
     const instantEnergy = rawBass * 0.7 + rawRms * 0.3;
     this.energyHistory.push(instantEnergy);
     if (this.energyHistory.length > 40) {
@@ -253,7 +309,6 @@ export class AudioEngine {
     let isBeat = false;
     let onsetStrength = 0;
 
-    const now = performance.now();
     if (this.beatHoldFrames > 0) {
       this.beatHoldFrames--;
     }
@@ -269,6 +324,7 @@ export class AudioEngine {
       timeSeconds: currentTime,
       rms: this.smoothedRms,
       bass: this.smoothedBass,
+      subBass: this.smoothedSubBass,
       lowMid: this.smoothedLowMid,
       highMid: this.smoothedHighMid,
       treble: this.smoothedTreble,
@@ -276,6 +332,11 @@ export class AudioEngine {
       onsetStrength,
       beatConfidence: isBeat ? 0.9 : 0.2,
       isBeat,
+      isKick,
+      kickIntensity,
+      isDrop,
+      dropIntensity,
+      musicMode,
       frequencyData: this.frequencyData,
       timeDomainData: this.timeDomainData,
     };
