@@ -1,6 +1,6 @@
 /**
  * Synwave Header Component
- * Top navigation bar with file/folder pickers, quick demo track loader, and drawer toggles.
+ * Top navigation bar attached to window edge with auto-hide behavior.
  */
 
 import React, { useRef } from 'react';
@@ -9,31 +9,30 @@ import {
   FileAudio,
   Sliders,
   ListMusic,
-  Activity,
-  Sparkles,
 } from 'lucide-react';
-import type { AnalysisStatus } from '../types';
 
 interface HeaderProps {
   currentTrackTitle?: string;
-  analysisStatus: AnalysisStatus;
   isPlaylistOpen: boolean;
   isInspectorOpen: boolean;
+  isVisible: boolean;
   onTogglePlaylist: () => void;
   onToggleInspector: () => void;
   onFilesSelected: (files: FileList | File[]) => void;
-  onLoadTestTrack: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentTrackTitle,
-  analysisStatus,
   isPlaylistOpen,
   isInspectorOpen,
+  isVisible,
   onTogglePlaylist,
   onToggleInspector,
   onFilesSelected,
-  onLoadTestTrack,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -44,21 +43,12 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const getStatusBadge = () => {
-    switch (analysisStatus) {
-      case 'analysing':
-        return <span className="status-badge status-analysing"><Activity size={12} className="spin" /> ANALYSING</span>;
-      case 'ready':
-        return <span className="status-badge status-ready"><Sparkles size={12} /> SYNC READY</span>;
-      case 'partial':
-        return <span className="status-badge status-partial">LIVE FALLBACK</span>;
-      default:
-        return null;
-    }
-  };
-
   return (
-    <header className="synwave-header glass-panel">
+    <header
+      className={`synwave-header glass-panel ${isVisible || isPlaylistOpen || isInspectorOpen ? 'visible' : ''}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       {/* Brand */}
       <div className="header-brand">
         <div className="brand-logo">
@@ -67,9 +57,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
         <div className="brand-text">
           <span className="brand-title">SYNWAVE</span>
-          <span className="brand-subtitle">
-            {currentTrackTitle ? `PLAYING: ${currentTrackTitle.toUpperCase()}` : 'PROCEDURAL VISUALIZER'}
-          </span>
+          {currentTrackTitle && (
+            <span className="brand-subtitle" title={currentTrackTitle}>
+              {currentTrackTitle.length > 36
+                ? `${currentTrackTitle.substring(0, 36)}...`
+                : currentTrackTitle}
+            </span>
+          )}
         </div>
       </div>
 
@@ -112,17 +106,6 @@ export const Header: React.FC<HeaderProps> = ({
           <FolderOpen size={16} />
           <span>Open Folder</span>
         </button>
-
-        <button
-          className="btn btn-accent"
-          onClick={onLoadTestTrack}
-          title="Load test track from My Music folder"
-        >
-          <Sparkles size={16} />
-          <span>My Music: Waves</span>
-        </button>
-
-        {getStatusBadge()}
       </div>
 
       {/* Right Drawer Toggles */}

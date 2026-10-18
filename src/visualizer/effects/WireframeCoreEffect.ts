@@ -47,15 +47,17 @@ export class WireframeCoreEffect extends BaseEffect {
     this.coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
     this.group.add(this.coreMesh);
 
-    // Inner glowing solid octahedron
-    const innerGeometry = new THREE.OctahedronGeometry(2.0, 0);
+    // Inner glowing solid crystal octahedron
+    const innerGeometry = new THREE.OctahedronGeometry(1.8, 0);
     this.disposables.push(innerGeometry);
 
-    const innerMaterial = new THREE.MeshBasicMaterial({
+    const innerMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.secondary),
-      wireframe: true,
-      transparent: true,
-      opacity: 0.7,
+      emissive: new THREE.Color(palette.secondary),
+      emissiveIntensity: 0.9,
+      roughness: 0.1,
+      metalness: 0.9,
+      flatShading: true,
     });
     this.disposables.push(innerMaterial);
 

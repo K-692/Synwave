@@ -1,20 +1,20 @@
 /**
  * Synwave 3D Procedural Visual Engine
- * Orchestrates Three.js rendering pipeline, dynamic camera, layered effect choreography,
- * autonomous director scheduling, and color palette transitions.
+ * Orchestrates Three.js rendering pipeline, dynamic camera, 100+ procedural effect combinations,
+ * intelligent scene choreographer, and automatic music-mood color transitions.
  */
 
 import * as THREE from 'three';
 import type {
   AudioFeatures,
   ColorPalette,
+  QualityPreset,
   SectionType,
   TrackAnalysis,
   VisualEffect,
   VisualEffectContext,
-  VisualSettings,
 } from '../types';
-import { getPaletteById } from './palettes';
+import { COLOR_PALETTES } from './palettes';
 import { StarfieldEffect } from './effects/StarfieldEffect';
 import { WireframeCoreEffect } from './effects/WireframeCoreEffect';
 import { WaveformRingEffect } from './effects/WaveformRingEffect';
@@ -22,6 +22,87 @@ import { SpectrumBarsEffect } from './effects/SpectrumBarsEffect';
 import { AudioRibbonsEffect } from './effects/AudioRibbonsEffect';
 import { LaserBeamsEffect } from './effects/LaserBeamsEffect';
 import { ShockwaveRingEffect } from './effects/ShockwaveRingEffect';
+import { TerrainGridEffect } from './effects/TerrainGridEffect';
+import { TorusKnotEffect } from './effects/TorusKnotEffect';
+import { DNAHelixEffect } from './effects/DNAHelixEffect';
+import { ParticleVortexEffect } from './effects/ParticleVortexEffect';
+
+// Curated Cinematic Scenes (Ensuring pristine composition and zero clutter)
+export interface VisualSceneConfig {
+  id: string;
+  name: string;
+  activeEffectIds: string[];
+  cameraDistance: number;
+  cameraElevation: number;
+  cameraOrbitSpeed: number;
+}
+
+const CINEMATIC_SCENES: VisualSceneConfig[] = [
+  {
+    id: 'cyber-horizon',
+    name: 'RETRO HORIZON',
+    activeEffectIds: ['terrain-grid', 'spectrum-bars', 'starfield-warp'],
+    cameraDistance: 22.0,
+    cameraElevation: 2.5,
+    cameraOrbitSpeed: 0.12,
+  },
+  {
+    id: 'crystalline-core',
+    name: 'CRYSTAL SINGULARITY',
+    activeEffectIds: ['wireframe-core', 'waveform-ring', 'starfield-warp', 'shockwave-rings'],
+    cameraDistance: 23.0,
+    cameraElevation: 3.5,
+    cameraOrbitSpeed: 0.22,
+  },
+  {
+    id: 'hyperdrive-warp',
+    name: 'HYPERDRIVE DROP',
+    activeEffectIds: ['starfield-warp', 'laser-beams', 'shockwave-rings'],
+    cameraDistance: 19.0,
+    cameraElevation: 2.0,
+    cameraOrbitSpeed: 0.35,
+  },
+  {
+    id: 'fluid-aurora',
+    name: 'FLUID AURORA',
+    activeEffectIds: ['audio-ribbons', 'waveform-ring', 'starfield-warp'],
+    cameraDistance: 24.0,
+    cameraElevation: 4.0,
+    cameraOrbitSpeed: 0.15,
+  },
+  {
+    id: 'torus-dimension',
+    name: 'TORUS KNOT',
+    activeEffectIds: ['torus-knot', 'laser-beams', 'starfield-warp', 'shockwave-rings'],
+    cameraDistance: 21.0,
+    cameraElevation: 3.0,
+    cameraOrbitSpeed: 0.25,
+  },
+  {
+    id: 'dna-symphony',
+    name: 'DNA HELIX',
+    activeEffectIds: ['dna-helix', 'particle-vortex', 'shockwave-rings'],
+    cameraDistance: 22.0,
+    cameraElevation: 2.5,
+    cameraOrbitSpeed: 0.18,
+  },
+  {
+    id: 'quantum-vortex',
+    name: 'QUANTUM VORTEX',
+    activeEffectIds: ['particle-vortex', 'waveform-ring', 'terrain-grid'],
+    cameraDistance: 24.0,
+    cameraElevation: 5.0,
+    cameraOrbitSpeed: 0.2,
+  },
+  {
+    id: 'stadium-concert',
+    name: 'STADIUM ARENA',
+    activeEffectIds: ['terrain-grid', 'spectrum-bars', 'laser-beams', 'shockwave-rings'],
+    cameraDistance: 25.0,
+    cameraElevation: 4.5,
+    cameraOrbitSpeed: 0.28,
+  },
+];
 
 export class VisualEngine {
   private canvas: HTMLCanvasElement;
@@ -37,6 +118,7 @@ export class VisualEngine {
   // Effects Catalogue
   private effects: VisualEffect[] = [];
   private activePalette: ColorPalette;
+  private targetPalette: ColorPalette;
 
   // Animation and Timing
   private animationFrameId: number | null = null;
@@ -44,39 +126,29 @@ export class VisualEngine {
   private trackSeed = 42;
   private trackAnalysis: TrackAnalysis | null = null;
 
+  // Scene Choreography
+  private currentSceneIndex = 0;
+  private sceneTimer = 0;
+  private lastDetectedSection = '';
+
   // Camera dynamics
-  private cameraBaseDistance = 24.0;
   private cameraAngle = 0;
   private cameraTargetFov = 60;
   private mouseX = 0;
   private mouseY = 0;
 
   // Settings
-  private settings: VisualSettings = {
-    effectIntensity: 1.0,
-    cameraSpeed: 1.0,
-    bloomGlow: true,
-    wireframe: false,
-    paletteId: 'cyberpunk-neon',
-    quality: 'high',
-    directorMode: 'auto',
-    activeEffects: [
-      'starfield-warp',
-      'wireframe-core',
-      'waveform-ring',
-      'spectrum-bars',
-      'audio-ribbons',
-      'laser-beams',
-      'shockwave-rings',
-    ],
-  };
+  private quality: QualityPreset = 'high';
+  private effectIntensity = 1.0;
+  private cameraSpeedMultiplier = 1.0;
 
   // Live state callback
   public onCurrentSectionChange?: (section: string) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.activePalette = getPaletteById(this.settings.paletteId);
+    this.activePalette = { ...COLOR_PALETTES[0] };
+    this.targetPalette = { ...COLOR_PALETTES[0] };
     this.initThree();
     this.initEffects();
     this.setupWindowListeners();
@@ -91,37 +163,37 @@ export class VisualEngine {
       antialias: true,
       alpha: false,
       powerPreference: 'high-performance',
-      preserveDrawingBuffer: true, // Allows high-res screenshots
+      preserveDrawingBuffer: true,
     });
 
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.activePalette.background);
-    this.scene.fog = new THREE.FogExp2(this.activePalette.background, 0.015);
+    this.scene.fog = new THREE.FogExp2(this.activePalette.background, 0.016);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 500);
-    this.camera.position.set(0, 4, this.cameraBaseDistance);
+    this.camera.position.set(0, 3.5, 23.0);
     this.camera.lookAt(0, 0, 0);
 
     // Dynamic Lighting
     this.ambientLight = new THREE.AmbientLight(this.activePalette.ambientColor, 1.2);
     this.scene.add(this.ambientLight);
 
-    this.pointLight1 = new THREE.PointLight(this.activePalette.primary, 3.0, 50);
-    this.pointLight1.position.set(10, 15, 10);
+    this.pointLight1 = new THREE.PointLight(this.activePalette.primary, 3.5, 50);
+    this.pointLight1.position.set(10, 14, 8);
     this.scene.add(this.pointLight1);
 
-    this.pointLight2 = new THREE.PointLight(this.activePalette.secondary, 2.5, 50);
-    this.pointLight2.position.set(-10, -10, 5);
+    this.pointLight2 = new THREE.PointLight(this.activePalette.secondary, 3.0, 50);
+    this.pointLight2.position.set(-10, -8, 6);
     this.scene.add(this.pointLight2);
   }
 
   private initEffects(): void {
-    // Instantiate modular procedural effect catalogue
+    // 100+ procedural effect combinations across 11 core modular effect architectures
     this.effects = [
       new StarfieldEffect(),
       new WireframeCoreEffect(),
@@ -130,6 +202,10 @@ export class VisualEngine {
       new AudioRibbonsEffect(),
       new LaserBeamsEffect(),
       new ShockwaveRingEffect(),
+      new TerrainGridEffect(),
+      new TorusKnotEffect(),
+      new DNAHelixEffect(),
+      new ParticleVortexEffect(),
     ];
 
     const context = this.createEffectContext(
@@ -154,9 +230,15 @@ export class VisualEngine {
     for (const effect of this.effects) {
       effect.initialize(context);
     }
+
+    this.applyScene(CINEMATIC_SCENES[0]);
   }
 
-  private createEffectContext(features: AudioFeatures, deltaSeconds: number, trackTimeSeconds: number): VisualEffectContext {
+  private createEffectContext(
+    features: AudioFeatures,
+    deltaSeconds: number,
+    trackTimeSeconds: number
+  ): VisualEffectContext {
     return {
       renderer: this.renderer,
       scene: this.scene,
@@ -165,10 +247,9 @@ export class VisualEngine {
       deltaSeconds,
       trackTimeSeconds,
       seed: this.trackSeed,
-      quality: this.settings.quality,
+      quality: this.quality,
       palette: this.activePalette,
-      intensity: this.settings.effectIntensity,
-      wireframeOnly: this.settings.wireframe,
+      intensity: this.effectIntensity,
     };
   }
 
@@ -201,143 +282,202 @@ export class VisualEngine {
   public setTrackProfile(seed: number, analysis?: TrackAnalysis): void {
     this.trackSeed = seed;
     this.trackAnalysis = analysis || null;
+    this.currentSceneIndex = Math.abs(seed) % CINEMATIC_SCENES.length;
+    this.applyScene(CINEMATIC_SCENES[this.currentSceneIndex]);
   }
 
-  /**
-   * Updates visual settings (palette, intensity, mode, effects toggle).
-   */
-  public updateSettings(newSettings: Partial<VisualSettings>): void {
-    this.settings = { ...this.settings, ...newSettings };
+  public setQuality(quality: QualityPreset): void {
+    this.quality = quality;
+  }
 
-    if (newSettings.paletteId) {
-      this.activePalette = getPaletteById(newSettings.paletteId);
-      this.scene.background = new THREE.Color(this.activePalette.background);
-      if (this.scene.fog) {
-        (this.scene.fog as THREE.FogExp2).color.set(this.activePalette.background);
-      }
-      this.ambientLight.color.set(this.activePalette.ambientColor);
-      this.pointLight1.color.set(this.activePalette.primary);
-      this.pointLight2.color.set(this.activePalette.secondary);
-    }
-
-    if (newSettings.activeEffects) {
-      for (const effect of this.effects) {
-        effect.enabled = this.settings.activeEffects.includes(effect.id);
-      }
+  private applyScene(sceneConfig: VisualSceneConfig): void {
+    for (const effect of this.effects) {
+      effect.enabled = sceneConfig.activeEffectIds.includes(effect.id);
     }
   }
 
   /**
-   * Evaluates the current section and adapts effects according to the visual director plan.
+   * Automatic Music-Mood Driven Color Palette Evaluator.
+   * Smoothly transitions lighting and scene colors according to audio dynamics.
    */
-  private evaluateAutonomousDirector(trackTimeSeconds: number, features: AudioFeatures): void {
-    if (this.settings.directorMode !== 'auto') return;
+  private evaluateMusicMoodPalette(features: AudioFeatures, deltaSeconds: number): void {
+    const energy = features.rms * 0.4 + features.bass * 0.6;
+    const brightness = features.spectralCentroid;
 
-    let currentSectionType: SectionType = 'build';
-    let currentLabel = 'DIRECTOR: ACTIVE';
+    // Pick target palette based on audio mood
+    let targetIndex = 0;
+    if (energy > 0.62 || features.isBeat) {
+      targetIndex = 4; // Solar Flare (fiery, intense drop)
+    } else if (energy > 0.42) {
+      targetIndex = 0; // Cyberpunk Neon (cyan/magenta groove)
+    } else if (brightness > 0.55) {
+      targetIndex = 2; // Matrix Emerald (high treble / bright)
+    } else if (features.lowMid > 0.35) {
+      targetIndex = 1; // Synthwave Sunset (warm mid-range)
+    } else {
+      targetIndex = 3; // Deep Space (chill, ambient, dark)
+    }
+
+    this.targetPalette = COLOR_PALETTES[targetIndex];
+
+    // Smoothly interpolate active colors with delta time (no jarring pops!)
+    const lerpRate = deltaSeconds * 2.5;
+    const bgCol = new THREE.Color(this.activePalette.background);
+    const targetBgCol = new THREE.Color(this.targetPalette.background);
+    bgCol.lerp(targetBgCol, lerpRate);
+    this.activePalette.background = `#${bgCol.getHexString()}`;
+
+    if (this.scene.background) {
+      (this.scene.background as THREE.Color).lerp(targetBgCol, lerpRate);
+    }
+    if (this.scene.fog) {
+      (this.scene.fog as THREE.FogExp2).color.lerp(targetBgCol, lerpRate);
+    }
+
+    const primCol = new THREE.Color(this.activePalette.primary);
+    const targetPrimCol = new THREE.Color(this.targetPalette.primary);
+    primCol.lerp(targetPrimCol, lerpRate);
+    this.activePalette.primary = `#${primCol.getHexString()}`;
+
+    const secCol = new THREE.Color(this.activePalette.secondary);
+    const targetSecCol = new THREE.Color(this.targetPalette.secondary);
+    secCol.lerp(targetSecCol, lerpRate);
+    this.activePalette.secondary = `#${secCol.getHexString()}`;
+
+    const ambCol = new THREE.Color(this.activePalette.ambientColor);
+    const targetAmbCol = new THREE.Color(this.targetPalette.ambientColor);
+    ambCol.lerp(targetAmbCol, lerpRate);
+    this.activePalette.ambientColor = `#${ambCol.getHexString()}`;
+    this.ambientLight.color.lerp(targetAmbCol, lerpRate);
+
+    this.pointLight1.color.lerp(targetPrimCol, lerpRate);
+    this.pointLight2.color.lerp(targetSecCol, lerpRate);
+  }
+
+  /**
+   * Smart Scene Choreographer:
+   * Dynamically coordinates scene transitions on musical section boundaries or phrase intervals.
+   */
+  private updateSmartChoreographer(
+    trackTimeSeconds: number,
+    features: AudioFeatures,
+    deltaSeconds: number
+  ): void {
+    let sectionType: SectionType = 'build';
+    let sectionLabel = 'GROOVE';
 
     if (this.trackAnalysis && this.trackAnalysis.sections.length > 0) {
       const activeSection = this.trackAnalysis.sections.find(
         (s) => trackTimeSeconds >= s.startTime && trackTimeSeconds < s.endTime
       );
       if (activeSection) {
-        currentSectionType = activeSection.type;
-        currentLabel = activeSection.label;
+        sectionType = activeSection.type;
+        sectionLabel = activeSection.label;
       }
     } else {
-      // Live fallback based on energy
+      // Dynamic live inference
       if (features.bass > 0.65 || features.rms > 0.6) {
-        currentSectionType = 'drop';
-        currentLabel = 'LIVE: DROP / CLIMAX';
-      } else if (features.rms < 0.25) {
-        currentSectionType = 'intro';
-        currentLabel = 'LIVE: AMBIENT';
+        sectionType = 'drop';
+        sectionLabel = 'CLIMAX / DROP';
+      } else if (features.rms < 0.22) {
+        sectionType = 'intro';
+        sectionLabel = 'AMBIENT';
       } else {
-        currentSectionType = 'build';
-        currentLabel = 'LIVE: GROOVE';
+        sectionType = 'build';
+        sectionLabel = 'RHYTHM';
       }
     }
 
-    this.onCurrentSectionChange?.(currentLabel);
+    this.onCurrentSectionChange?.(sectionLabel);
 
-    // Apply choreography based on section type
-    for (const effect of this.effects) {
-      switch (currentSectionType) {
+    // If section changed, pick a fitting scene
+    if (sectionLabel !== this.lastDetectedSection) {
+      this.lastDetectedSection = sectionLabel;
+      this.sceneTimer = 0;
+
+      switch (sectionType) {
         case 'intro':
-        case 'outro':
-          // Soft ambient atmosphere: starfield, waveforms, gentle ribbons
-          if (['starfield-warp', 'waveform-ring', 'audio-ribbons'].includes(effect.id)) {
-            effect.enabled = true;
-            effect.setIntensity(this.settings.effectIntensity * 0.7);
-          } else {
-            effect.enabled = false;
-          }
+          this.switchScene('fluid-aurora');
           break;
-
         case 'build':
-          // Rising energy: add geometric core, lasers, bars
-          effect.enabled = true;
-          effect.setIntensity(this.settings.effectIntensity * 1.0);
+          this.switchScene('torus-dimension');
           break;
-
         case 'drop':
-          // Maximum intensity: all visual weapons firing!
-          effect.enabled = true;
-          effect.setIntensity(this.settings.effectIntensity * 1.5);
+          this.switchScene('hyperdrive-warp');
           break;
-
         case 'breakdown':
-          // Stripped back for breathing room
-          if (['laser-beams', 'shockwave-rings'].includes(effect.id)) {
-            effect.enabled = false;
-          } else {
-            effect.enabled = true;
-            effect.setIntensity(this.settings.effectIntensity * 0.8);
-          }
+          this.switchScene('dna-symphony');
           break;
+        case 'outro':
+          this.switchScene('cyber-horizon');
+          break;
+      }
+    } else {
+      // Natural phrase interval switch (every ~26 seconds if in long section)
+      this.sceneTimer += deltaSeconds;
+      if (this.sceneTimer > 26.0) {
+        this.sceneTimer = 0;
+        this.currentSceneIndex = (this.currentSceneIndex + 1) % CINEMATIC_SCENES.length;
+        this.applyScene(CINEMATIC_SCENES[this.currentSceneIndex]);
       }
     }
   }
 
+  private switchScene(sceneId: string): void {
+    const idx = CINEMATIC_SCENES.findIndex((s) => s.id === sceneId);
+    if (idx !== -1) {
+      this.currentSceneIndex = idx;
+      this.applyScene(CINEMATIC_SCENES[idx]);
+    }
+  }
+
   /**
-   * Main per-frame render loop. Evaluates live audio features and authoritative clock.
+   * Main per-frame render loop.
    */
   public renderFrame(getLiveFeatures: () => AudioFeatures, getCurrentTime: () => number): void {
     const now = performance.now();
-    const deltaSeconds = Math.min(0.1, (now - this.lastFrameTime) / 1000);
+    const deltaSeconds = Math.min(0.08, (now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
 
     const trackTimeSeconds = getCurrentTime();
     const features = getLiveFeatures();
 
-    // Autonomous Director logic
-    this.evaluateAutonomousDirector(trackTimeSeconds, features);
+    // 1. Music-Mood Palette Update
+    this.evaluateMusicMoodPalette(features, deltaSeconds);
 
-    // Camera Motion & Punchy Audio FOV Pulse
-    this.cameraAngle += deltaSeconds * 0.15 * this.settings.cameraSpeed * (1 + features.rms * 0.5);
+    // 2. Smart Scene Choreographer
+    this.updateSmartChoreographer(trackTimeSeconds, features, deltaSeconds);
 
-    const orbitRadius = this.cameraBaseDistance + (features.bass * 2.5);
-    const targetCamX = Math.sin(this.cameraAngle) * orbitRadius + this.mouseX * 3.0;
+    // 3. Cinematic Camera Movement
+    const sceneConfig = CINEMATIC_SCENES[this.currentSceneIndex];
+    this.cameraAngle +=
+      deltaSeconds *
+      sceneConfig.cameraOrbitSpeed *
+      this.cameraSpeedMultiplier *
+      (1 + features.rms * 0.4);
+
+    const orbitRadius = sceneConfig.cameraDistance + features.bass * 2.0;
+    const targetCamX = Math.sin(this.cameraAngle) * orbitRadius + this.mouseX * 2.5;
     const targetCamZ = Math.cos(this.cameraAngle) * orbitRadius;
-    const targetCamY = 3.0 + Math.sin(this.cameraAngle * 0.5) * 2.0 + this.mouseY * 2.0;
+    const targetCamY = sceneConfig.cameraElevation + Math.sin(this.cameraAngle * 0.5) * 1.5 + this.mouseY * 1.8;
 
-    this.camera.position.x += (targetCamX - this.camera.position.x) * deltaSeconds * 4.0;
-    this.camera.position.y += (targetCamY - this.camera.position.y) * deltaSeconds * 4.0;
-    this.camera.position.z += (targetCamZ - this.camera.position.z) * deltaSeconds * 4.0;
+    this.camera.position.x += (targetCamX - this.camera.position.x) * deltaSeconds * 3.5;
+    this.camera.position.y += (targetCamY - this.camera.position.y) * deltaSeconds * 3.5;
+    this.camera.position.z += (targetCamZ - this.camera.position.z) * deltaSeconds * 3.5;
     this.camera.lookAt(0, 0, 0);
 
-    // Audio-reactive punchy FOV kick on beat
-    const beatFovBoost = features.isBeat ? 4.5 : features.bass * 2.0;
+    // Dynamic Micro-FOV Pulse on beat
+    const beatFovBoost = features.isBeat ? 3.5 : features.bass * 1.5;
     const desiredFov = 60 + beatFovBoost;
-    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 12.0;
+    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 10.0;
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // Point lights dynamic pulsation
-    this.pointLight1.intensity = 2.0 + features.bass * 4.0;
-    this.pointLight2.intensity = 1.8 + features.highMid * 3.5;
+    // Lights pulsation
+    this.pointLight1.intensity = 2.5 + features.bass * 3.5;
+    this.pointLight2.intensity = 2.0 + features.highMid * 3.0;
 
-    // Render all active procedural effects
+    // 4. Update and render active effects
     const context = this.createEffectContext(features, deltaSeconds, trackTimeSeconds);
     for (const effect of this.effects) {
       if (effect.enabled) {
@@ -345,13 +485,10 @@ export class VisualEngine {
       }
     }
 
-    // Three.js Render pass
+    // 5. Render Three.js pass
     this.renderer.render(this.scene, this.camera);
   }
 
-  /**
-   * Starts the continuous rendering animation loop.
-   */
   public start(getLiveFeatures: () => AudioFeatures, getCurrentTime: () => number): void {
     const loop = () => {
       this.renderFrame(getLiveFeatures, getCurrentTime);
@@ -367,13 +504,6 @@ export class VisualEngine {
     }
   }
 
-  /**
-   * Captures a high-resolution PNG screenshot of the current visual frame.
-   */
-  public captureSnapshot(): string {
-    return this.renderer.domElement.toDataURL('image/png');
-  }
-
   public getEffectsList(): { id: string; name: string; family: string; enabled: boolean }[] {
     return this.effects.map((e) => ({
       id: e.id,
@@ -387,12 +517,18 @@ export class VisualEngine {
     const effect = this.effects.find((e) => e.id === id);
     if (effect) {
       effect.enabled = enabled !== undefined ? enabled : !effect.enabled;
-      if (effect.enabled && !this.settings.activeEffects.includes(id)) {
-        this.settings.activeEffects.push(id);
-      } else if (!effect.enabled) {
-        this.settings.activeEffects = this.settings.activeEffects.filter((x) => x !== id);
-      }
     }
+  }
+
+  public setEffectIntensity(val: number): void {
+    this.effectIntensity = Math.max(0.5, Math.min(2.5, val));
+    for (const effect of this.effects) {
+      effect.setIntensity(this.effectIntensity);
+    }
+  }
+
+  public setCameraSpeed(val: number): void {
+    this.cameraSpeedMultiplier = Math.max(0.2, Math.min(2.5, val));
   }
 
   public dispose(): void {

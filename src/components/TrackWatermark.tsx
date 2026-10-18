@@ -1,11 +1,11 @@
 /**
  * Synwave Canvas HUD & Track Watermark
- * On-canvas overlay showing the song title, artist, live beat flash indicator, and current section badge.
+ * Elegant, cinematic on-canvas watermark that auto-fades to subtle opacity.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { TrackRecord } from '../types';
-import { Sparkles, Radio } from 'lucide-react';
+import { Radio } from 'lucide-react';
 
 interface TrackWatermarkProps {
   currentTrack: TrackRecord | null;
@@ -18,27 +18,42 @@ export const TrackWatermark: React.FC<TrackWatermarkProps> = ({
   currentSection,
   isPlaying,
 }) => {
+  const [isFresh, setIsFresh] = useState(true);
+
+  // When track changes, highlight for 5 seconds then settle into subtle watermark
+  useEffect(() => {
+    setIsFresh(true);
+    const timer = setTimeout(() => {
+      setIsFresh(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [currentTrack?.id]);
+
   if (!currentTrack) return null;
 
+  // Clean title display (truncate if abnormally long)
+  const displayTitle = currentTrack.title.length > 50
+    ? `${currentTrack.title.substring(0, 48)}...`
+    : currentTrack.title;
+
   return (
-    <div className="track-watermark-hud">
+    <div className={`track-watermark-hud ${isFresh ? 'fresh' : 'subtle'}`}>
       <div className="hud-header">
         <div className="live-indicator">
           <span className={`live-dot ${isPlaying ? 'pulsing' : ''}`} />
-          <Radio size={13} className="live-icon" />
-          <span className="live-text">{isPlaying ? 'LIVE AUDIO' : 'PAUSED'}</span>
+          <Radio size={12} className="live-icon" />
+          <span className="live-text">{isPlaying ? 'LIVE' : 'PAUSED'}</span>
         </div>
 
         {currentSection && (
           <div className="section-pill">
-            <Sparkles size={11} />
             <span>{currentSection}</span>
           </div>
         )}
       </div>
 
       <div className="hud-title-wrap">
-        <h1 className="hud-title">{currentTrack.title}</h1>
+        <h2 className="hud-title" title={currentTrack.title}>{displayTitle}</h2>
         <p className="hud-artist">{currentTrack.artist}</p>
       </div>
     </div>

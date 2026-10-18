@@ -1,6 +1,6 @@
 /**
  * Synwave Main Application Component
- * Coordinates AudioEngine, VisualEngine, Track Queue, Background Analysis, and Glassmorphic UI.
+ * Coordinates AudioEngine, VisualEngine, Track Queue, and Auto-Hiding Edge-Attached Controls.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -13,7 +13,6 @@ import { AudioEngine } from './audio/AudioEngine';
 import { AudioAnalyzer } from './audio/AudioAnalyzer';
 import { VisualEngine } from './visualizer/VisualEngine';
 import type {
-  DirectorMode,
   QualityPreset,
   RepeatMode,
   TrackRecord,
@@ -50,10 +49,15 @@ export const App: React.FC = () => {
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
+  // UI Visibility & Auto-Hide State
+  const [isTopBarVisible, setIsTopBarVisible] = useState(false);
+  const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
+  const hideTimerRef = useRef<number | null>(null);
+
   // UI Drawer State
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
-  const [currentSection, setCurrentSection] = useState('DIRECTOR: INITIALIZING');
+  const [currentSection, setCurrentSection] = useState('GROOVE');
 
   // Visual Settings
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
@@ -72,6 +76,10 @@ export const App: React.FC = () => {
       'audio-ribbons',
       'laser-beams',
       'shockwave-rings',
+      'terrain-grid',
+      'torus-knot',
+      'dna-helix',
+      'particle-vortex',
     ],
   });
 
@@ -79,7 +87,53 @@ export const App: React.FC = () => {
     { id: string; name: string; family: string; enabled: boolean }[]
   >([]);
 
-  // 1. Initialize Audio Engine and Visual Engine
+  // 1. Mouse Hover & Auto-Hide Logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const topThreshold = 65;
+      const bottomThreshold = window.innerHeight - 75;
+
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+
+      if (e.clientY <= topThreshold) {
+        setIsTopBarVisible(true);
+        setIsBottomBarVisible(false);
+      } else if (e.clientY >= bottomThreshold) {
+        setIsBottomBarVisible(true);
+        setIsTopBarVisible(false);
+      } else {
+        // If cursor is in the middle of canvas, schedule auto-hide after 1.8 seconds
+        hideTimerRef.current = setTimeout(() => {
+          setIsTopBarVisible(false);
+          setIsBottomBarVisible(false);
+        }, 1800);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+      setIsTopBarVisible(false);
+      setIsBottomBarVisible(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
+
+  // 2. Initialize Audio Engine and Visual Engine
   useEffect(() => {
     const audioEngine = new AudioEngine();
     audioEngineRef.current = audioEngine;
@@ -119,13 +173,12 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // 2. Background Track Analysis Trigger
+  // 3. Background Track Analysis Trigger
   const triggerBackgroundAnalysis = useCallback(async (track: TrackRecord) => {
     if (track.analysisStatus === 'ready' || track.analysisStatus === 'analysing') {
       return;
     }
 
-    // Mark as analysing
     setTracks((prev) =>
       prev.map((t) => (t.id === track.id ? { ...t, analysisStatus: 'analysing' } : t))
     );
@@ -149,7 +202,6 @@ export const App: React.FC = () => {
         )
       );
 
-      // If this is the current track, feed analysis and deterministic seed to visualizer
       if (currentTrack?.id === track.id) {
         visualEngineRef.current?.setTrackProfile(track.seed, analysis);
         if (!duration && analysis.durationSeconds > 0) {
@@ -170,14 +222,12 @@ export const App: React.FC = () => {
       setCurrentTrack(track);
       setCurrentTime(0);
 
-      // Deterministic seed for this song
       visualEngineRef.current?.setTrackProfile(track.seed, track.analysis);
 
       if (audioEngineRef.current) {
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
       }
 
-      // Trigger background pre-analysis
       triggerBackgroundAnalysis(track);
     },
     [triggerBackgroundAnalysis]
@@ -197,7 +247,7 @@ export const App: React.FC = () => {
     };
   }, [repeatMode, tracks, currentTrack]);
 
-  // 3. Transport Handlers
+  // 4. Transport Handlers
   const handlePlayPause = () => {
     if (!audioEngineRef.current) return;
     if (isPlaying) {
@@ -253,26 +303,19 @@ export const App: React.FC = () => {
     setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
   };
 
-  // 4. Visual Settings Handlers
-  const handleSelectPalette = (paletteId: string) => {
-    setVisualSettings((prev) => ({ ...prev, paletteId }));
-    visualEngineRef.current?.updateSettings({ paletteId });
-  };
-
   const handleSelectQuality = (quality: QualityPreset) => {
     setVisualSettings((prev) => ({ ...prev, quality }));
-    visualEngineRef.current?.updateSettings({ quality });
-  };
-
-  const handleToggleDirectorMode = () => {
-    const newMode: DirectorMode = visualSettings.directorMode === 'auto' ? 'manual' : 'auto';
-    setVisualSettings((prev) => ({ ...prev, directorMode: newMode }));
-    visualEngineRef.current?.updateSettings({ directorMode: newMode });
+    visualEngineRef.current?.setQuality(quality);
   };
 
   const handleUpdateVisualSettings = (newSettings: Partial<VisualSettings>) => {
     setVisualSettings((prev) => ({ ...prev, ...newSettings }));
-    visualEngineRef.current?.updateSettings(newSettings);
+    if (newSettings.effectIntensity !== undefined) {
+      visualEngineRef.current?.setEffectIntensity(newSettings.effectIntensity);
+    }
+    if (newSettings.cameraSpeed !== undefined) {
+      visualEngineRef.current?.setCameraSpeed(newSettings.cameraSpeed);
+    }
   };
 
   const handleToggleEffect = (id: string) => {
@@ -282,35 +325,22 @@ export const App: React.FC = () => {
     }
   };
 
-  // 5. High-Resolution Screenshot Snapshot
-  const handleTakeSnapshot = () => {
-    if (!visualEngineRef.current) return;
-    const dataUrl = visualEngineRef.current.captureSnapshot();
-    const link = document.createElement('a');
-    link.download = `synwave-${currentTrack?.title || 'visual'}-${Date.now()}.png`;
-    link.href = dataUrl;
-    link.click();
-  };
-
-  // 6. Ingest Selected Files from Local Disk or Folder
+  // Ingest Selected Files from Local Disk or Folder
   const handleFilesSelected = (fileList: FileList | File[]) => {
     const newTracks: TrackRecord[] = [];
     const filesArray = Array.from(fileList);
 
     for (const file of filesArray) {
-      // Filter for audio extensions
       if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i)) {
         continue;
       }
 
-      // Generate seed deterministically from filename string
       let hash = 0;
       for (let i = 0; i < file.name.length; i++) {
         hash = (hash << 5) - hash + file.name.charCodeAt(i);
         hash |= 0;
       }
 
-      // Clean title and artist from filename
       const baseName = file.name.replace(/\.[^/.]+$/, '');
       const parts = baseName.split(' - ');
       const artist = parts.length > 1 ? parts[0].trim() : 'Local Audio';
@@ -321,7 +351,7 @@ export const App: React.FC = () => {
         name: file.name,
         title,
         artist,
-        album: 'Local Folder',
+        album: 'Local Library',
         duration: 0,
         url: URL.createObjectURL(file),
         sizeBytes: file.size,
@@ -335,7 +365,6 @@ export const App: React.FC = () => {
 
     if (newTracks.length > 0) {
       setTracks((prev) => [...prev, ...newTracks]);
-      // If nothing is playing or queue was only initial default, start playing first newly added track
       loadTrack(newTracks[0], true);
     }
   };
@@ -345,23 +374,23 @@ export const App: React.FC = () => {
       {/* Three.js 3D Procedural Canvas */}
       <canvas ref={canvasRef} className="visualizer-canvas" />
 
-      {/* On-Canvas Cinematic HUD */}
+      {/* On-Canvas Cinematic Watermark HUD */}
       <TrackWatermark
         currentTrack={currentTrack}
         currentSection={currentSection}
         isPlaying={isPlaying}
       />
 
-      {/* Top Header Bar */}
+      {/* Top Header Bar (Attached flush to window top, auto-hides) */}
       <Header
         currentTrackTitle={currentTrack?.title}
-        analysisStatus={currentTrack?.analysisStatus || 'unscanned'}
         isPlaylistOpen={isPlaylistOpen}
         isInspectorOpen={isInspectorOpen}
+        isVisible={isTopBarVisible}
         onTogglePlaylist={() => setIsPlaylistOpen((prev) => !prev)}
         onToggleInspector={() => setIsInspectorOpen((prev) => !prev)}
         onFilesSelected={handleFilesSelected}
-        onLoadTestTrack={() => loadTrack(BUNDLED_TEST_TRACK, true)}
+        onMouseEnter={() => setIsTopBarVisible(true)}
       />
 
       {/* Left Drawer: Playlist & Library */}
@@ -410,7 +439,7 @@ export const App: React.FC = () => {
         detectedBpm={currentTrack?.analysis?.estimatedBpm || 0}
       />
 
-      {/* Bottom Transport Player Dock */}
+      {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}
       <PlayerControls
         currentTrack={currentTrack}
         isPlaying={isPlaying}
@@ -420,9 +449,8 @@ export const App: React.FC = () => {
         isMuted={isMuted}
         shuffle={shuffle}
         repeatMode={repeatMode}
-        selectedPaletteId={visualSettings.paletteId}
         quality={visualSettings.quality}
-        directorMode={visualSettings.directorMode}
+        isVisible={isBottomBarVisible}
         onPlayPause={handlePlayPause}
         onPrevious={handlePreviousTrack}
         onNext={handleNextTrack}
@@ -431,10 +459,8 @@ export const App: React.FC = () => {
         onToggleMute={handleToggleMute}
         onToggleShuffle={handleToggleShuffle}
         onToggleRepeat={handleToggleRepeat}
-        onSelectPalette={handleSelectPalette}
         onSelectQuality={handleSelectQuality}
-        onToggleDirectorMode={handleToggleDirectorMode}
-        onTakeSnapshot={handleTakeSnapshot}
+        onMouseEnter={() => setIsBottomBarVisible(true)}
       />
     </div>
   );

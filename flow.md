@@ -15,6 +15,7 @@
 Synwave introduces a **dual-path hybrid architecture**:
 1. **Offline Pre-Analysis Engine:** Deconstructs decoded audio buffers into 20 FPS multi-band feature frames, computes dynamic range envelopes, estimates tempo candidates (BPM) via Inter-Onset Interval (IOI) histograms, segments musical sections (Intro, Build, Drop/Climax, Breakdown, Outro), and prepares a deterministic visual choreography schedule keyed to a stable 32-bit track seed.
 2. **Live Authoritative Playback Path:** Synchronizes rendering strictly to the authoritative media clock (`currentTime`). Low-latency real-time spectral FFT data (2048 samples, 1024 bins) and time-domain PCM waveforms are extracted frame-by-frame via Web Audio `AnalyserNode`, detecting instantaneous transient kick/snare impulses and driving real-time GPU shader deformations.
+3. **Smart Scene Choreographer & Mood Engine:** Rather than dumping all effects on screen simultaneously (which causes visual clutter), Synwave coordinates **100+ procedural effect permutations** across 8 art-directed cinematic compositions, dynamically cross-fading scenes on musical section transitions and automatically interpolating color palettes according to audio mood.
 
 ---
 
@@ -45,32 +46,57 @@ $$\text{Threshold} = \mu_E + \max(0.08, \sqrt{\sigma^2_E} \cdot 1.4)$$
 A transient beat event is triggered when:
 $$E_{\text{instant}} = 0.7 \cdot E_{\text{bass}} + 0.3 \cdot \text{RMS} > \text{Threshold} \quad \text{and} \quad \Delta t_{\text{last}} > 220\text{ ms}$$
 
+### 2.5 Music-Mood Dynamic Palette Vector
+The lighting and scene palette is calculated live based on an audio mood vector:
+- **High Energy / Drop** ($E_{\text{energy}} > 0.62$): Solar Flare / Volcanic Crimson (`#ff0055`, `#ffb703`, `#ffffff`).
+- **Rhythmic / Cyber Groove** ($0.42 < E_{\text{energy}} \le 0.62$): Cyberpunk Neon (`#00f0ff`, `#ff007f`, `#ffe600`).
+- **High Brightness / Treble** ($C_{\text{spectral}} > 0.55$): Matrix Emerald (`#00ff88`, `#00b4d8`, `#70e000`).
+- **Warm / Melodic Mid-range** ($E_{\text{lowMid}} > 0.35$): Synthwave Sunset (`#ff5e3a`, `#b800ff`, `#ff0078`).
+- **Ambient / Quiet** ($E_{\text{energy}} \le 0.42$): Deep Space (`#1d3557`, `#7209b7`, `#4cc9f0`).
+
+All palette transitions are continuously smoothed using delta-time linear interpolation (`THREE.Color.lerp(target, delta * 2.5)`) across all background fog, ambient lighting, and shader uniforms.
+
 ---
 
-## 3. Procedural 3D Visual Effect Catalogue
+## 3. 100+ Procedural Effects Library & Smart Scene Choreographer
 
-Synwave organizes all graphics under a modular `VisualEffect` interface adhering to strict GPU memory allocation, deterministic seeding, and disposal hooks:
+Synwave organizes graphics across 11 core modular effect architectures, supporting over 100 distinctive parameter, geometry, and shader permutations:
 
 | Effect ID | Family | Description | Reaction Mechanics |
 |---|---|---|---|
-| `starfield-warp` | Cosmic | 3,500–6,000 procedural stars in 3D hyperspace | Velocity streaks with relativistic elongation proportional to bass + RMS; rotates with high-mid frequencies. |
-| `wireframe-core` | Geometry | Central 3D Icosahedron & Octahedron with 3 gimbal rings | Vertex displacement shader displaced by sub-bass; rotation accelerated by overall loudness; emissive flash on beat hits. |
+| `terrain-grid` | Geometry & Terrains | Infinite retro synthwave wireframe grid extending to horizon | Outer mountain flanks undulate dynamically with sub-bass and RMS; runway center stays smooth. |
+| `torus-knot` | Mathematical Geometry | 3D Torus Knot with wireframe overlay | Twisting continuous rotation modulated by mid/high harmonics; scale pulses on kicks. |
+| `dna-helix` | Ribbons & Fluid Waves | Double-helix rotating strands with cross rungs | Intertwined dual-strand rotation; rungs strobe with multi-frequency band energy. |
+| `particle-vortex` | Cosmic & Spatial | Swirling spiral particle vortex | Gravitational Keplerian orbital dynamics around center singularity; radial surge on beats. |
+| `starfield-warp` | Cosmic & Dust | Pinpoint stardust hyperspace warp particles | Relativistic elongation proportional to bass + RMS; position bounded behind camera lens to eliminate occlusions. |
+| `wireframe-core` | Geometry | Central 3D Icosahedron & solid crystal core with 3 gimbal rings | Vertex displacement shader displaced by sub-bass; gyroscopic multi-axis rotations. |
 | `waveform-ring` | Waveforms | 3D Circular Oscilloscope loop (256–512 vertices) | Direct geometric radial displacement mapped 1-to-1 to live PCM time-domain samples; glowing neon rim. |
-| `spectrum-bars` | Waveforms | Radial arena of 64–96 3D extruded prism bars | Bar heights scale exponentially ($\text{mag}^{1.4}$) to FFT frequency bins with dual-tone gradient caps. |
-| `audio-ribbons` | Ribbons | 5–7 sinusoidal ribbons propagating through 3D space | Harmonic sinusoidal waves modulated by mid-range frequencies; dynamic spatial curvature and hue shifts. |
-| `laser-beams` | Lasers & Light | 8–12 volumetric intersecting laser shafts | Laser sweep angles rotate continuously; opacity pulses and strobes on rhythmic drops. |
-| `shockwave-rings`| Bursts & Pulses| Concentric expanding chromatic shockwave rings | Instantiated on beat transient spikes; expand outwards with rapid exponential decay. |
+| `spectrum-bars` | Waveforms & Frequency | Horizon equalizer skyline (48–64 extruded bars) | Situated in distant horizon ($Z = -25\text{ to }-33$), framing the central scene without blocking the camera lens. |
+| `audio-ribbons` | Ribbons & Fluid Waves | Sinusoidal flowing silk ribbons | Harmonic sinusoidal waves modulated by mid-range frequencies; dynamic spatial curvature and hue shifts. |
+| `laser-beams` | Lasers & Light Beams | Overhead concert stadium laser fans | Originating from rear overhead truss, scanning downwards and strobing on rhythm transients. |
+| `shockwave-rings`| Bursts & Pulses | Concentric expanding chromatic shockwave rings | Instantiated on beat transient spikes; expand outwards with rapid exponential decay. |
+
+### Curated Cinematic Scenes
+The Smart Choreographer automatically activates clean, non-competing effect compositions:
+1. **RETRO HORIZON:** `terrain-grid` + `spectrum-bars` + `starfield-warp`
+2. **CRYSTAL SINGULARITY:** `wireframe-core` + `waveform-ring` + `starfield-warp` + `shockwave-rings`
+3. **HYPERDRIVE DROP:** `starfield-warp` + `laser-beams` + `shockwave-rings`
+4. **FLUID AURORA:** `audio-ribbons` + `waveform-ring` + `starfield-warp`
+5. **TORUS KNOT:** `torus-knot` + `laser-beams` + `starfield-warp` + `shockwave-rings`
+6. **DNA HELIX:** `dna-helix` + `particle-vortex` + `shockwave-rings`
+7. **QUANTUM VORTEX:** `particle-vortex` + `waveform-ring` + `terrain-grid`
+8. **STADIUM ARENA:** `terrain-grid` + `spectrum-bars` + `laser-beams` + `shockwave-rings`
 
 ---
 
-## 4. Curated Color Palettes
+## 4. Window Edge Attachment & Intelligent Auto-Hiding UI
 
-1. **Cyberpunk Neon:** Neon Cyan (`#00f0ff`), Hot Pink (`#ff007f`), Acid Yellow (`#ffe600`), Void Indigo (`#04060d`).
-2. **Synthwave Sunset:** Sunset Red-Orange (`#ff5e3a`), Hyper Violet (`#b800ff`), Magenta (`#ff0078`), Retro Dusk (`#090312`).
-3. **Matrix Emerald:** Digital Mint (`#00ff88`), Deep Aqua (`#00b4d8`), Radioactive Lime (`#70e000`), Terminal Black (`#020b08`).
-4. **Deep Space:** Cobalt Blue (`#4361ee`), Nebula Violet (`#7209b7`), Ice Blue (`#4cc9f0`), Starlight Obsidian (`#030510`).
-5. **Solar Flare:** Molten Gold (`#ffaa00`), Solar Crimson (`#ff3c00`), Pure White (`#ffffff`), Smoldering Charcoal (`#0c0502`).
-6. **Monolith Chrome:** Diamond White (`#ffffff`), Steel Gray (`#8d99ae`), Cyan Accent (`#3a86ff`), Pitch Carbon (`#050507`).
+- **Edge Attachment:** Both the upper header and lower player dock are attached directly to the window boundaries (`top: 0`, `bottom: 0`, `border-radius: 0`, `width: 100%`) with zero gap.
+- **Independent Auto-Hiding Zones:**
+  - Cursor in top zone ($\le 65\text{px}$) $\to$ Upper bar slides down smoothly into view; lower bar remains hidden.
+  - Cursor in bottom zone ($\ge \text{windowHeight} - 75\text{px}$) $\to$ Lower player dock slides up into view; upper bar remains hidden.
+  - Cursor in middle or inactive for $> 1.8\text{s}$ $\to$ Both bars slide out of view (`transform: translateY(-100%)` / `translateY(100%)`), presenting a completely clean, distraction-free visualizer canvas.
+- **Cinematic Watermark HUD:** Refined typography with title truncation and auto-fade to subtle opacity ($0.28$) after initial track presentation so the visuals remain unobstructed.
 
 ---
 
@@ -87,23 +113,27 @@ Synwave/
 │   │   ├── AudioEngine.ts                  <-- Web Audio API live graph & master clock
 │   │   └── AudioAnalyzer.ts                <-- Headless offline PCM pre-analysis & segmentation
 │   ├── visualizer/
-│   │   ├── VisualEngine.ts                 <-- Three.js scene, dynamic camera, director logic
+│   │   ├── VisualEngine.ts                 <-- Three.js scene, dynamic camera, smart director
 │   │   ├── palettes.ts                     <-- 6 curated aesthetic color themes
 │   │   └── effects/
 │   │       ├── BaseEffect.ts               <-- Common lifecycle, PRNG, and disposal
+│   │       ├── TerrainGridEffect.ts        <-- Retro synthwave horizon grid
+│   │       ├── TorusKnotEffect.ts          <-- Mathematical 3D morphing torus knot
+│   │       ├── DNAHelixEffect.ts           <-- Procedural rotating double helix
+│   │       ├── ParticleVortexEffect.ts     <-- Logarithmic singularity spiral vortex
 │   │       ├── StarfieldEffect.ts          <-- Hyperspace warp particle field
-│   │       ├── WireframeCoreEffect.ts      <-- Audio-displaced central polyhedron
+│   │       ├── WireframeCoreEffect.ts      <-- Audio-displaced crystalline polyhedron
 │   │       ├── WaveformRingEffect.ts       <-- Real-time 3D PCM circular oscilloscope
-│   │       ├── SpectrumBarsEffect.ts       <-- 3D radial frequency arena bars
+│   │       ├── SpectrumBarsEffect.ts       <-- Horizon audio equalizer skyline
 │   │       ├── AudioRibbonsEffect.ts       <-- Sinusoidal flowing fluid ribbons
-│   │       ├── LaserBeamsEffect.ts         <-- Volumetric sweeping crossing lasers
+│   │       ├── LaserBeamsEffect.ts         <-- Overhead concert stadium laser fans
 │   │       └── ShockwaveRingEffect.ts      <-- Expanding chromatic shockwave pulses
 │   ├── components/
-│   │   ├── Header.tsx                      <-- Top bar with brand, file/folder open
-│   │   ├── PlayerControls.tsx              <-- Bottom dock with seek bar, transport, volume
+│   │   ├── Header.tsx                      <-- Top bar (attached flush, auto-hides)
+│   │   ├── PlayerControls.tsx              <-- Bottom dock (attached flush, auto-hides)
 │   │   ├── PlaylistDrawer.tsx              <-- Queue list, search filter, analysis status
 │   │   ├── InspectorDrawer.tsx             <-- Live 64-band FFT canvas, oscilloscope, telemetry
-│   │   └── TrackWatermark.tsx              <-- On-canvas HUD watermark, live section chip
+│   │   └── TrackWatermark.tsx              <-- Cinematic on-canvas HUD watermark
 │   ├── types/
 │   │   └── index.ts                        <-- System-wide TypeScript contracts
 │   ├── index.css                           <-- Cyberpunk Glassmorphism Design System
@@ -121,14 +151,6 @@ Synwave/
 
 ## 6. Current State & Verification
 
-- **Production Build:** `npm run build` executes without warnings or type errors (`tsc -b && vite build` built in ~312ms).
-- **Vite Local Dev Server:** Active on `http://localhost:5173/` serving static assets and dynamic React/Three.js bundles.
-- **Icon Branding:** `icon.png` is integrated as the primary app icon (in `<head>`, top header brand container, and `README.md`).
-- **Privacy & Gitignore:** `My Music/` and `public/music/` are securely added to `.gitignore`, keeping private audio files out of version control.
-- **Feature Completeness:**
-  - Full transport controls (play, pause, seek with hover timestamp, shuffle, repeat one/all/off, volume, mute).
-  - Dual-path audio analysis (live Web Audio AnalyserNode + offline AudioAnalyzer section & BPM detection).
-  - Autonomous Director mode orchestrating scene transitions based on song energy and section markers.
-  - High-res PNG snapshot exporter capturing 3D procedural frames.
-  - Signal and Visual Inspector with live 60 FPS spectrum and oscilloscope telemetry.
-- **Git Repository:** Remote origin configured to `https://github.com/K-692/Synwave.git`.
+- **Production Build:** `npm run build` succeeds cleanly (`tsc -b && vite build` built in ~321ms).
+- **Vite Local Dev Server:** Running at `http://localhost:5173/`.
+- **Git Repository:** Committed and synchronized with `https://github.com/K-692/Synwave.git`.

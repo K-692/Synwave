@@ -92,7 +92,7 @@ export class StarfieldEffect extends BaseEffect {
     this.disposables.push(texture);
 
     const material = new THREE.PointsMaterial({
-      size: 1.4,
+      size: 0.55,
       vertexColors: true,
       map: texture,
       transparent: true,
@@ -110,15 +110,15 @@ export class StarfieldEffect extends BaseEffect {
 
     const { features, deltaSeconds, palette } = context;
 
-    // Warp speed increases dramatically with bass and overall RMS
-    const targetSpeed = 1.0 + features.bass * 4.0 + features.rms * 3.5 + (features.isBeat ? 4.0 : 0);
+    // Warp speed increases with energy
+    const targetSpeed = 0.8 + features.bass * 2.5 + features.rms * 2.0 + (features.isBeat ? 2.5 : 0);
     this.speed = this.lerp(this.speed, targetSpeed, deltaSeconds * 6.0);
 
     const posAttr = this.points.geometry.attributes.position as THREE.BufferAttribute;
     const colorAttr = this.points.geometry.attributes.color as THREE.BufferAttribute;
 
-    const zLimitFront = 25;
-    const zResetBack = -115;
+    const zLimitFront = 5.0; // Keep stars well in the background
+    const zResetBack = -130.0;
 
     const primaryColor = new THREE.Color(palette.primary);
     const secondaryColor = new THREE.Color(palette.secondary);

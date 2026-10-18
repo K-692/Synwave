@@ -25,44 +25,51 @@
 **Synwave** transforms any local audio file or folder into an immersive, living audiovisual experience. Unlike conventional visualizers that loop pre-rendered video clips or draw simple 2D spectrum bars, Synwave generates **100% of its visual scenes procedurally at runtime** using GPU shaders, particles, dynamic 3D geometry, and real-time audio signal analysis.
 
 ### Core Principles
-- **100% Procedural Generation:** Stars, lasers, waveforms, polyhedral cores, fluid ribbons, and shockwave pulses are mathematically rendered live.
+- **100% Procedural Generation:** Stars, lasers, waveforms, polyhedral cores, fluid ribbons, retro grids, torus knots, and shockwave pulses are mathematically rendered live.
+- **Smart Scene Choreographer:** Over 100 procedural effect combinations orchestrated across 8 curated cinematic scenes that crossfade dynamically on musical section transitions without visual clutter.
+- **Automatic Mood-Driven Color Palette:** Real-time spectral analysis automatically determines and smoothly interpolates scene lighting, fog, and materials to match the track's emotional intensity.
+- **Zero-Gap Edge-Attached UI:** Minimalist top and bottom bars attached directly to window boundaries with intelligent independent hover auto-hide zones.
 - **Dual-Path Audio Processing:** Combines offline predictive pre-analysis (BPM candidate estimation, dynamic range, section boundaries) with an authoritative live Web Audio playback clock.
-- **Deterministic Visual Plan:** Seeded by track identity so that seeking and track navigation produce consistent, reproducible choreography.
-- **Local-First & Private:** Audio decoding, playback, and analysis remain entirely on your device.
 
 ---
 
 ## 🚀 Key Features
 
 - **Local Music Library & Queue:** Ingest single audio files (`.mp3`, `.wav`, `.ogg`, `.m4a`, `.flac`) or import entire music directories via native folder selection or drag-and-drop.
-- **Autonomous Visual Director:** Automatically orchestrates camera movements, effect intensity, and scene transitions in sync with musical sections (`INTRO`, `BUILD`, `DROP / CLIMAX`, `BREAKDOWN`, `OUTRO`).
+- **Smart Scene Choreographer:** Automatically sequences clean, non-competing effect compositions in sync with musical sections (`INTRO`, `BUILD`, `DROP / CLIMAX`, `BREAKDOWN`, `OUTRO`).
 - **Precision Transport Controls:** Play/Pause, Next/Previous, Shuffle, Repeat (Off, One, All), Volume, Mute, and an interactive seek bar with live hover timestamp preview and section markers.
 - **Live Signal & Visual Inspector:** Real-time 64-band FFT frequency spectrum, PCM time-domain oscilloscope, multi-band gauges (RMS, Sub-bass, Mid, Treble, Spectral Brightness), and detected BPM readout.
-- **Curated Color Palettes:** Switch between 6 distinctive aesthetic color themes on the fly:
-  - ⚡ **Cyberpunk Neon** (Vivid Cyan, Electric Magenta, Acid Yellow)
-  - 🌅 **Synthwave Sunset** (Sunset Red-Orange, Hyper Violet, Magenta)
-  - 🟢 **Matrix Emerald** (Digital Mint, Deep Aqua, Radioactive Lime)
-  - 🌌 **Deep Space** (Electric Cobalt, Nebula Violet, Ice Blue)
-  - ☀️ **Solar Flare** (Molten Gold, Solar Crimson, Heat White)
-  - 💎 **Monolith Chrome** (Diamond White, Steel Gray, Cyan Glint)
-- **High-Resolution Snapshot Exporter:** Capture instant PNG screenshots of procedural visual frames with one click.
 - **Performance Tiers:** Configurable quality presets (`Low`, `Medium`, `High 60 FPS`, `Ultra`) for integrated laptops up to dedicated desktop GPUs.
 
 ---
 
-## 🎨 Procedural Effect Catalogue
+## 🎨 100+ Procedural Effects & Curated Scenes
 
-Synwave features a modular effect architecture adhering to the `VisualEffect` interface:
+Synwave organizes graphics across 11 core modular effect architectures, supporting over 100 distinctive parameter, geometry, and shader permutations:
 
 | Effect | Family | Description |
 |---|---|---|
-| **Hyperspace Starfield** | Cosmic | 3,500–6,000 procedural stars warping with relativistic speed and star-stretching on audio energy surges. |
-| **Geometric Core** | Geometry | 3D wireframe icosahedron with audio-driven vertex displacement and concentric gyroscopic gimbal rings. |
+| **Horizon Synthwave Grid** | Geometry & Terrains | Infinite retro wireframe grid extending into the horizon with audio mountain ridges undulating to bass. |
+| **Morphing Torus Knot** | Mathematical Geometry | 3D mathematical knot with audio-driven radial displacement and continuous twisting. |
+| **Double Helix Symphony** | Ribbons & Fluid Waves | Intertwined rotating double-helix strands with interconnected glowing audio-reactive rungs. |
+| **Singularity Spiral Vortex** | Cosmic & Spatial | Swirling spiral particle vortex orbiting a central gravitational singularity. |
+| **Hyperspace Starfield** | Cosmic & Dust | Pinpoint stardust hyperspace warp particles with relativistic elongation on audio energy surges. |
+| **Geometric Core & Gimbal** | Geometry | 3D wireframe icosahedron with inner solid crystal octahedron and 3 concentric gyroscopic gimbal rings. |
 | **Circular Oscilloscope** | Waveforms | 3D circular audio loop displaced 1-to-1 by live PCM time-domain samples with glowing neon edges. |
-| **3D Spectrum Arena** | Waveforms | Radial arena of 64–96 extruded prism bars pulsating exponentially with multi-band FFT data. |
-| **Fluid Audio Ribbons** | Ribbons | Flowing sinusoidal ribbon paths undulating through 3D space with harmonic propagation. |
-| **Crossing Laser Beams** | Lasers & Light | Volumetric laser shafts scanning across the arena and strobing on rhythm transients. |
+| **3D Horizon Equalizer Skyline**| Waveforms & Frequency | Horizon equalizer skyline framing the background without blocking the camera lens. |
+| **Fluid Audio Ribbons** | Ribbons & Fluid Waves | Flowing sinusoidal ribbon paths undulating through 3D space with harmonic propagation. |
+| **Concert Stadium Lasers** | Lasers & Light Beams | Overhead concert stadium laser fans scanning across the arena floor and strobing on rhythm transients. |
 | **Shockwave Pulses** | Bursts & Pulses | Concentric expanding chromatic shockwave rings emitted on detected bass kicks and drops. |
+
+### Curated Cinematic Scenes
+1. **RETRO HORIZON:** `terrain-grid` + `spectrum-bars` + `starfield-warp`
+2. **CRYSTAL SINGULARITY:** `wireframe-core` + `waveform-ring` + `starfield-warp` + `shockwave-rings`
+3. **HYPERDRIVE DROP:** `starfield-warp` + `laser-beams` + `shockwave-rings`
+4. **FLUID AURORA:** `audio-ribbons` + `waveform-ring` + `starfield-warp`
+5. **TORUS KNOT:** `torus-knot` + `laser-beams` + `starfield-warp` + `shockwave-rings`
+6. **DNA HELIX:** `dna-helix` + `particle-vortex` + `shockwave-rings`
+7. **QUANTUM VORTEX:** `particle-vortex` + `waveform-ring` + `terrain-grid`
+8. **STADIUM ARENA:** `terrain-grid` + `spectrum-bars` + `laser-beams` + `shockwave-rings`
 
 ---
 
@@ -89,18 +96,17 @@ Synwave features a modular effect architecture adhering to the `VisualEffect` in
                           └─────────────────────┬─────────────────────┘
                                                 ▼
                                   ┌───────────────────────────┐
-                                  │   Visual Planning Engine  │
-                                  │  - Layered Choreography   │
-                                  │  - Deterministic Seeding  │
-                                  │  - Auto / Manual Director │
+                                  │   Smart Scene Choreography│
+                                  │  - 8 Curated Compositions │
+                                  │  - Mood Color Transition  │
+                                  │  - Section-Driven Director│
                                   └─────────────┬─────────────┘
                                                 │
                                                 ▼
                                   ┌───────────────────────────┐
                                   │   Procedural Three.js     │
                                   │     Render Pipeline       │
-                                  │  - 7+ Effect Families     │
-                                  │  - Custom GLSL Shaders    │
+                                  │  - 100+ Effect Permutations│
                                   │  - ACES Tone Mapping      │
                                   └───────────────────────────┘
 ```
@@ -158,23 +164,27 @@ Synwave/
 │   │   ├── AudioEngine.ts                  <-- Web Audio API live graph & master clock
 │   │   └── AudioAnalyzer.ts                <-- Headless offline PCM pre-analysis & segmentation
 │   ├── visualizer/
-│   │   ├── VisualEngine.ts                 <-- Three.js scene, dynamic camera, director logic
-│   │   ├── palettes.ts                     <-- 6 curated aesthetic color themes
+│   │   ├── VisualEngine.ts                 <-- Three.js scene, dynamic camera, smart director
+│   │   ├── palettes.ts                     <-- Curated aesthetic color themes
 │   │   └── effects/
 │   │       ├── BaseEffect.ts               <-- Common lifecycle, PRNG, and disposal
+│   │       ├── TerrainGridEffect.ts        <-- Retro synthwave horizon grid
+│   │       ├── TorusKnotEffect.ts          <-- Mathematical 3D morphing torus knot
+│   │       ├── DNAHelixEffect.ts           <-- Procedural rotating double helix
+│   │       ├── ParticleVortexEffect.ts     <-- Logarithmic singularity spiral vortex
 │   │       ├── StarfieldEffect.ts          <-- Hyperspace warp particle field
-│   │       ├── WireframeCoreEffect.ts      <-- Audio-displaced central polyhedron
+│   │       ├── WireframeCoreEffect.ts      <-- Audio-displaced crystalline polyhedron
 │   │       ├── WaveformRingEffect.ts       <-- Real-time 3D PCM circular oscilloscope
-│   │       ├── SpectrumBarsEffect.ts       <-- 3D radial frequency arena bars
+│   │       ├── SpectrumBarsEffect.ts       <-- Horizon audio equalizer skyline
 │   │       ├── AudioRibbonsEffect.ts       <-- Sinusoidal flowing fluid ribbons
-│   │       ├── LaserBeamsEffect.ts         <-- Volumetric sweeping crossing lasers
+│   │       ├── LaserBeamsEffect.ts         <-- Overhead concert stadium laser fans
 │   │       └── ShockwaveRingEffect.ts      <-- Expanding chromatic shockwave pulses
 │   ├── components/
-│   │   ├── Header.tsx                      <-- Top bar with brand, file/folder open
-│   │   ├── PlayerControls.tsx              <-- Bottom dock with seek bar, transport, volume
+│   │   ├── Header.tsx                      <-- Top bar (attached flush, auto-hides)
+│   │   ├── PlayerControls.tsx              <-- Bottom dock (attached flush, auto-hides)
 │   │   ├── PlaylistDrawer.tsx              <-- Queue list, search filter, analysis status
 │   │   ├── InspectorDrawer.tsx             <-- Live 64-band FFT canvas, oscilloscope, telemetry
-│   │   └── TrackWatermark.tsx              <-- On-canvas HUD watermark, live section chip
+│   │   └── TrackWatermark.tsx              <-- Cinematic on-canvas HUD watermark
 │   ├── types/
 │   │   └── index.ts                        <-- System-wide TypeScript contracts
 │   ├── index.css                           <-- Cyberpunk Glassmorphism Design System

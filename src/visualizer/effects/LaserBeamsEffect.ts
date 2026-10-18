@@ -1,6 +1,6 @@
 /**
- * Synwave Volumetric Crossing Lasers Effect
- * High-intensity procedural laser beams that sweep, intersect, and pulse violently on rhythmic drops.
+ * Synwave Volumetric Concert Lasers Effect
+ * Overhead concert stadium lasers scanning dynamically across the arena floor with transient strobing.
  */
 
 import * as THREE from 'three';
@@ -9,50 +9,50 @@ import type { VisualEffectContext } from '../../types';
 
 export class LaserBeamsEffect extends BaseEffect {
   readonly id = 'laser-beams';
-  readonly name = 'Crossing Lasers';
-  readonly family = 'Lasers & Light';
+  readonly name = 'Concert Stadium Lasers';
+  readonly family = 'Lasers & Light Beams';
   readonly cost = 'medium';
 
   private laserCount = 8;
   private lasers: THREE.Line[] = [];
-  private angles: number[] = [];
+  private baseAngles: number[] = [];
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
     const { palette, quality } = context;
-    if (quality === 'low') this.laserCount = 4;
+    if (quality === 'low') this.laserCount = 6;
     else if (quality === 'ultra') this.laserCount = 12;
 
     this.lasers = [];
-    this.angles = [];
+    this.baseAngles = [];
 
-    const prng = this.seededRandom(context.seed + 77);
+    const length = 90;
+    const points = [
+      new THREE.Vector3(0, 0, 0), // Beam origin
+      new THREE.Vector3(0, 0, length), // Beam target
+    ];
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    this.disposables.push(geometry);
 
     for (let i = 0; i < this.laserCount; i++) {
-      const length = 120;
-      const points = [
-        new THREE.Vector3(0, 0, -length / 2),
-        new THREE.Vector3(0, 0, length / 2),
-      ];
-
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      this.disposables.push(geometry);
+      const u = i / (this.laserCount - 1);
+      const originX = (u - 0.5) * 36.0;
 
       const isAlt = i % 2 === 0;
       const material = new THREE.LineBasicMaterial({
         color: new THREE.Color(isAlt ? palette.laserColor : palette.primary),
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.75,
         blending: THREE.AdditiveBlending,
       });
       this.disposables.push(material);
 
       const laser = new THREE.Line(geometry, material);
-      const angle = (i / this.laserCount) * Math.PI * 2;
-      this.angles.push(angle);
+      laser.position.set(originX, 11, -30); // Overhead rear truss
+      this.baseAngles.push((u - 0.5) * 0.8);
 
-      laser.position.set(Math.cos(angle) * 15, Math.sin(angle) * 15, (prng() - 0.5) * 20);
       this.lasers.push(laser);
       this.group.add(laser);
     }
@@ -69,23 +69,20 @@ export class LaserBeamsEffect extends BaseEffect {
 
     for (let i = 0; i < this.lasers.length; i++) {
       const laser = this.lasers[i];
-      const baseAngle = this.angles[i];
+      const baseAngle = this.baseAngles[i];
 
-      // Oscillate orientation and sweep angles
-      const sweepX = Math.sin(time * 1.5 + baseAngle) * 0.8 * (1 + features.highMid);
-      const sweepY = Math.cos(time * 1.2 + baseAngle) * 0.8 * (1 + features.bass);
+      // Concert fan sweep motion
+      const sweepY = baseAngle + Math.sin(time * 1.8 + i * 0.5) * 0.6;
+      const sweepX = -0.3 + Math.sin(time * 2.2 + i * 0.3) * 0.25;
 
-      laser.rotation.x = sweepX;
       laser.rotation.y = sweepY;
-      laser.rotation.z = baseAngle + time * 0.2;
+      laser.rotation.x = sweepX;
 
       // Pulse brightness on beat
       const mat = laser.material as THREE.LineBasicMaterial;
       const beatBoost = features.isBeat ? 1.0 : features.onsetStrength * 0.6;
-      mat.opacity = Math.min(1.0, 0.4 + beatBoost);
+      mat.opacity = Math.min(1.0, 0.2 + beatBoost * 0.8);
       mat.color.copy(i % 2 === 0 ? laserColor : primaryColor);
     }
-
-    this.group.rotation.z = time * 0.1;
   }
 }

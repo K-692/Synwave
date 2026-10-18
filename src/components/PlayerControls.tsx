@@ -1,7 +1,6 @@
 /**
  * Synwave Transport & Player Controls
- * Bottom dock featuring seek bar with section markers, transport controls,
- * volume, palette selector, quality presets, and screenshot capture.
+ * Bottom dock attached to window bottom edge with auto-hide behavior.
  */
 
 import React, { useState } from 'react';
@@ -15,16 +14,12 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
-  Camera,
   Maximize2,
   Minimize2,
-  Palette,
   Disc3,
   Cpu,
-  Compass,
 } from 'lucide-react';
-import type { DirectorMode, QualityPreset, RepeatMode, TrackRecord } from '../types';
-import { COLOR_PALETTES } from '../visualizer/palettes';
+import type { QualityPreset, RepeatMode, TrackRecord } from '../types';
 
 interface PlayerControlsProps {
   currentTrack: TrackRecord | null;
@@ -35,9 +30,8 @@ interface PlayerControlsProps {
   isMuted: boolean;
   shuffle: boolean;
   repeatMode: RepeatMode;
-  selectedPaletteId: string;
   quality: QualityPreset;
-  directorMode: DirectorMode;
+  isVisible: boolean;
   onPlayPause: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -46,10 +40,9 @@ interface PlayerControlsProps {
   onToggleMute: () => void;
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
-  onSelectPalette: (paletteId: string) => void;
   onSelectQuality: (quality: QualityPreset) => void;
-  onToggleDirectorMode: () => void;
-  onTakeSnapshot: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -61,9 +54,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   isMuted,
   shuffle,
   repeatMode,
-  selectedPaletteId,
   quality,
-  directorMode,
+  isVisible,
   onPlayPause,
   onPrevious,
   onNext,
@@ -72,10 +64,9 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onToggleMute,
   onToggleShuffle,
   onToggleRepeat,
-  onSelectPalette,
   onSelectQuality,
-  onToggleDirectorMode,
-  onTakeSnapshot,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
@@ -116,7 +107,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   };
 
   return (
-    <div className="player-dock glass-panel">
+    <div
+      className={`player-dock glass-panel ${isVisible ? 'visible' : ''}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       {/* Seek Progress Bar with Section Indicators */}
       <div
         className="seek-bar-container"
@@ -162,7 +157,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         {/* Left: Track Information */}
         <div className="dock-left">
           <div className={`track-disc ${isPlaying ? 'spinning' : ''}`}>
-            <Disc3 size={34} className="disc-icon" />
+            <Disc3 size={32} className="disc-icon" />
             <div className="disc-center" />
           </div>
           <div className="track-meta">
@@ -226,7 +221,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           </div>
         </div>
 
-        {/* Right: Sound, Visual Controls & Utilities */}
+        {/* Right: Sound & Display Utilities */}
         <div className="dock-right">
           {/* Volume */}
           <div className="volume-control">
@@ -249,35 +244,9 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             />
           </div>
 
-          {/* Director Mode Pill */}
-          <button
-            className={`btn-pill ${directorMode === 'auto' ? 'active' : ''}`}
-            onClick={onToggleDirectorMode}
-            title="Toggle Autonomous Director Mode (AI dynamic camera & effect transitions)"
-          >
-            <Compass size={14} />
-            <span>{directorMode === 'auto' ? 'DIRECTOR: AUTO' : 'DIRECTOR: MANUAL'}</span>
-          </button>
-
-          {/* Color Palette Selector */}
-          <div className="palette-selector-wrap" title="Select Color Scheme">
-            <Palette size={16} className="palette-icon" />
-            <select
-              value={selectedPaletteId}
-              onChange={(e) => onSelectPalette(e.target.value)}
-              className="dock-select"
-            >
-              {COLOR_PALETTES.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Quality Preset */}
           <div className="quality-selector-wrap" title="Render Quality Preset">
-            <Cpu size={16} className="quality-icon" />
+            <Cpu size={15} className="quality-icon" />
             <select
               value={quality}
               onChange={(e) => onSelectQuality(e.target.value as QualityPreset)}
@@ -289,15 +258,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               <option value="ultra">Ultra (Max GPU)</option>
             </select>
           </div>
-
-          {/* Snapshot Button */}
-          <button
-            className="btn-control-icon"
-            onClick={onTakeSnapshot}
-            title="Take High-Resolution Screenshot Snapshot"
-          >
-            <Camera size={17} />
-          </button>
 
           {/* Fullscreen */}
           <button
