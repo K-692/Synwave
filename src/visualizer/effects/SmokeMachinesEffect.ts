@@ -1,9 +1,11 @@
 /**
  * Synwave Concert Stage Smoke Machines & Cryo Jets Effect
  * 
- * 4 High-velocity Cryo CO2 jets mounted on stage wings and deck corners,
- * bursting dense white cryogenic fog plumes during drops, buildups, and snare sweeps,
- * accompanied by rolling atmospheric stage haze drifting along the concert floor.
+ * Volumetric concert stage smoke and cryo atmospherics:
+ * - 6 High-velocity Cryo CO2 cannons blasting dense, towering cryogenic fog plumes
+ * - Rich rolling stage floor fog and atmospheric smoke clouds drifting through the light beams
+ * - Illuminated by the active concert lights and glowing in stage colors
+ * - Activated on drops, snare rolls, vocal peaks, and energetic musical sections
  */
 
 import * as THREE from 'three';
@@ -13,8 +15,9 @@ import type { VisualEffectContext } from '../../types';
 interface CryoJet {
   baseMesh: THREE.Mesh;
   plumeMesh: THREE.Mesh;
+  innerCoreMesh: THREE.Mesh;
   position: THREE.Vector3;
-  direction: THREE.Vector3;
+  angleZ: number;
   intensity: number;
   height: number;
   targetHeight: number;
@@ -29,22 +32,24 @@ export class SmokeMachinesEffect extends BaseEffect {
 
   private cryoJets: CryoJet[] = [];
   private floorHazeMesh!: THREE.InstancedMesh;
-  private hazeCount = 48;
+  private hazeCount = 56;
   private dummy = new THREE.Object3D();
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // 1. Create 4 Cryo CO2 Cannons on Stage Front & Wings
+    // 1. 6 Heavy Cryo CO2 Cannons on Stage Wings and Deck
     const jetConfigs = [
-      { pos: new THREE.Vector3(-14.0, -0.2, 4.0), angleY: 0.25, angleZ: -0.18 },
-      { pos: new THREE.Vector3(-5.0, -0.2, 4.8), angleY: 0.08, angleZ: -0.08 },
-      { pos: new THREE.Vector3(5.0, -0.2, 4.8), angleY: -0.08, angleZ: 0.08 },
-      { pos: new THREE.Vector3(14.0, -0.2, 4.0), angleY: -0.25, angleZ: 0.18 },
+      { pos: new THREE.Vector3(-13.5, -0.2, 3.8), angleZ: -0.16 },
+      { pos: new THREE.Vector3(-7.0, -0.2, 4.2), angleZ: -0.08 },
+      { pos: new THREE.Vector3(-2.2, -0.2, 4.4), angleZ: 0.0 },
+      { pos: new THREE.Vector3(2.2, -0.2, 4.4), angleZ: 0.0 },
+      { pos: new THREE.Vector3(7.0, -0.2, 4.2), angleZ: 0.08 },
+      { pos: new THREE.Vector3(13.5, -0.2, 3.8), angleZ: 0.16 },
     ];
 
     // Jet Nozzle Geometry
-    const nozzleGeo = new THREE.CylinderGeometry(0.2, 0.3, 0.6, 8);
+    const nozzleGeo = new THREE.CylinderGeometry(0.24, 0.34, 0.65, 8);
     const nozzleMat = new THREE.MeshStandardMaterial({
       color: 0x1f2430,
       metalness: 0.8,
@@ -52,22 +57,26 @@ export class SmokeMachinesEffect extends BaseEffect {
     });
     this.disposables.push(nozzleGeo, nozzleMat);
 
-    // Cryo Plume Geometry (expanding high-velocity cone)
-    const plumeGeo = new THREE.ConeGeometry(2.4, 14, 16, 4, true);
-    plumeGeo.translate(0, 7, 0); // Anchor at base
+    // Cryo Outer Plume Geometry (expanding high-velocity cone)
+    const plumeGeo = new THREE.ConeGeometry(3.0, 15, 16, 4, true);
+    plumeGeo.translate(0, 7.5, 0); // Anchor at base
     this.disposables.push(plumeGeo);
+
+    // Cryo Inner Dense Core Geometry
+    const innerCoreGeo = new THREE.ConeGeometry(1.5, 13, 12, 3, true);
+    innerCoreGeo.translate(0, 6.5, 0);
+    this.disposables.push(innerCoreGeo);
 
     for (const cfg of jetConfigs) {
       // Base
       const baseMesh = new THREE.Mesh(nozzleGeo, nozzleMat);
       baseMesh.position.copy(cfg.pos);
-      baseMesh.rotation.y = cfg.angleY;
       baseMesh.rotation.z = cfg.angleZ;
       this.group.add(baseMesh);
 
-      // Cryo Jet Plume Mesh
+      // Outer Cryo Plume Mesh (Dense white/ice-blue fog)
       const plumeMat = new THREE.MeshBasicMaterial({
-        color: 0xe6f4ff,
+        color: 0xebf5ff,
         transparent: true,
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
@@ -78,16 +87,33 @@ export class SmokeMachinesEffect extends BaseEffect {
 
       const plumeMesh = new THREE.Mesh(plumeGeo, plumeMat);
       plumeMesh.position.copy(cfg.pos);
-      plumeMesh.rotation.y = cfg.angleY;
       plumeMesh.rotation.z = cfg.angleZ;
       plumeMesh.scale.set(0.001, 0.001, 0.001);
       this.group.add(plumeMesh);
 
+      // Inner Core Mesh (Pure dense white steam)
+      const innerCoreMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      this.disposables.push(innerCoreMat);
+
+      const innerCoreMesh = new THREE.Mesh(innerCoreGeo, innerCoreMat);
+      innerCoreMesh.position.copy(cfg.pos);
+      innerCoreMesh.rotation.z = cfg.angleZ;
+      innerCoreMesh.scale.set(0.001, 0.001, 0.001);
+      this.group.add(innerCoreMesh);
+
       this.cryoJets.push({
         baseMesh,
         plumeMesh,
+        innerCoreMesh,
         position: cfg.pos,
-        direction: new THREE.Vector3(0, 1, 0),
+        angleZ: cfg.angleZ,
         intensity: 0,
         height: 0,
         targetHeight: 0,
@@ -95,12 +121,13 @@ export class SmokeMachinesEffect extends BaseEffect {
       });
     }
 
-    // 2. Rolling Stage Floor Haze (Instanced softly drifting fog puffs)
-    const hazeGeo = new THREE.PlaneGeometry(6, 4);
+    // 2. Rolling Stage Floor Fog & Atmospheric Clouds
+    // 56 instanced volumetric clouds billowed across the stage
+    const hazeGeo = new THREE.PlaneGeometry(8.5, 5.5);
     const hazeMat = new THREE.MeshBasicMaterial({
-      color: 0xa8c4e0,
+      color: 0xc8ddf5,
       transparent: true,
-      opacity: 0.08,
+      opacity: 0.28,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -109,12 +136,12 @@ export class SmokeMachinesEffect extends BaseEffect {
 
     this.floorHazeMesh = new THREE.InstancedMesh(hazeGeo, hazeMat, this.hazeCount);
     for (let i = 0; i < this.hazeCount; i++) {
-      const x = (Math.random() - 0.5) * 32;
-      const y = -0.6 + Math.random() * 1.8;
-      const z = -10 + Math.random() * 18;
+      const x = (Math.random() - 0.5) * 34;
+      const y = -0.3 + Math.random() * 2.8;
+      const z = -6.0 + Math.random() * 16;
       this.dummy.position.set(x, y, z);
-      this.dummy.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI);
-      const s = 1.0 + Math.random() * 1.5;
+      this.dummy.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.4, 0, Math.random() * Math.PI);
+      const s = 1.0 + Math.random() * 1.8;
       this.dummy.scale.set(s, s, s);
       this.dummy.updateMatrix();
       this.floorHazeMesh.setMatrixAt(i, this.dummy.matrix);
@@ -125,61 +152,76 @@ export class SmokeMachinesEffect extends BaseEffect {
 
   public update(context: VisualEffectContext): void {
     const { features, deltaSeconds, palette } = context;
+    const time = performance.now() * 0.001;
 
-    // Trigger cryo bursts on drops, vocal climaxes, or heavy energy buildups
+    // Trigger cryo fog blasts on drops, energetic kick rolls, and vocal peaks
     const isCryoTrigger =
       features.isDrop ||
-      (features.stems.vocals > 0.62 && features.stems.kick > 0.3) ||
-      (features.onsetStrength > 0.82 && features.highMid > 0.65) ||
-      (features.isKick && Math.random() < 0.25);
+      (features.stems.vocals > 0.55 && features.stems.kick > 0.3) ||
+      (features.stems.kick > 0.55 && Math.random() < 0.6) ||
+      (features.subBass + features.rms) > 0.75;
 
     for (let i = 0; i < this.cryoJets.length; i++) {
       const jet = this.cryoJets[i];
       jet.cooldownTimer -= deltaSeconds;
 
       if (isCryoTrigger && jet.cooldownTimer <= 0) {
-        jet.targetHeight = features.isDrop ? 1.3 : 0.9;
+        jet.targetHeight = features.isDrop ? 1.4 : 0.95;
         jet.intensity = 1.0;
-        jet.cooldownTimer = features.isDrop ? 0.35 : 0.8;
+        jet.cooldownTimer = features.isDrop ? 0.25 : 0.6;
       }
 
-      // Smooth expansion & dissipation
+      // Smooth expansion & billow
       if (jet.intensity > 0.02) {
-        jet.height = this.lerp(jet.height, jet.targetHeight, deltaSeconds * 22);
-        jet.intensity = Math.max(0, jet.intensity - deltaSeconds * 2.2);
+        jet.height = this.lerp(jet.height, jet.targetHeight, deltaSeconds * 20);
+        const decay = features.isDrop ? 1.4 : 2.5;
+        jet.intensity = Math.max(0, jet.intensity - deltaSeconds * decay);
       } else {
-        jet.height = this.lerp(jet.height, 0, deltaSeconds * 8);
+        jet.height = this.lerp(jet.height, 0, deltaSeconds * 9);
         jet.targetHeight = 0;
       }
 
-      // Plume scaling
+      // Scale plumes
       const currentH = Math.max(0.001, jet.height);
-      const spread = 0.5 + currentH * 0.8;
-      jet.plumeMesh.scale.set(spread, currentH, spread);
+      const billow = 1.0 + Math.sin(time * 18.0 + i * 1.5) * 0.12;
+      const spread = (0.6 + currentH * 0.9) * billow;
 
-      // Color/Opacity
-      const mat = jet.plumeMesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = jet.intensity * 0.75;
-      // Slight palette tint
-      mat.color.set(palette.secondary).lerp(new THREE.Color(0xffffff), 0.7);
+      jet.plumeMesh.scale.set(spread, currentH, spread);
+      jet.innerCoreMesh.scale.set(spread * 0.6, currentH * 0.85, spread * 0.6);
+
+      // Colors & Opacity
+      const plumeMat = jet.plumeMesh.material as THREE.MeshBasicMaterial;
+      plumeMat.opacity = jet.intensity * 0.78;
+      plumeMat.color.set(palette.secondary).lerp(new THREE.Color(0xffffff), 0.75);
+
+      const coreMat = jet.innerCoreMesh.material as THREE.MeshBasicMaterial;
+      coreMat.opacity = jet.intensity * 0.92;
+      coreMat.color.setHex(0xffffff);
     }
 
-    // Drifting floor haze animation
-    const hazeTime = performance.now() * 0.0004;
+    // Drifting floor haze animation:
+    // Rolling smoke catching stage illumination
+    const hazeTime = performance.now() * 0.0005;
     const hazeMat = this.floorHazeMesh.material as THREE.MeshBasicMaterial;
-    // Haze thickens during drops and high energy
-    const targetHazeOpacity = 0.05 + features.rms * 0.08 + (features.isDrop ? 0.06 : 0);
-    hazeMat.opacity = this.lerp(hazeMat.opacity, targetHazeOpacity, deltaSeconds * 3);
-    hazeMat.color.set(palette.primary).lerp(new THREE.Color(0xa0c8f0), 0.6);
+
+    // Distinctly visible smoke opacity that increases with volume and drops
+    const targetHazeOpacity = 0.24 + features.rms * 0.15 + (features.isDrop ? 0.18 : 0);
+    hazeMat.opacity = this.lerp(hazeMat.opacity, targetHazeOpacity, deltaSeconds * 4);
+    // Haze softly tinted by primary stage light color
+    hazeMat.color.set(palette.primary).lerp(new THREE.Color(0xd0e4ff), 0.55);
 
     for (let i = 0; i < this.hazeCount; i++) {
       this.floorHazeMesh.getMatrixAt(i, this.dummy.matrix);
       this.dummy.position.setFromMatrixPosition(this.dummy.matrix);
-      // Gentle drift along X and Z
-      this.dummy.position.x += Math.sin(hazeTime + i) * 0.02;
-      this.dummy.position.z += Math.cos(hazeTime * 0.8 + i) * 0.015;
+      // Continuous gentle drift across the stage
+      this.dummy.position.x += Math.sin(hazeTime + i * 0.6) * 0.025;
+      this.dummy.position.z += Math.cos(hazeTime * 0.8 + i * 0.4) * 0.02;
+
       if (this.dummy.position.x > 18) this.dummy.position.x = -18;
       if (this.dummy.position.x < -18) this.dummy.position.x = 18;
+      if (this.dummy.position.z > 10) this.dummy.position.z = -6;
+      if (this.dummy.position.z < -6) this.dummy.position.z = 10;
+
       this.dummy.updateMatrix();
       this.floorHazeMesh.setMatrixAt(i, this.dummy.matrix);
     }

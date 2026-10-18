@@ -181,9 +181,9 @@ export const App: React.FC = () => {
         setCurrentSection(section);
       };
 
-      visualEngine.onWindowFlash = (opacity, colorHex) => {
-        setWindowFlashOpacity(opacity);
-        setWindowFlashColor(colorHex);
+      visualEngine.onWindowFlash = (_opacity, colorHex) => {
+        setWindowFlashOpacity(0);
+        if (colorHex) setWindowFlashColor(colorHex);
       };
 
       setEffectsList(visualEngine.getEffectsList());

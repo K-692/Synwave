@@ -14,26 +14,36 @@
 
 Synwave delivers an authentic **Stadium Music Festival Concert Stage Experience** directly replicating real-world stadium concert environments (inspired by stadium EDM/dubstep festivals and live concert photography):
 1. **Solid Pitch-Black Stage Arena Background:** The venue backdrop is pure `#000000` pitch black with **zero revolving or spinning elements** (no rotating space warp or starfields). The stage stands out with high-contrast cinematic realism.
-2. **Solid Rectangular Jumbotron LED Screen (16:9):** A massive solid rectangular video wall ($21\text{m} \times 11.8\text{m}$) anchored center-stage on the black backing. The screen is the sole visual display surface for procedural visual themes and features the integrated concert broadcast lower-third displaying track title and artist as the exclusive **"Now Playing"** display.
+2. **Solid Pitch-Black Jumbotron LED Screen (16:9) with Centered Song Details:**
+   - A massive solid rectangular video wall ($21\text{m} \times 11.8\text{m}$) anchored center-stage on the black backing.
+   - Kept pure black with all busy patterns, designs, and person-like silhouettes eliminated.
+   - The **Song Title**, **Artist Name**, **Live Broadcast Status Pill**, and **4-Channel STEM Indicators** are rendered right at the **CENTRE** of the screen.
+   - Dynamic spotlight ambient wash: As the concert spotlights project forward towards the audience, the screen catches that active light color and glows in real time!
 3. **Heavy-Duty Aluminum Box-Truss Architecture:** Industrial overhead roof box-truss grid with horizontal cross-beams, diagonal lacings, and dual heavy vertical truss support towers flanking the stage, matching real concert rigging.
-4. **Authentic Foreground Concert Crowd Silhouette:** High-density audience silhouette in the foreground with spectator heads, raised cheering arms/hands, and glowing mobile phone recording screens that bob and sway to the sub-bass pulse, capturing the true perspective of a concert attendee.
-5. **Rock-Solid Fixed Audience Perspective:** Camera locked in front of the stage at VIP eye level ($Y = 1.4\text{m}, Z = 16.5\text{m}$) with **zero mouse-hovering camera movement** (no distracting screen tilt or parallax drift), maintaining visceral stage framing with subtle sub-bass camera shake on heavy drops.
-6. **Lasers and Lights Thrown Directly Towards the Camera & Sweeping the Stage:**
-   - **28 Razor-Thin Concert Lasers:** Directed outward along $+Z$ straight past the camera into the audience, as well as sweeping across the stage in liquid-sky fans, stadium cones, and scissor crosses.
-   - **16 Moving-Head Volumetric Spotlights:** Overhead and ground-level moving heads angled forward towards the camera and audience, sweeping dynamic pan/tilt choreographies.
+4. **Unobstructed Front-Row VIP Perspective (Closer Camera Position):**
+   - Camera anchored closer in front of the stage at $X = 0, Y = 1.8\text{m}, Z = 9.2\text{m}$ looking directly at $(0, 4.4, -4.5)$.
+   - All foreground stick/arm obstructions and person silhouettes were removed, giving an unobstructed view of the stage.
+   - Zero mouse-hovering camera movement (rock-solid stage framing with visceral sub-bass camera shake on heavy drops).
+5. **Spotlights Thrown Directly Towards the Camera & Sweeping the Venue:**
+   - 16 Automated moving-head fixtures mounted along overhead truss.
+   - Volumetric light cones projected forward along $+Z$ towards the camera and audience plane ($Z \in [8.0, 14.0]$), sweeping dynamic choreographies.
+   - Dedicated **White Kick Spotlights (Blinders)** aimed straight at the camera lens: On every drum kick, intense white volumetric beams blast into the camera, replacing the 2D window flash overlay with authentic 3D optical blinder beams.
+6. **Heavyweight Bold Volumetric 3D Lasers:**
+   - 28 Precision concert laser projectors mounted on towers, overhead truss, and deck.
+   - Replaced 1px line segments with **weighted, bold, luminous 3D volumetric cylinder beams** featuring dual-core optics (radiant white/cyan core + rich atmospheric beam sheath).
+   - Beams project outward along $+Z$ past the camera ($Z_{\text{target}} = 22.0\text{m}$), directly modulated by the **Instrument STEM**.
 7. **Active Stage Pyrotechnics & Atmospherics:**
-   - **8 Flame Cannons (Fire Shooters):** Flanking the LED screen and stage deck lip, blasting vertical fire plumes up to $14\text{m}$ high with real-time orange/red firelight.
-   - **Cryo CO2 Smoke Jets & Stage Haze:** Dense cryogenic fog plumes erupting upward on drops and vocals, with low-lying haze catching light beams.
+   - **8 Flame Cannons (Fire Shooters):** Flanking the LED screen and stage deck lip, blasting vertical fire plumes up to $15\text{m}$ high with orange/yellow firelight at the drop of energetic tracks and heavy kicks.
+   - **6 Cryo CO2 Smoke Cannons & Rolling Stage Fog:** High-velocity cryogenic fog plumes erupting upward on drops and vocal peaks, paired with dense, low-lying stage haze catching volumetric light cones.
 8. **4-Channel STEM Separation Architecture (KIE AI Suno API & 60 FPS Real-Time Multi-Band Decomposition):**
    - Integration with KIE AI Suno Vocal/Stem Separation API (`https://kieai.mintlify.app/suno-api/separate-vocals`).
    - Real-time 60 FPS multi-band STEM decomposition isolating **Kick**, **Bass**, **Instruments**, and **Vocals**.
-   - Distinct, decoupled visual triggers:
-     - **Kick STEM** $\to$ Kick flash lights (white blinder strobes) & pyro flame blasters.
+   - Decoupled visual triggers:
+     - **Kick STEM** $\to$ White kick spotlights (blinders) thrown into camera & pyro flame blasters.
      - **Bass STEM** $\to$ Moving-head spotlight beam power, cone width, and stage deck wash.
-     - **Instrument STEM** $\to$ Razor-thin concert lasers & stage-sweeping light choreographies.
-     - **Vocal STEM** $\to$ Jumbotron LED screen visual energy (Phoenix Wings of Fire) & cryo smoke plumes.
-9. **100+ Procedural Stage Screen Themes:** Including the **Concert Phoenix Wings of Fire** theme (Family 7: themes 70–79) featuring glowing fiery wings spreading across the video wall, matching live concert pyro visuals.
-10. **Zero-Gap Fullscreen Guarantee:** Edge-to-edge rendering without letterboxing or black border gaps.
+     - **Instrument STEM** $\to$ Weighted bold lasers & moving light choreographies.
+     - **Vocal STEM** $\to$ Screen pulse intensity & cryo smoke plumes.
+9. **Zero-Gap Fullscreen Guarantee:** Edge-to-edge rendering without letterboxing or black border gaps.
 
 ---
 
@@ -77,10 +87,10 @@ $$V_{\text{stem}} = \min\left(1.0, \left(\frac{1}{174 \cdot 255} \sum_{k=37}^{21
 
 | STEM Component | Frequency Range | Dedicated Visualizer Triggers | Physical Effect Description |
 |---|---|---|---|
-| **Kick STEM** | $20 - 90\text{ Hz}$ | **Kick Flash Lights (Blinders) & Pyro Flame Blasters** | Overhead & floor blinders flash white strobes on every drum kick; 8 flame cannons erupt vertical fiery blasts. |
-| **Bass STEM** | $40 - 250\text{ Hz}$ | **Moving-Head Light Beams & Floor Wash** | Spotlight beam intensity, cone thickness, volumetric haze scattering, and stage floor reflection glow. |
-| **Instrument STEM** | $280 - 3500\text{ Hz}$ | **Razor-Thin Lasers & Light Choreography Sweeps** | 28 razor-thin lasers activate in liquid-sky sheets and fan formations; spotlights pan/tilt across stage. |
-| **Vocal STEM** | $800 - 4500\text{ Hz}$ | **Center Stage LED Screen Visuals & Cryo Smoke** | Drives Jumbotron video wall energy (e.g. Phoenix Wings of Fire flutter & flame intensity) + cryo smoke plumes. |
+| **Kick STEM** | $20 - 90\text{ Hz}$ | **White Spotlights (Blinders) Thrown At Camera & Fire Shooters** | 8 dedicated white spotlights blast volumetric beams straight into the camera lens; 8 flame cannons erupt vertical fiery blasts. |
+| **Bass STEM** | $40 - 250\text{ Hz}$ | **Moving-Head Light Beams & Stage Wash** | Spotlight beam intensity, cone thickness, volumetric haze scattering, and stage floor/screen reflection glow. |
+| **Instrument STEM** | $280 - 3500\text{ Hz}$ | **Heavyweight Bold Lasers & Light Choreography Sweeps** | 28 bold 3D volumetric lasers activate in liquid-sky sheets and fan formations; spotlights pan/tilt across stage. |
+| **Vocal STEM** | $800 - 4500\text{ Hz}$ | **Center Stage LED Screen Glow & Cryo Smoke** | Drives screen backlight pulse and cryo CO2 fog plumes. |
 
 ---
 
@@ -88,64 +98,32 @@ $$V_{\text{stem}} = \min\left(1.0, \left(\frac{1}{174 \cdot 255} \sum_{k=37}^{21
 
 ### 3.1 Solid Pitch-Black Stage Arena
 - Scene background: Pure `#000000` (`0x000000`).
-- Revolving/spinning elements completely eliminated (no starfields, no spinning space terrain).
-- Camera rigidly anchored at $(0, 1.4, 16.5)$ facing $(0, 4.4, -4.5)$ at audience eye level.
+- Revolving/spinning elements completely eliminated.
+- Camera positioned closer to the stage at $(0, 1.8, 9.2)$ facing $(0, 4.4, -4.5)$ for intense front-row immersion.
 - Mouse hover screen movement removed.
 
 ### 3.2 Jumbotron LED Video Wall
 - Solid rectangular 16:9 screen ($21\text{m} \times 11.8\text{m}$) mounted at $Y = 7.0\text{m}, Z = -4.5\text{m}$.
-- High-resolution dynamic 2D canvas texture ($1920 \times 1080$) updated in real-time.
-- Displays 100+ audio-reactive procedural themes and exclusive **"Now Playing"** broadcast lower-third banner.
+- Background kept pure pitch black; all distracting designs and person silhouettes removed.
+- Displays centered Song Title, Artist Name, Live Broadcast Badge, and 4-Channel STEM telemetry.
+- Dynamic radial glow catching the active moving-head spotlight colors.
 
 ### 3.3 Heavy-Duty Aluminum Box-Truss Roof
 - Overhanging roof truss frame ($24\text{m} \times 12\text{m}$) constructed from dual upper/lower chords with diagonal lattice members.
 - Dual vertical structural truss towers flanking the stage ($X = \pm 12\text{m}, H = 16\text{m}$) with cross-bracing.
 - Center down-hang truss sections supporting overhead moving heads and blinder arrays.
 
-### 3.4 Foreground Concert Crowd Silhouette
-- 120+ audience silhouettes clustered in the foreground ($Z \in [11.0\text{m}, 15.5\text{m}]$):
-  - Torso and head silhouettes with randomized heights.
-  - Cheering arms and hands raised towards the stage.
-  - Glowing mobile phone recording screens displaying illuminated video viewfinders.
-  - Audio-reactive vertical bouncing driven by Kick and Bass STEMs.
-
-### 3.5 Stage Lighting & Laser Systems Thrown Towards Camera
-- **Lasers (`ThinLasersEffect`):** 28 laser emitters mounted on overhead truss, side towers, and stage deck. Beams are targeted forward along $+Z$ past the camera ($Z_{\text{target}} = 22.0\text{m}$) into the crowd, as well as sweeping across stage.
-- **Moving Heads (`StageLightsEffect`):** 16 volumetric light cones angled forward towards the audience, dynamically expanding with Bass STEM and flashing white strobes on Kick STEM.
-- **Pyrotechnics (`FireShootersEffect`):** 8 flame blasters (flanking screen and deck lip) launching fiery particle plumes up to $14\text{m}$ high.
-- **Atmospherics (`SmokeMachinesEffect`):** Cryo CO2 smoke jets and stage haze catching volumetric light cones.
+### 3.4 Camera-Thrown Lighting & Laser Systems
+- **Heavyweight 3D Lasers (`ThinLasersEffect`):** 28 dual-core volumetric cylinders projecting outward along $+Z$ past the camera into the crowd ($Z = 22.0\text{m}$).
+- **Moving Heads (`StageLightsEffect`):** 16 volumetric light cones angled forward towards the audience, dynamically expanding with Bass STEM.
+- **White Kick Spotlights (`StageLightsEffect`):** 8 dedicated blinder fixtures aimed directly at the camera lens, blasting on drum kicks.
+- **Pyrotechnics (`FireShootersEffect`):** 8 flame blasters launching towering fire plumes up to $15\text{m}$ high at energetic drops.
+- **Atmospherics (`SmokeMachinesEffect`):** 6 cryo CO2 cannons blasting dense fog plumes + rolling low-lying stage haze.
 
 ---
 
-## 4. 100+ Procedural Stage Screen Visual Themes
+## 4. Current Implementation State
 
-The LED screen renders 100 procedural visual themes across 10 distinct families:
-
-| Family Index | Theme Family | Theme Range | Aesthetic Characteristics & Stems |
-|---|---|---|---|
-| **0** | **Cyber Horizon & Tron Grid** | 00 – 09 | Undulating wireframe horizon grids, neon road perspectives, audio mountains. |
-| **1** | **Cosmic Warp & Hyperspace** | 10 – 19 | Relativistic star streaks, warp speed tunnels, spiral galaxy vortexes. |
-| **2** | **Sacred Geometry & Mandalas** | 20 – 29 | Multi-pointed audio-reactive stars, concentric mandalas, golden ratio wheels. |
-| **3** | **Liquid Plasma & Aurora Waves** | 30 – 39 | Multi-frequency sinusoidal waveforms, silk auroras, chromatic interference. |
-| **4** | **Stadium Equalizer Skylines** | 40 – 49 | Radial equalizers, segmented LED VU towers, circular oscilloscope rings. |
-| **5** | **Glitch Matrix & Cyber Data** | 50 – 59 | Digital matrix code rain, cyber runes, high-speed telemetry readouts. |
-| **6** | **Neon Radial Tunnels** | 60 – 69 | Infinite depth polygons (hexagons, octagons, triangles) pulsing to tempo. |
-| **7** | **Concert Phoenix Wings & Inferno** | 70 – 79 | **Fiery Phoenix Wings spreading across the screen (matching concert photo)**, central totem silhouette, rising ember particles; driven by Vocal & Kick STEMs. |
-| **8** | **Celestial Zen Sanctuary** | 80 – 89 | Organic breathing lotus rings, soft yin-yang waves, celestial constellations. |
-| **9** | **Strobe Rave & High-Energy Blinders** | 90 – 99 | High-velocity scissor vectors, radial starburst blinder pulses, strobe chaos. |
-
----
-
-## 5. Viewport & Fullscreen Edge-to-Edge Guarantee
-
-- **Full Window Layout:** Strict CSS constraints (`width: 100% !important; height: 100% !important; min-width: 100vw; min-height: 100vh; overflow: hidden;`).
-- **Zero-Gap Letterboxing Fix:** Multi-stage resize listeners re-evaluating window dimensions at $0\text{ms}, 60\text{ms}, 180\text{ms}, 350\text{ms}, 600\text{ms}$ upon fullscreen transitions.
-- **Auto-Hiding Interface:** Header and footer control bars auto-hide when the cursor leaves the window or edges, revealing an unobstructed stadium view.
-
----
-
-## 6. Current Implementation State
-
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 454ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 469ms).
 - **Vite Development Server:** Active at `http://localhost:5173/`.
-- **Git Repository:** Fully synchronized locally.
+- **Git Repository:** Clean and staged locally (ready to push when instructed).

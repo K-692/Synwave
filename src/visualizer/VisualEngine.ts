@@ -95,10 +95,10 @@ export class VisualEngine {
   private sceneTimer = 0;
   private lastDetectedSection = '';
 
-  // Camera Dynamics (Fixed solidly in front of the stage; NO mouse hovering movement)
+  // Camera Dynamics (Fixed closer in front of the stage; NO mouse hovering movement)
   private cameraBaseX = 0;
-  private cameraBaseY = 1.4;
-  private cameraBaseZ = 16.5;
+  private cameraBaseY = 1.8;
+  private cameraBaseZ = 9.2;
   private cameraTargetFov = 60;
 
   // Settings
@@ -301,10 +301,6 @@ export class VisualEngine {
     }
   }
 
-  private lerp(a: number, b: number, t: number): number {
-    return a + (b - a) * t;
-  }
-
   /**
    * Mood-driven concert color palette manager
    */
@@ -460,20 +456,9 @@ export class VisualEngine {
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // 4. Strobe Blinder Flash on KICK STEM spikes and drops (Kick flash lights!)
-    const kickFlash = (features.isKick && features.stems.kick > 0.45) || (features.isDrop && Math.sin(trackTimeSeconds * 36.0) > 0.25);
-    if (kickFlash) {
-      const flashVal = Math.min(0.9, features.stems.kick * 0.8 + 0.3);
-      this.renderer.toneMappingExposure = 1.15 + flashVal * 1.3;
-      this.onWindowFlash?.(flashVal, '#ffffff');
-    } else {
-      this.renderer.toneMappingExposure = this.lerp(
-        this.renderer.toneMappingExposure,
-        1.15,
-        deltaSeconds * 14.0
-      );
-      this.onWindowFlash?.(0, '#ffffff');
-    }
+    // Window flash overlay disabled: visual kick is delivered by 3D white spotlights thrown at camera
+    this.renderer.toneMappingExposure = 1.15;
+    this.onWindowFlash?.(0, '#ffffff');
 
     // Dynamic stage key lighting intensity driven by Bass STEM
     this.stageKeyLight.intensity = 2.5 + features.stems.bass * 4.5;
