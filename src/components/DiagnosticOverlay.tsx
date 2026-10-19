@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { AudioFeatures, ShowDirectorState } from '../types';
 import { RoutingStore } from '../visualizer/director/RoutingStore';
+import { clearAllSynwaveCaches } from '../services/demucsService';
 
 interface DiagnosticOverlayProps {
   isVisible: boolean;
@@ -31,6 +32,8 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
   const [features, setFeatures] = useState<AudioFeatures | null>(null);
   const [directorState, setDirectorState] = useState<ShowDirectorState | null>(null);
   const [activeProfile, setActiveProfile] = useState(RoutingStore.getInstance().getActiveProfile());
+  const [cacheStatus, setCacheStatus] = useState<{ exists: boolean; shazamCount: number; stemsCount: number; isOnline: boolean } | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState(false);
 
   const frameCountRef = useRef(0);
   const lastFpsTimeRef = useRef(performance.now());
@@ -41,6 +44,28 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       return;
     }
+
+    // Query microservice disk cache status
+    fetch('http://127.0.0.1:8765/api/cache/info')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setCacheStatus({
+            exists: data.exists,
+            shazamCount: data.shazamCount,
+            stemsCount: data.stemsCount,
+            isOnline: true,
+          });
+        }
+      })
+      .catch(() => {
+        setCacheStatus({
+          exists: false,
+          shazamCount: 0,
+          stemsCount: 0,
+          isOnline: false,
+        });
+      });
 
     const updateLoop = () => {
       frameCountRef.current++;
@@ -249,6 +274,39 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
             <span className="metric-value highlight" style={{ color: features.isDrop ? '#ff0055' : '#64748b' }}>
               {features.isDrop ? '⚡ DETECTED' : 'QUIET'}
             </span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-name">DISK STORE</span>
+            <span className="metric-value highlight" style={{ color: cacheStatus?.isOnline ? '#34d399' : '#f59e0b' }}>
+              {cacheStatus?.isOnline
+                ? `.synwave_cache (${cacheStatus.stemsCount} stems, ${cacheStatus.shazamCount} shazam)`
+                : 'OFFLINE (Browser Cache Active)'}
+            </span>
+          </div>
+          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                padding: '4px 8px',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#f87171',
+                borderRadius: '4px',
+                cursor: isClearingCache ? 'wait' : 'pointer',
+              }}
+              disabled={isClearingCache}
+              onClick={async () => {
+                setIsClearingCache(true);
+                await clearAllSynwaveCaches();
+                setCacheStatus({ exists: true, shazamCount: 0, stemsCount: 0, isOnline: true });
+                setIsClearingCache(false);
+              }}
+              title="Purge .synwave_cache on disk, IndexedDB stems, and localStorage recognition"
+            >
+              {isClearingCache ? 'PURGING...' : 'PURGE ALL CACHES'}
+            </button>
           </div>
         </div>
       </div>

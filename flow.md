@@ -963,16 +963,49 @@ During rigorous festival visual testing, four key refinements were identified:
 - Added `.syncwave_cache/` to `.gitignore`.
 - Purged any obsolete `.synwave_cache` files.
 
+### 5.20 Phase 21 — Unified Server Disk Cache Architecture (`.synwave_cache`), Dual Shazam & Demucs Disk Stores, and Elimination of Cache Desynchronization
+
+#### 1. Problem Diagnosis & Root Cause Analysis
+During local testing of fresh song imports, the following discrepancies were identified:
+1. **Missing Disk Cache Folder:** The cache directory was mistakenly named `.syncwave_cache` (with a 'c') in `demucs_service.py` and `shazam_server.py`, conflicting with the canonical project name `Synwave`.
+2. **Hidden Browser Storage Interception:** The client application persisted Shazam metadata in browser `localStorage` (`synwave_shazam_cache_v2`) and stem envelopes in browser `IndexedDB` (`synwave_stems_db`). When a user uploaded an audio file that had been tested in a prior session, the frontend checked client-side storage first and returned the old data immediately without contacting the Python backend. Consequently, neither `/api/recognize` nor `/api/separate-stems` were executed, and no disk cache folder was ever created.
+3. **Absence of Shazam Server-Side Disk Caching:** `shazam_server.py` possessed no server-side disk caching mechanism for song identification; recognition results were only cached on the client browser.
+4. **Lack of Cache Invalidation / Re-generation Synchronization:** If a user cleared or deleted the cache folder on disk intending to trigger a fresh analysis, the browser silently served cached data from IndexedDB/localStorage, preventing `.synwave_cache` from re-populating.
+
+#### 2. Unified `.synwave_cache` File Hierarchy
+Standardized the disk cache structure into three discrete, dedicated subdirectories under `BASE_DIR / ".synwave_cache"`:
+- **`stems/`:** Stores pre-computed Demucs 4-stem 25 FPS normalized RMS curves, kick onsets, transient events, and `demucsBpm` keyed by SHA-256 digest, audio fingerprint, and song identity (`song_{hash}.json`).
+- **`shazam/`:** Stores verified Shazam recognition payloads (title, artist, album, genre, coverArt, verified BPM, and confidence) keyed by stable audio fingerprint and SHA-256 digest.
+- **`temp/`:** Ephemeral staging directory for multi-part file uploads during neural processing, cleaned automatically on completion.
+- **Legacy Migration:** Both `demucs_service.py` and `shazam_server.py` automatically detect and migrate any residual files from `.syncwave_cache` to `.synwave_cache` on initialization.
+
+#### 3. Authoritative Server Disk Cache Synchronization (`shazamService.ts`, `demucsService.ts`)
+- **Server-First Hierarchy:**
+  - Microservice online: Disk store (`.synwave_cache`) is the single source of truth.
+  - If `.synwave_cache` is missing or does not contain a track, the frontend executes live Shazam identification (`/api/recognize`) and Demucs separation (`/api/separate-stems`), ensuring `.synwave_cache` is created and populated on disk.
+  - Microservice offline: Browser `localStorage` and `IndexedDB` act strictly as graceful offline fallbacks so the visualizer can still function when the user runs Vite in standalone mode.
+- **New Microservice Endpoints (`shazam_server.py`):**
+  - `POST /api/check-shazam-cache`: Fast (<5ms) pre-flight check to verify if Shazam metadata already exists in `.synwave_cache/shazam`.
+  - `POST /api/recognize`: Live ShazamIO recognition with disk caching in `.synwave_cache/shazam`.
+  - `GET /api/cache/info`: Returns cache directory path, existence, and file counts for stems and shazam.
+  - `POST /api/cache/clear`: Wipes all files from `.synwave_cache/stems`, `.synwave_cache/shazam`, and `.synwave_cache/temp`.
+
+#### 4. Real-Time Telemetry HUD & Universal Cache Invalidation
+- **Live Disk Cache Status (`DiagnosticOverlay.tsx`):**
+  - Added real-time disk store indicator displaying active `.synwave_cache` status, total stems count, and total shazam count.
+  - Added interactive "PURGE ALL CACHES" button in the HUD to wipe server disk files, browser IndexedDB stems, and localStorage recognition simultaneously with a single click.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
 
 - **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
-- **Vite Development Server:** Running continuously at `http://localhost:5173/`.
-- **Audio Intelligence Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/`, with caching under `.syncwave_cache`.
+- **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
+- **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with unified persistent disk caching under `.synwave_cache/shazam` and `.synwave_cache/stems`.
+- **Cache Synchronization:** Server disk store is authoritative; missing caches trigger live Shazam recognition and Demucs stem extraction on upload and create `.synwave_cache` on disk. Browser storage serves as an offline fallback.
 - **Laser Visuals:** 22-pattern 360° 3D laser system with razor-thin geometries, user-adjustable width slider in routing console, instant on/off activation, and downbeat spike timestamp snapping.
-- **Repository Hygiene:** Clean working tree; `Synwave_procedural_music_visualizer_blueprint.md` removed from git; `My Music` removed from workspace.
+- **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
 
 
 

@@ -188,7 +188,7 @@ flowchart TD
 - **3-Tier Persistent Stem Cache:**
   - **Tier 1 (Memory):** Synchronous JS Map for zero-latency in-session lookups.
   - **Tier 2 (IndexedDB):** Browser-persistent object store (`synwave_stems_db`) allowing instant song switches and page reloads without re-computation or storage quotas.
-  - **Tier 3 (Server Disk):** Cached JSON envelopes in `.syncwave_cache/stems/{sha256}.json`. The lightweight `/api/check-stems-cache` pre-flight endpoint bypasses audio file re-uploads entirely.
+  - **Tier 3 (Server Disk):** Cached JSON envelopes and recognition in `.synwave_cache/stems/{sha256}.json` and `.synwave_cache/shazam/{hash}.json`. The lightweight `/api/check-stems-cache` and `/api/check-shazam-cache` pre-flight endpoints bypass audio file re-uploads entirely.
 
 #### 2. Real-Time Feature & Drop Pinpointing Engine
 - **Pinpointed Tri-STEM Peak Drop Gate (`AudioEngine.ts`):** Lasers and climactic visuals are gated strictly by the song's true drop segment. A frame qualifies as a drop if and only if:

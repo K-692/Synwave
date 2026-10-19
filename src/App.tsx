@@ -523,7 +523,10 @@ export const App: React.FC = () => {
           (async () => {
             let match = track.shazamMatch;
             if (!match && track.recognitionStatus !== 'recognized') {
-              match = await identifyAudioWithShazam(track.file || track.url);
+              match = await identifyAudioWithShazam(track.file || track.url, {
+                songTitle: track.title,
+                songArtist: track.artist,
+              });
               if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
               if (match.success && match.title) {
                 track.title = match.title;
@@ -781,7 +784,11 @@ export const App: React.FC = () => {
     const fingerprint = getTrackFingerprint(audioFile);
     let match = null;
     try {
-      match = await identifyAudioWithShazam(audioFile, { customFingerprint: fingerprint });
+      match = await identifyAudioWithShazam(audioFile, {
+        customFingerprint: fingerprint,
+        songTitle: initialTitle,
+        songArtist: initialArtist,
+      });
     } catch (err) {
       console.warn('[App] Shazam recognition error fallback:', err);
       match = { success: false, error: (err as Error).message };

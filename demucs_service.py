@@ -17,7 +17,26 @@ from demucs.api import Separator
 
 # Absolute Cache directory for extracted stem envelopes
 BASE_DIR = Path(__file__).resolve().parent
-CACHE_DIR = BASE_DIR / ".syncwave_cache" / "stems"
+CACHE_BASE_DIR = BASE_DIR / ".synwave_cache"
+CACHE_DIR = CACHE_BASE_DIR / "stems"
+
+# Migrate legacy .syncwave_cache folder if present
+legacy_cache_dir = BASE_DIR / ".syncwave_cache"
+if legacy_cache_dir.exists() and legacy_cache_dir.is_dir():
+    try:
+        import shutil
+        legacy_stems = legacy_cache_dir / "stems"
+        if legacy_stems.exists() and legacy_stems.is_dir():
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            for f in legacy_stems.glob("*.json"):
+                dest = CACHE_DIR / f.name
+                if not dest.exists():
+                    shutil.copy2(f, dest)
+        shutil.rmtree(legacy_cache_dir)
+        print("[DemucsService] Migrated legacy .syncwave_cache to .synwave_cache")
+    except Exception as e:
+        print(f"[DemucsService] Legacy cache migration notice: {e}")
+
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 class DemucsService:

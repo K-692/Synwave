@@ -174,14 +174,14 @@ export async function saveCachedStemData(
 }
 
 /**
- * Ultra-fast server cache verification (<15ms).
- * Checks whether the Python microservice already has pre-computed stems on disk.
+ * Ultra-fast server disk cache verification (<15ms).
+ * Checks whether the Python microservice already has pre-computed stems on disk in .synwave_cache/stems/.
  */
-async function checkServerStemsCache(
+export async function checkServerStemsCache(
   fingerprint?: string,
   songTitle?: string,
   songArtist?: string
-): Promise<DemucsStemData | null> {
+): Promise<{ status: 'hit'; data: DemucsStemData } | { status: 'miss' } | { status: 'offline' }> {
   const CHECK_URL = 'http://127.0.0.1:8765/api/check-stems-cache';
   try {
     const formData = new FormData();
@@ -190,7 +190,7 @@ async function checkServerStemsCache(
     if (songArtist) formData.append('songArtist', songArtist);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const response = await fetch(CHECK_URL, {
       method: 'POST',
@@ -199,44 +199,103 @@ async function checkServerStemsCache(
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) return null;
+    if (!response.ok) return { status: 'miss' };
     const data: StemSeparationResult = await response.json();
     if (data.success && data.cached && data.stems && data.fps) {
       return {
-        fps: data.fps,
-        durationSeconds: data.durationSeconds || 0,
-        stems: {
-          drums: data.stems.drums || [],
-          bass: data.stems.bass || [],
-          instruments: data.stems.instruments || [],
-          vocals: data.stems.vocals || [],
+        status: 'hit',
+        data: {
+          fps: data.fps,
+          durationSeconds: data.durationSeconds || 0,
+          stems: {
+            drums: data.stems.drums || [],
+            bass: data.stems.bass || [],
+            instruments: data.stems.instruments || [],
+            vocals: data.stems.vocals || [],
+          },
+          kickEvents: data.kickEvents || [],
+          kickOnsets: data.kickOnsets || [],
+          instrumentalActivity: data.instrumentalActivity || [],
+          globalIntensity: data.globalIntensity || [],
+          averageAmplitude: data.averageAmplitude,
+          aboveAverageSections: data.aboveAverageSections || [],
+          triStemDropSections: data.triStemDropSections || [],
+          drumsAverageAmplitude: data.drumsAverageAmplitude,
+          bassAverageAmplitude: data.bassAverageAmplitude,
+          instAverageAmplitude: data.instAverageAmplitude,
+          demucsBpm: data.demucsBpm,
         },
-        kickEvents: data.kickEvents || [],
-        kickOnsets: data.kickOnsets || [],
-        instrumentalActivity: data.instrumentalActivity || [],
-        globalIntensity: data.globalIntensity || [],
-        averageAmplitude: data.averageAmplitude,
-        aboveAverageSections: data.aboveAverageSections || [],
-        triStemDropSections: data.triStemDropSections || [],
-        drumsAverageAmplitude: data.drumsAverageAmplitude,
-        bassAverageAmplitude: data.bassAverageAmplitude,
-        instAverageAmplitude: data.instAverageAmplitude,
-        demucsBpm: data.demucsBpm,
       };
     }
-    return null;
+    return { status: 'miss' };
   } catch {
-    return null;
+    return { status: 'offline' };
   }
 }
 
 /**
+ * Clear stems stored in browser IndexedDB and in-memory session cache.
+ */
+export async function clearIndexedDBStems(): Promise<void> {
+  inMemoryStemCache.clear();
+  try {
+    const db = await getIndexedDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.clear();
+  } catch (err) {
+    console.warn('[DemucsService] IndexedDB clear notice:', err);
+  }
+}
+
+/**
+ * Clear all Synwave caches (server disk store .synwave_cache, browser IndexedDB, and localStorage).
+ */
+export async function clearAllSynwaveCaches(): Promise<{ success: boolean; message: string }> {
+  // 1. Purge server disk cache (.synwave_cache)
+  let serverNotice = '';
+  try {
+    const res = await fetch('http://127.0.0.1:8765/api/cache/clear', { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      serverNotice = data.message || 'Server disk cache purged.';
+    }
+  } catch {
+    serverNotice = 'Microservice offline (disk cache untouched).';
+  }
+
+  // 2. Clear browser IndexedDB stems
+  await clearIndexedDBStems();
+
+  // 3. Clear browser Shazam and BPM local storage
+  try {
+    localStorage.removeItem('synwave_shazam_cache_v2');
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('synwave_track_bpm_cache_v1')) {
+        keysToRemove.push(k);
+      }
+    }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    success: true,
+    message: `All caches cleared. ${serverNotice}`,
+  };
+}
+
+/**
  * Request 4-stem separation from Demucs or return pre-computed cached envelopes.
- * Uses a 3-tier caching hierarchy:
- *   Tier 1: In-Memory Map (0ms)
- *   Tier 2: Browser IndexedDB (<5ms)
- *   Tier 3: Local Server Cache (<15ms, skips audio upload)
- * Falls back to neural separation only when no cache exists.
+ * - Prioritizes .synwave_cache/stems/ on disk when the microservice is online.
+ * - If server disk cache does not have the track (e.g. cache deleted or new file),
+ *   executes full Demucs neural stem separation and persists to .synwave_cache/stems/.
+ * - Falls back to browser IndexedDB only if the Python microservice is completely offline.
  */
 export async function separateAudioWithDemucs(
   fileOrPath: File | string,
@@ -252,25 +311,32 @@ export async function separateAudioWithDemucs(
   const songKey = getSongIdentityKey(options.songTitle, options.songArtist);
   const candidateKeys = [fingerprint, songKey];
 
-  // Tier 1 & 2: Check Client Local Caches (In-Memory + IndexedDB)
-  const localCache = await getCachedStemData(candidateKeys);
-  if (localCache) {
-    console.info(`[DemucsService] Instant local ${localCache.source} cache hit for ${options.songTitle || fingerprint}`);
-    onProgress?.('Loaded from local cache');
-    return localCache.data;
+  // 1. Check Python Server Disk Cache (.synwave_cache/stems)
+  onProgress?.('Checking .synwave_cache disk store...');
+  const serverCheck = await checkServerStemsCache(fingerprint, options.songTitle, options.songArtist);
+
+  if (serverCheck.status === 'hit') {
+    console.info(`[DemucsService] Instant server disk cache hit (.synwave_cache/stems) for ${options.songTitle || fingerprint}`);
+    onProgress?.('Loaded from .synwave_cache');
+    await saveCachedStemData(candidateKeys, serverCheck.data);
+    return serverCheck.data;
   }
 
-  // Tier 3: Check Python Server Cache (Avoid uploading entire multi-megabyte audio file)
-  onProgress?.('Checking server stem cache...');
-  const serverCache = await checkServerStemsCache(fingerprint, options.songTitle, options.songArtist);
-  if (serverCache) {
-    console.info(`[DemucsService] Instant server cache hit for ${options.songTitle || fingerprint}`);
-    onProgress?.('Loaded from server cache');
-    await saveCachedStemData(candidateKeys, serverCache);
-    return serverCache;
+  if (serverCheck.status === 'offline') {
+    // Microservice is not running — fall back to browser IndexedDB if previously extracted
+    const localCache = await getCachedStemData(candidateKeys);
+    if (localCache) {
+      console.info(`[DemucsService] Microservice offline — using offline ${localCache.source} cache for ${options.songTitle || fingerprint}`);
+      onProgress?.('Loaded from offline browser storage');
+      return localCache.data;
+    }
+    console.warn('[DemucsService] Python microservice offline and no local cache available.');
+    return null;
   }
 
-  // Tier 4: Cache miss — Run neural stem separation on local microservice
+  // 2. Server is online, but .synwave_cache has NO cached stems for this track (e.g. cache deleted or new song)
+  // Run full Demucs neural stem separation on the local microservice and persist to disk cache!
+  onProgress?.('Extracting 4 audio stems with Demucs HTDemucs...');
   const SERVER_URL = 'http://127.0.0.1:8765/api/separate-stems';
   const formData = new FormData();
 
@@ -289,7 +355,6 @@ export async function separateAudioWithDemucs(
   if (options.songArtist) formData.append('songArtist', options.songArtist);
 
   try {
-    onProgress?.('Separating neural stems with Demucs HTDemucs...');
     const response = await fetch(SERVER_URL, {
       method: 'POST',
       body: formData,
@@ -326,6 +391,7 @@ export async function separateAudioWithDemucs(
       // Persist across candidate keys and fileHash
       const allKeys = [...candidateKeys, data.fileHash];
       await saveCachedStemData(allKeys, stemData);
+      console.info(`[DemucsService] Stem separation saved to .synwave_cache/stems for ${options.songTitle || fingerprint}`);
 
       return stemData;
     } else {
@@ -337,6 +403,7 @@ export async function separateAudioWithDemucs(
     return null;
   }
 }
+
 
 /**
  * Sample stem values at any exact audio playback timestamp (with linear interpolation).
