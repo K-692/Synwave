@@ -91,15 +91,38 @@ class DemucsService:
             # Round to 3 decimal places for efficient JSON transmission
             envelopes[key] = [round(float(v), 3) for v in norm]
 
-        # Calculate transient kicks from drums stem
+        # Calculate transient kicks with intensities from drums stem
         kicks = []
         if "drums" in envelopes:
             drums_arr = np.array(envelopes["drums"])
             # First-order forward difference (onset transient)
             diff = np.diff(drums_arr, prepend=drums_arr[0])
             for i, d in enumerate(diff):
-                if d > 0.22 and drums_arr[i] > 0.35:
-                    kicks.append(round(i / self.target_fps, 2))
+                if d > 0.18 and drums_arr[i] > 0.30:
+                    kicks.append({
+                        "time": round(i / self.target_fps, 2),
+                        "intensity": round(float(drums_arr[i]), 3)
+                    })
+
+        # Calculate instrumental activity trajectory (level + transient change rate)
+        inst_activity = []
+        if "instruments" in envelopes:
+            inst_arr = np.array(envelopes["instruments"])
+            inst_diff = np.abs(np.diff(inst_arr, prepend=inst_arr[0]))
+            combined = inst_arr * 0.65 + inst_diff * 3.5
+            inst_activity = [round(float(v), 3) for v in np.clip(combined, 0.0, 1.0)]
+
+        # Global pre-computed intensity profile across track timeline
+        drums_vec = np.array(envelopes.get("drums", [0]))
+        bass_vec = np.array(envelopes.get("bass", [0]))
+        inst_vec = np.array(envelopes.get("instruments", [0]))
+        voc_vec = np.array(envelopes.get("vocals", [0]))
+        min_len = min(len(drums_vec), len(bass_vec), len(inst_vec), len(voc_vec))
+        if min_len > 0:
+            global_int = np.clip((drums_vec[:min_len] * 0.35 + bass_vec[:min_len] * 0.35 + inst_vec[:min_len] * 0.20 + voc_vec[:min_len] * 0.10), 0.0, 1.0)
+            global_intensity = [round(float(v), 3) for v in global_int]
+        else:
+            global_intensity = [0.0]
 
         duration_seconds = round(total_frames / self.target_fps, 2)
 
@@ -107,7 +130,10 @@ class DemucsService:
             "fps": self.target_fps,
             "durationSeconds": duration_seconds,
             "stems": envelopes,
-            "kickOnsets": kicks,
+            "kickEvents": kicks,
+            "kickOnsets": [k["time"] for k in kicks],
+            "instrumentalActivity": inst_activity,
+            "globalIntensity": global_intensity,
         }
 
     def separate_file(self, file_path: str, file_hash: Optional[str] = None) -> Dict[str, Any]:

@@ -19,7 +19,6 @@ import { searchYouTubeVideo } from './services/youtubeService';
 import { extractThumbnailColors } from './services/thumbnailColorService';
 import { StemSeparationLoader } from './components/StemSeparationLoader';
 import { separateAudioWithDemucs } from './services/demucsService';
-import { Upload } from 'lucide-react';
 import type {
   QualityPreset,
   RepeatMode,
@@ -87,9 +86,9 @@ export const App: React.FC = () => {
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
-  // Festival Window Blinder Flash State
+  // Festival Window Blinder Flash State (Gradient & Bass Color Blending)
   const [windowFlashOpacity, setWindowFlashOpacity] = useState(0);
-  const [windowFlashColor, setWindowFlashColor] = useState('#ffffff');
+  const [windowFlashBg, setWindowFlashBg] = useState('radial-gradient(circle at center, rgba(255,255,255,0.95), rgba(255,255,255,0.15))');
 
   // UI Visibility & Auto-Hide State
   const [isTopBarVisible, setIsTopBarVisible] = useState(false);
@@ -103,13 +102,13 @@ export const App: React.FC = () => {
     RoutingStore.getInstance().getActiveProfile()
   );
 
-  // Synchronized YouTube Video & Shazam State
+  // Synchronized YouTube Video & Loading Gate State
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const [currentVideoTitle, setCurrentVideoTitle] = useState<string>('');
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isSeparatingStems, setIsSeparatingStems] = useState<boolean>(false);
   const [separationStatus, setSeparationStatus] = useState<string>('');
-  const [isDraggingOverScreen, setIsDraggingOverScreen] = useState<boolean>(false);
-  const audioFileInputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to RoutingStore profile and config changes
   useEffect(() => {
@@ -218,15 +217,16 @@ export const App: React.FC = () => {
 
     audioEngine.onPlayStateChange = (playing) => {
       setIsPlaying(playing);
+      visualEngineRef.current?.setIsPlaying(playing);
     };
 
     if (canvasRef.current) {
       const visualEngine = new VisualEngine(canvasRef.current);
       visualEngineRef.current = visualEngine;
 
-      visualEngine.onWindowFlash = (_opacity, colorHex) => {
-        setWindowFlashOpacity(0);
-        if (colorHex) setWindowFlashColor(colorHex);
+      visualEngine.onWindowFlash = (opacity, bgCss) => {
+        setWindowFlashOpacity(opacity);
+        if (bgCss) setWindowFlashBg(bgCss);
       };
 
       // Synchronize DOM YouTube video iframe position with 3D camera kicks & drops
@@ -308,7 +308,7 @@ export const App: React.FC = () => {
 
   // Handle Track Loading
   const loadTrack = useCallback(
-    async (track: TrackRecord, autoPlay = true) => {
+    async (track: TrackRecord, autoPlay = false) => {
       setCurrentTrack(track);
       setCurrentTime(0);
 
@@ -334,6 +334,7 @@ export const App: React.FC = () => {
             .catch((err) => console.warn('[App] Demucs load error:', err));
         }
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
+        visualEngineRef.current?.setIsPlaying(autoPlay);
       }
 
       triggerBackgroundAnalysis(track);
@@ -360,12 +361,19 @@ export const App: React.FC = () => {
     if (!audioEngineRef.current) return;
     if (isPlaying) {
       audioEngineRef.current.pause();
+      visualEngineRef.current?.setIsPlaying(false);
     } else {
+      // User cannot play the music if the video is still loading
+      if (isVideoLoading || (!isVideoReady && currentTrack)) {
+        console.warn('[App] Playback gated: Stage video is currently loading. Wait until loaded.');
+        return;
+      }
       if (!currentTrack && tracks.length > 0) {
-        loadTrack(tracks[0], true);
+        loadTrack(tracks[0], false);
         return;
       }
       audioEngineRef.current.play();
+      visualEngineRef.current?.setIsPlaying(true);
     }
   };
 
@@ -373,7 +381,7 @@ export const App: React.FC = () => {
     if (tracks.length === 0) return;
     const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : 0;
     const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
-    loadTrack(tracks[prevIndex], true);
+    loadTrack(tracks[prevIndex], false);
   };
 
   const handleNextTrack = () => {
@@ -385,7 +393,7 @@ export const App: React.FC = () => {
       const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : -1;
       nextIndex = (currentIndex + 1) % tracks.length;
     }
-    loadTrack(tracks[nextIndex], true);
+    loadTrack(tracks[nextIndex], false);
   };
 
   const handleSeek = (timeSeconds: number) => {
@@ -420,7 +428,7 @@ export const App: React.FC = () => {
     visualEngineRef.current?.setQuality(quality);
   };
 
-  // Ingest Selected Audio File from Center Screen Click or Drag-and-Drop
+  // Ingest Selected Audio File from Header or Window Drag-and-Drop
   const handleFilesSelected = async (fileList: FileList | File[]) => {
     const filesArray = Array.from(fileList);
     const audioFile = filesArray.find(
@@ -457,56 +465,59 @@ export const App: React.FC = () => {
     setTracks([track]);
     setCurrentVideoId(null);
     setCurrentVideoTitle('');
+    setIsVideoReady(false);
+    setIsVideoLoading(true);
+
+    // Stop current playback
+    audioEngineRef.current?.pause();
+    visualEngineRef.current?.setIsPlaying(false);
 
     // Trigger Demucs 4-stem neural extraction with loading overlay
     setIsSeparatingStems(true);
-    setSeparationStatus('Separating Drums, Bass, Instruments, and Vocals with Demucs...');
+    setSeparationStatus('Pre-processing audio spectrum and extracting 4 neural stems...');
 
-    const demucsPromise = separateAudioWithDemucs(audioFile, (status) => setSeparationStatus(status))
-      .then((stems) => {
-        if (stems) {
-          track.demucsStems = stems;
-          audioEngineRef.current?.setDemucsStems(stems);
-        }
-      })
-      .catch((err) => console.warn('Demucs separation error:', err))
-      .finally(() => {
-        setIsSeparatingStems(false);
-      });
+    let demucsStems = null;
+    try {
+      demucsStems = await separateAudioWithDemucs(audioFile, (status) => setSeparationStatus(status));
+      if (demucsStems) {
+        track.demucsStems = demucsStems;
+        audioEngineRef.current?.setDemucsStems(demucsStems);
+      }
+    } catch (err) {
+      console.warn('Demucs separation error:', err);
+    } finally {
+      setIsSeparatingStems(false);
+    }
 
-    await loadTrack(track, true);
-    await demucsPromise;
+    // Load track into audio engine without autoplay (playback is unlocked once video is ready)
+    await loadTrack(track, false);
 
     // Trigger silent ShazamIO identification in background (no popup)
     try {
       const match = await identifyAudioWithShazam(audioFile);
-      if (match.success && match.title) {
-        const recognizedTitle = match.title;
-        const recognizedArtist = match.artist || initialArtist;
+      const recognizedTitle = (match.success && match.title) ? match.title : initialTitle;
+      const recognizedArtist = (match.success && match.artist) ? match.artist : initialArtist;
 
-        // Update track metadata and stage screen
-        setCurrentTrack((prev) =>
-          prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
-        );
-        visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
+      setCurrentTrack((prev) =>
+        prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
+      );
+      visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
 
-        // Fetch official video from YouTube Data API v3
-        const searchQuery = match.query || `${recognizedTitle} ${recognizedArtist}`;
-        const ytResult = await searchYouTubeVideo(searchQuery);
-        if (ytResult) {
-          setCurrentVideoId(ytResult.videoId);
-          setCurrentVideoTitle(ytResult.title);
-        }
+      const searchQuery = match.query || `${recognizedTitle} ${recognizedArtist}`;
+      const ytResult = await searchYouTubeVideo(searchQuery);
+      if (ytResult) {
+        setCurrentVideoId(ytResult.videoId);
+        setCurrentVideoTitle(ytResult.title);
+        // Video iframe will load and fire onPlayerReady(true) to unlock playback
       } else {
-        // Fallback search with filename
-        const ytResult = await searchYouTubeVideo(`${initialTitle} ${initialArtist}`);
-        if (ytResult) {
-          setCurrentVideoId(ytResult.videoId);
-          setCurrentVideoTitle(ytResult.title);
-        }
+        // Fallback if no video found
+        setIsVideoReady(true);
+        setIsVideoLoading(false);
       }
     } catch (err) {
       console.warn('Shazam / YouTube pipeline error:', err);
+      setIsVideoReady(true);
+      setIsVideoLoading(false);
     }
   };
 
@@ -636,6 +647,12 @@ export const App: React.FC = () => {
         videoTitle={currentVideoTitle}
         currentTime={currentTime}
         isPlaying={isPlaying}
+        onPlayerReady={(ready) => {
+          setIsVideoReady(ready);
+          if (ready) {
+            setIsVideoLoading(false);
+          }
+        }}
         onKeySaved={() => {
           if (currentTrack) {
             searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
@@ -660,7 +677,7 @@ export const App: React.FC = () => {
         className="festival-window-blinder"
         style={{
           opacity: windowFlashOpacity,
-          backgroundColor: windowFlashColor,
+          background: windowFlashBg,
         }}
       />
 
@@ -674,6 +691,7 @@ export const App: React.FC = () => {
         onToggleRouting={() => setIsRoutingOpen((prev) => !prev)}
         onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
         onMouseEnter={() => setIsTopBarVisible(true)}
+        onFilesSelected={handleFilesSelected}
       />
 
       {/* Audio-to-Visual Routing Console Modal */}
@@ -724,41 +742,6 @@ export const App: React.FC = () => {
         onClose={() => setIsDiagnosticOpen(false)}
       />
 
-      {/* Center Screen Compact Drop Target */}
-      <div
-        className={`stage-center-drop-target ${isDraggingOverScreen ? 'drag-hover' : ''}`}
-        onClick={() => audioFileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingOverScreen(true);
-        }}
-        onDragLeave={() => setIsDraggingOverScreen(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDraggingOverScreen(false);
-          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFilesSelected(e.dataTransfer.files);
-          }
-        }}
-        title="Click or drag & drop music file to play"
-      >
-        <input
-          type="file"
-          ref={audioFileInputRef}
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              handleFilesSelected(e.target.files);
-            }
-          }}
-          accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
-          style={{ display: 'none' }}
-        />
-        <div className="stage-drop-label">
-          <Upload size={14} />
-          <span>LOAD AUDIO / DROP FILE</span>
-        </div>
-      </div>
-
       {/* Demucs Neural Stem Separation Pre-Processing Loader */}
       <StemSeparationLoader
         isVisible={isSeparatingStems}
@@ -771,6 +754,8 @@ export const App: React.FC = () => {
       <PlayerControls
         currentTrack={currentTrack}
         isPlaying={isPlaying}
+        isVideoReady={isVideoReady}
+        isVideoLoading={isVideoLoading}
         currentTime={currentTime}
         duration={duration}
         volume={volume}

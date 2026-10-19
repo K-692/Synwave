@@ -65,6 +65,8 @@ export interface AudioFeatures {
   musicMode: 'calm' | 'festival'; // Detected music style: calm acoustic vs festival dubstep
   mood: MusicMood;           // Detailed Librosa-inspired mood classification
   stems: AudioStems;         // 4-stem separated real-time signals: Kick, Bass, Instruments, Vocals
+  instrumentalActivity?: number; // Pre-processed instrumental activity & transient speed (0.0 to 1.0)
+  globalIntensity?: number;      // Pre-processed overall track acoustic energy (0.0 to 1.0)
   estimatedBpm: number;      // Current estimated tempo / BPM
   beatIndex: number;         // Monotonic beat counter
   barIndex: number;          // Bar index (1 to 4/8 in current phrase)
@@ -82,22 +84,27 @@ export interface EnabledEffectsConfig {
   lights: boolean;
   lasers: boolean;
   flames: boolean;
-  smoke: boolean;
   screen: boolean;
 }
 
 export interface AudioVisualRoutingConfig {
-  kickSensitivity: number;      // 0.2 to 2.0 (default 1.0)
-  bassToBeamIntensity: number;  // 0.2 to 2.0 (default 1.0)
-  vocalToScreenGlow: number;    // 0.2 to 2.0 (default 1.0)
-  pyroThreshold: number;        // 0.2 to 1.0 (default 0.45)
-  laserDensity: number;         // 0.2 to 2.0 (default 1.0)
-  spotlightCount: number;       // 1 to 8 (default 3)
-  effectDecay: number;          // 0.5 to 2.0 (default 1.0)
-  cameraShakeStrength: number;  // 0.0 to 2.0 (default 1.0)
-  reducedFlash: boolean;        // true/false
-  disablePyrotechnics: boolean; // true/false
-  maxBrightnessLimit: number;   // 0.3 to 1.0 (default 1.0)
+  kickSensitivity: number;              // 0.2 to 2.0 (default 1.0)
+  screenShakeIntensity: number;         // 0.0 to 2.0 (default 1.0, applies only to YouTube screen)
+  screenFlashIntensity: number;         // 0.0 to 2.0 (default 1.0)
+  screenFlashColorSaturation: number;   // 0.0 to 2.0 (default 1.0, blends thumbnail colors on bass)
+  bassToBeamIntensity: number;          // 0.2 to 2.0 (default 1.0)
+  perimeterBassRotationSpeed: number;   // 0.2 to 3.0 (default 1.0, 360-degree rotation)
+  instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, arena cathedral laser fan speed)
+  vocalToScreenGlow: number;            // 0.2 to 2.0 (default 1.0)
+  pyroThreshold: number;                // 0.2 to 1.0 (default 0.45)
+  laserDensity: number;                 // 0.2 to 2.0 (default 1.0)
+  spotlightCount: number;               // 1 to 8 (default 3)
+  spotlightIntensity: number;           // 0.5 to 2.5 (default 1.3)
+  effectDecay: number;                  // 0.5 to 2.0 (default 1.0)
+  cameraShakeStrength: number;          // Legacy alias
+  reducedFlash: boolean;                // true/false
+  disablePyrotechnics: boolean;         // true/false
+  maxBrightnessLimit: number;           // 0.3 to 1.0 (default 1.0)
   enabledEffects: EnabledEffectsConfig;
 }
 
@@ -185,7 +192,10 @@ export interface DemucsStemData {
     instruments: number[];
     vocals: number[];
   };
+  kickEvents?: { time: number; intensity: number }[];
   kickOnsets: number[];
+  instrumentalActivity?: number[];
+  globalIntensity?: number[];
 }
 
 export interface TrackAnalysis {

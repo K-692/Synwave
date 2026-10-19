@@ -1,11 +1,13 @@
 /**
  * Synwave Audio-to-Visual Routing Console
  * 
- * Allows users to customize how audio features influence the 3D concert stage:
- * - Select Stage Profiles (Festival Mainstage, Industrial Underground, Rock Arena, Cinematic Ambient)
- * - Fine-tune Kick Sensitivity, Bass-to-Beam, Vocal-to-Screen, Pyro Thresholds, and Laser Density
- * - Toggle individual effect families (Lights, Lasers, Flames, Smoke, Stage Screen)
- * - Configure safety and accessibility (Reduced Flash, Disable Pyrotechnics, Camera Shake)
+ * Comprehensive calibration console for the 3D concert stage:
+ * - Drums & Kicks: Screen Shake (YouTube iframe only), Screen Flash Strobe, Kick Sensitivity, Flame Threshold
+ * - Bass Spectrum: 360° Perimeter Light Rotation Speed, Bass-to-Beam Radiance, Flash Color Saturation
+ * - Instruments: Arena Cathedral Fan Lasers Sweep Speed & Fan Spread
+ * - Spotlights: Fixture Count (1-8), Thumbnail Palette Tuning, Global Brightness Ceiling
+ * - Master Toggles: Moving Head Lights, Cathedral Lasers, Flame Cannons, Jumbotron Screen
+ * - Safety & Accessibility: Reduced Flash Mode, Disable Pyrotechnics
  */
 
 import React, { useState, useEffect } from 'react';
@@ -20,6 +22,10 @@ import {
   Shield,
   EyeOff,
   Sparkles,
+  Disc3,
+  Waves,
+  Music,
+  Activity,
 } from 'lucide-react';
 import { RoutingStore, STAGE_PROFILES } from '../visualizer/director/RoutingStore';
 import type { AudioVisualRoutingConfig, StageProfile } from '../types';
@@ -79,7 +85,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             <Sliders size={20} className="neon-cyan-icon" />
             <div>
               <h3>AUDIO-TO-VISUAL ROUTING CONSOLE</h3>
-              <p>Calibrate stage sensitivity, effect families, and procedural concert profiles</p>
+              <p>Calibrate offline neural stem triggers, 360° perimeter bass rig, arena cathedral lasers, and screen blinders</p>
             </div>
           </div>
 
@@ -144,7 +150,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 onClick={() => handleToggleEffect('lights')}
               >
                 <Lightbulb size={16} />
-                <span>Moving Head Lights</span>
+                <span>Moving Head Lights & 360° Rig</span>
               </button>
 
               <button
@@ -152,7 +158,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 onClick={() => handleToggleEffect('lasers')}
               >
                 <Zap size={16} />
-                <span>Heavyweight Lasers</span>
+                <span>Arena Cathedral Lasers</span>
               </button>
 
               <button
@@ -164,28 +170,61 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 <span>Flame Cannons</span>
               </button>
 
-
               <button
                 className={`effect-toggle-pill ${config.enabledEffects.screen ? 'active' : ''}`}
                 onClick={() => handleToggleEffect('screen')}
               >
                 <Tv size={16} />
-                <span>Jumbotron Screen</span>
+                <span>Jumbotron Stage Screen</span>
               </button>
             </div>
           </div>
 
-          {/* Section 3: Audio-to-Visual Mappings & Sensitivity */}
+          {/* Section 3: Drums & Kicks Routing Engine */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
-              <Sliders size={16} />
-              <span>AUDIO SIGNAL MAPPING & SENSITIVITY</span>
+              <Disc3 size={16} />
+              <span>DRUMS & KICK ROUTING (SCREEN IMPACT & BLINDERS)</span>
             </h4>
             <div className="sliders-grid">
+              {/* Screen Shake Intensity */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>YouTube Screen Shake</span>
+                  <span className="slider-val">{(config.screenShakeIntensity ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="2.5"
+                  step="0.05"
+                  value={config.screenShakeIntensity ?? 1.0}
+                  onChange={(e) => handleSliderChange('screenShakeIntensity', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Drums/kick displacement strictly on the YouTube stage screen (window stays steady)</span>
+              </div>
+
+              {/* Screen Flash Strobe Intensity */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Kick Screen Flash Strobe</span>
+                  <span className="slider-val">{(config.screenFlashIntensity ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="2.5"
+                  step="0.05"
+                  value={config.screenFlashIntensity ?? 1.0}
+                  onChange={(e) => handleSliderChange('screenFlashIntensity', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Full-window blinder strobe flash activated on heavy kicks</span>
+              </div>
+
               {/* Kick Sensitivity */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Kick Sensitivity</span>
+                  <span>Kick Trigger Sensitivity</span>
                   <span className="slider-val">{config.kickSensitivity.toFixed(2)}x</span>
                 </div>
                 <input
@@ -196,47 +235,13 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.kickSensitivity}
                   onChange={(e) => handleSliderChange('kickSensitivity', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Controls drum kick blinder flash and flame burst triggers</span>
-              </div>
-
-              {/* Bass to Beam Intensity */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Bass-to-Beam Intensity</span>
-                  <span className="slider-val">{config.bassToBeamIntensity.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="2.0"
-                  step="0.05"
-                  value={config.bassToBeamIntensity}
-                  onChange={(e) => handleSliderChange('bassToBeamIntensity', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Modulates moving-head beam thickness and floor wash radiance</span>
-              </div>
-
-              {/* Vocal to Screen Glow */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Vocal-to-Screen Glow</span>
-                  <span className="slider-val">{config.vocalToScreenGlow.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="2.0"
-                  step="0.05"
-                  value={config.vocalToScreenGlow}
-                  onChange={(e) => handleSliderChange('vocalToScreenGlow', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Drives stage screen ambient flare and cryo plume velocity</span>
+                <span className="slider-hint">Controls drum kick threshold for flash strobing and flame bursts</span>
               </div>
 
               {/* Pyro Trigger Threshold */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Pyro Trigger Threshold</span>
+                  <span>Flame Burst Threshold</span>
                   <span className="slider-val">{config.pyroThreshold.toFixed(2)}</span>
                 </div>
                 <input
@@ -247,13 +252,116 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.pyroThreshold}
                   onChange={(e) => handleSliderChange('pyroThreshold', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Higher values require massive festival drops to ignite flames</span>
+                <span className="slider-hint">Higher values reserve stage flamethrowers for massive drops</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Bass Spectrum & 360° Perimeter Rig */}
+          <div className="routing-section">
+            <h4 className="routing-section-heading">
+              <Waves size={16} />
+              <span>BASS SPECTRUM & 360° SCREEN LIGHTS</span>
+            </h4>
+            <div className="sliders-grid">
+              {/* 360° Perimeter Rotation Speed */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>360° Perimeter Lights Bass Speed</span>
+                  <span className="slider-val">{(config.perimeterBassRotationSpeed ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="3.0"
+                  step="0.05"
+                  value={config.perimeterBassRotationSpeed ?? 1.0}
+                  onChange={(e) => handleSliderChange('perimeterBassRotationSpeed', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Manipulates continuous 360° rotation speed based on bass frequency</span>
+              </div>
+
+              {/* Bass to Beam Radiance */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Bass-to-Beam Radiance</span>
+                  <span className="slider-val">{config.bassToBeamIntensity.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.5"
+                  step="0.05"
+                  value={config.bassToBeamIntensity}
+                  onChange={(e) => handleSliderChange('bassToBeamIntensity', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Modulates moving-head beam thickness, floor wash, and top bass cannons</span>
+              </div>
+
+              {/* Screen Flash Color Saturation */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Flash Color Saturation</span>
+                  <span className="slider-val">{(config.screenFlashColorSaturation ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="2.0"
+                  step="0.05"
+                  value={config.screenFlashColorSaturation ?? 1.0}
+                  onChange={(e) => handleSliderChange('screenFlashColorSaturation', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Low bass produces pure white strobe; high bass blends video thumbnail gradients</span>
+              </div>
+
+              {/* Effect Envelope Decay */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Effect Envelope Decay</span>
+                  <span className="slider-val">{config.effectDecay.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.5"
+                  step="0.05"
+                  value={config.effectDecay}
+                  onChange={(e) => handleSliderChange('effectDecay', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Shapes release decay rate for bass beams and kick flash strobing</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Instrumental Arena Cathedral Fan Lasers */}
+          <div className="routing-section">
+            <h4 className="routing-section-heading">
+              <Music size={16} />
+              <span>INSTRUMENTAL CATHEDRAL FAN LASERS</span>
+            </h4>
+            <div className="sliders-grid">
+              {/* Instrumental Movement Speed & Spread */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Instrumental Sweep Speed & Spread</span>
+                  <span className="slider-val">{(config.instrumentalMovementSpeed ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="3.0"
+                  step="0.05"
+                  value={config.instrumentalMovementSpeed ?? 1.0}
+                  onChange={(e) => handleSliderChange('instrumentalMovementSpeed', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Higher instrumental frequency increases fan spread and scissor crossing speed</span>
               </div>
 
               {/* Laser Density */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Laser Density & Beams</span>
+                  <span>Laser Beam Density</span>
                   <span className="slider-val">{config.laserDensity.toFixed(2)}x</span>
                 </div>
                 <input
@@ -264,9 +372,18 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.laserDensity}
                   onChange={(e) => handleSliderChange('laserDensity', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Adjusts active laser projector count and volumetric sheath</span>
+                <span className="slider-hint">Adjusts active razor beam count across the stadium cathedral canopy</span>
               </div>
+            </div>
+          </div>
 
+          {/* Section 6: Stage Spotlights & Palette Configuration */}
+          <div className="routing-section">
+            <h4 className="routing-section-heading">
+              <Activity size={16} />
+              <span>STAGE SPOTLIGHTS & THUMBNAIL PALETTE</span>
+            </h4>
+            <div className="sliders-grid">
               {/* Colouring Spotlight Count */}
               <div className="slider-control">
                 <div className="slider-label-row">
@@ -287,26 +404,26 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 <span className="slider-hint">Number of active colour-tinted spotlights sweeping the stage (default: 3)</span>
               </div>
 
-              {/* Effect Decay */}
+              {/* Max Brightness Limit */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Effect Envelope Decay</span>
-                  <span className="slider-val">{config.effectDecay.toFixed(2)}x</span>
+                  <span>Global Lumen Ceiling</span>
+                  <span className="slider-val">{Math.round(config.maxBrightnessLimit * 100)}%</span>
                 </div>
                 <input
                   type="range"
-                  min="0.5"
-                  max="2.0"
+                  min="0.3"
+                  max="1.0"
                   step="0.05"
-                  value={config.effectDecay}
-                  onChange={(e) => handleSliderChange('effectDecay', parseFloat(e.target.value))}
+                  value={config.maxBrightnessLimit}
+                  onChange={(e) => handleSliderChange('maxBrightnessLimit', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Shapes the attack and release curve of blinder and fire bursts</span>
+                <span className="slider-hint">Prevents venue overexposure and enforces global concert lumen ceiling</span>
               </div>
             </div>
           </div>
 
-          {/* Section 4: Safety & Accessibility Controls */}
+          {/* Section 7: Safety & Accessibility Controls */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Shield size={16} />
@@ -325,7 +442,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                     {config.reducedFlash ? 'ON' : 'OFF'}
                   </span>
                 </div>
-                <p className="safety-desc">Tones down high-contrast blinder strobing for light sensitivity</p>
+                <p className="safety-desc">Tones down high-contrast blinder strobing for photosensitive viewers</p>
               </div>
 
               {/* Disable Pyrotechnics Toggle */}
@@ -340,41 +457,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                     {config.disablePyrotechnics ? 'DISABLED' : 'ENABLED'}
                   </span>
                 </div>
-                <p className="safety-desc">Completely deactivates all 8 stage flamethrowers across all presets</p>
-              </div>
-
-              {/* Camera Shake Slider */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Camera Shake Intensity</span>
-                  <span className="slider-val">{config.cameraShakeStrength.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="2.0"
-                  step="0.1"
-                  value={config.cameraShakeStrength}
-                  onChange={(e) => handleSliderChange('cameraShakeStrength', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Chest-thump vibration on heavy kicks (set to 0 for locked camera)</span>
-              </div>
-
-              {/* Max Brightness Limit */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Max Brightness Ceiling</span>
-                  <span className="slider-val">{Math.round(config.maxBrightnessLimit * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.3"
-                  max="1.0"
-                  step="0.05"
-                  value={config.maxBrightnessLimit}
-                  onChange={(e) => handleSliderChange('maxBrightnessLimit', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Prevents venue overexposure and enforces global lumen ceiling</span>
+                <p className="safety-desc">Completely deactivates all stage flamethrowers across all presets</p>
               </div>
             </div>
           </div>

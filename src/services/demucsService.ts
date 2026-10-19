@@ -20,6 +20,9 @@ export interface StemSeparationResult {
     vocals: number[];
   };
   kickOnsets?: number[];
+  kickEvents?: { time: number; intensity: number }[];
+  instrumentalActivity?: number[];
+  globalIntensity?: number[];
   error?: string;
 }
 
@@ -67,7 +70,10 @@ export async function separateAudioWithDemucs(
           instruments: data.stems.instruments || [],
           vocals: data.stems.vocals || [],
         },
+        kickEvents: data.kickEvents || [],
         kickOnsets: data.kickOnsets || [],
+        instrumentalActivity: data.instrumentalActivity || [],
+        globalIntensity: data.globalIntensity || [],
       };
     } else {
       console.warn('[DemucsService] Stem separation unfulfilled:', data.error);
@@ -85,9 +91,27 @@ export async function separateAudioWithDemucs(
 export function sampleStemValues(
   data: DemucsStemData | null | undefined,
   timeSeconds: number
-): { kick: number; bass: number; instruments: number; vocals: number; isKickOnset: boolean } {
+): {
+  kick: number;
+  bass: number;
+  instruments: number;
+  vocals: number;
+  instrumentalActivity: number;
+  globalIntensity: number;
+  isKickOnset: boolean;
+  kickIntensity: number;
+} {
   if (!data || !data.stems || data.fps <= 0) {
-    return { kick: 0, bass: 0, instruments: 0, vocals: 0, isKickOnset: false };
+    return {
+      kick: 0,
+      bass: 0,
+      instruments: 0,
+      vocals: 0,
+      instrumentalActivity: 0,
+      globalIntensity: 0,
+      isKickOnset: false,
+      kickIntensity: 0,
+    };
   }
 
   const samplePos = timeSeconds * data.fps;
@@ -95,7 +119,7 @@ export function sampleStemValues(
   const i1 = i0 + 1;
   const frac = samplePos - i0;
 
-  const sampleStem = (arr?: number[]) => {
+  const sampleArray = (arr?: number[]) => {
     if (!arr || arr.length === 0) return 0;
     if (i0 < 0) return arr[0] || 0;
     if (i0 >= arr.length - 1) return arr[arr.length - 1] || 0;
@@ -104,17 +128,29 @@ export function sampleStemValues(
     return v0 + (v1 - v0) * frac;
   };
 
-  const kick = sampleStem(data.stems.drums);
-  const bass = sampleStem(data.stems.bass);
-  const instruments = sampleStem(data.stems.instruments);
-  const vocals = sampleStem(data.stems.vocals);
+  const kick = sampleArray(data.stems.drums);
+  const bass = sampleArray(data.stems.bass);
+  const instruments = sampleArray(data.stems.instruments);
+  const vocals = sampleArray(data.stems.vocals);
+  const instrumentalActivity = sampleArray(data.instrumentalActivity);
+  const globalIntensity = sampleArray(data.globalIntensity);
 
   // Check if near kick onset
   let isKickOnset = false;
-  if (data.kickOnsets && data.kickOnsets.length > 0) {
+  let kickIntensity = 0;
+  if (data.kickEvents && data.kickEvents.length > 0) {
+    for (const event of data.kickEvents) {
+      if (Math.abs(timeSeconds - event.time) < 0.08) {
+        isKickOnset = true;
+        kickIntensity = event.intensity;
+        break;
+      }
+    }
+  } else if (data.kickOnsets && data.kickOnsets.length > 0) {
     for (const onset of data.kickOnsets) {
       if (Math.abs(timeSeconds - onset) < 0.08) {
         isKickOnset = true;
+        kickIntensity = kick;
         break;
       }
     }
@@ -125,6 +161,9 @@ export function sampleStemValues(
     bass,
     instruments,
     vocals,
+    instrumentalActivity,
+    globalIntensity,
     isKickOnset,
+    kickIntensity: Math.max(kickIntensity, kick),
   };
 }

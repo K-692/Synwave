@@ -16,6 +16,7 @@ interface YouTubeStagePlayerProps {
   currentTime: number;
   isPlaying: boolean;
   onKeySaved?: () => void;
+  onPlayerReady?: (ready: boolean) => void;
 }
 
 declare global {
@@ -63,6 +64,7 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
   currentTime,
   isPlaying,
   onKeySaved,
+  onPlayerReady,
 }) => {
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const containerId = 'synwave-yt-iframe-player';
@@ -100,9 +102,13 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
         }
         playerRef.current = null;
         setIsPlayerReady(false);
+        onPlayerReady?.(false);
       }
       return;
     }
+
+    setIsPlayerReady(false);
+    onPlayerReady?.(false);
 
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) {
@@ -139,6 +145,7 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
               event.target.mute();
               event.target.setVolume(0);
               setIsPlayerReady(true);
+              onPlayerReady?.(true);
 
               if (currentTime > 0) {
                 event.target.seekTo(currentTime, true);

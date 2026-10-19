@@ -25,6 +25,8 @@ import { SongTimeline } from './SongTimeline';
 interface PlayerControlsProps {
   currentTrack: TrackRecord | null;
   isPlaying: boolean;
+  isVideoReady?: boolean;
+  isVideoLoading?: boolean;
   currentTime: number;
   duration: number;
   volume: number;
@@ -49,6 +51,8 @@ interface PlayerControlsProps {
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
   currentTrack,
   isPlaying,
+  isVideoReady = true,
+  isVideoLoading = false,
   currentTime,
   duration,
   volume,
@@ -210,13 +214,31 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               <SkipBack size={18} />
             </button>
 
-            <button
-              className="btn-play-pause"
-              onClick={onPlayPause}
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <Pause size={22} /> : <Play size={22} className="play-icon-offset" />}
-            </button>
+            {(() => {
+              const isPlayAllowed = !isVideoLoading && (isVideoReady || !currentTrack);
+              return (
+                <button
+                  className={`btn-play-pause ${!isPlayAllowed ? 'disabled' : ''}`}
+                  onClick={isPlayAllowed ? onPlayPause : undefined}
+                  disabled={!isPlayAllowed}
+                  title={
+                    !isPlayAllowed
+                      ? 'Loading stage video... Please wait before playing'
+                      : isPlaying
+                      ? 'Pause'
+                      : 'Play'
+                  }
+                >
+                  {isVideoLoading ? (
+                    <div className="btn-play-spinner" />
+                  ) : isPlaying ? (
+                    <Pause size={22} />
+                  ) : (
+                    <Play size={22} className="play-icon-offset" />
+                  )}
+                </button>
+              );
+            })()}
 
             <button
               className="btn-control-icon"

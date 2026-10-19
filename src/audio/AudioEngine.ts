@@ -359,8 +359,11 @@ export class AudioEngine {
     const deltaSeconds = Math.min(0.1, (now - this.lastFeatureTime) / 1000);
     this.lastFeatureTime = now;
 
-    // Real-Time 4-STEM Decomposition (Driven by Demucs AI stems when available)
+    // Pre-computed 4-STEM Decomposition (Demucs Neural Stems)
     let stems: AudioStems;
+    let instrumentalActivity = 0;
+    let precomputedGlobalIntensity = 0;
+
     if (this.demucsStems) {
       const sampled = sampleStemValues(this.demucsStems, currentTime);
       stems = {
@@ -369,9 +372,12 @@ export class AudioEngine {
         instruments: sampled.instruments,
         vocals: sampled.vocals,
       };
-      if (sampled.isKickOnset || sampled.kick > 0.52) {
+      instrumentalActivity = sampled.instrumentalActivity;
+      precomputedGlobalIntensity = sampled.globalIntensity;
+
+      if (sampled.isKickOnset || sampled.kick > 0.45) {
         isKick = true;
-        kickIntensity = Math.max(kickIntensity, sampled.kick);
+        kickIntensity = Math.max(kickIntensity, sampled.kickIntensity);
       }
     } else {
       stems = StemSeparationService.extractRealtimeStems(
@@ -390,9 +396,9 @@ export class AudioEngine {
 
     return {
       timeSeconds: currentTime,
-      rms: this.smoothedRms,
-      bass: this.smoothedBass,
-      subBass: this.smoothedSubBass,
+      rms: precomputedGlobalIntensity > 0 ? (this.smoothedRms * 0.3 + precomputedGlobalIntensity * 0.7) : this.smoothedRms,
+      bass: this.demucsStems ? stems.bass : this.smoothedBass,
+      subBass: this.demucsStems ? stems.bass : this.smoothedSubBass,
       lowMid: this.smoothedLowMid,
       highMid: this.smoothedHighMid,
       treble: this.smoothedTreble,
@@ -407,6 +413,8 @@ export class AudioEngine {
       musicMode,
       mood,
       stems,
+      instrumentalActivity,
+      globalIntensity: precomputedGlobalIntensity || this.smoothedRms,
       estimatedBpm: beatGrid.bpm,
       beatIndex: beatGrid.beatIndex,
       barIndex: beatGrid.barIndex,

@@ -111,11 +111,17 @@ export class VisualEngine {
   // Settings
   private quality: QualityPreset = 'high';
   private effectIntensity = 1.0;
+  private isPlaying = false;
+  private currentFlashOpacity = 0;
 
   // Live state callbacks
   public onCurrentSectionChange?: (section: string) => void;
-  public onWindowFlash?: (opacity: number, colorHex: string) => void;
+  public onWindowFlash?: (opacity: number, backgroundCss: string) => void;
   public onStageShake?: (shakeXPixels: number, shakeYPixels: number) => void;
+
+  public setIsPlaying(playing: boolean): void {
+    this.isPlaying = playing;
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -450,8 +456,11 @@ export class VisualEngine {
    */
   public renderFrame(getLiveFeatures: () => AudioFeatures, getCurrentTime: () => number): void {
     const now = performance.now();
-    const deltaSeconds = Math.min(0.08, (now - this.lastFrameTime) / 1000);
+    const rawDelta = Math.min(0.08, (now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
+
+    // Freeze all movements and time when music is not actively playing
+    const deltaSeconds = this.isPlaying ? rawDelta : 0;
 
     const trackTimeSeconds = getCurrentTime();
     const features = getLiveFeatures();
@@ -489,51 +498,77 @@ export class VisualEngine {
     // 2. Smart Scene Choreographer
     this.updateSmartChoreographer(trackTimeSeconds, features, deltaSeconds);
 
-    // 3. Concert Front View Camera (Locked solidly in front of the stage; NO mouse hovering movement)
-    this.camera.position.x = this.cameraBaseX;
-    this.camera.position.y = this.cameraBaseY;
-    this.camera.position.z = this.cameraBaseZ;
+    // 3. Concert Front View Camera (Locked solidly in front of the stage; ZERO window shake!)
+    this.camera.position.set(this.cameraBaseX, this.cameraBaseY, this.cameraBaseZ);
 
-    // Sub-bass rumble / vibration on heavy kicks and drops (governed by routingConfig)
-    // Screen and camera shake strictly activated by drums/kicks
-    let rumble = 0;
-    let shakeX = 0;
-    let shakeY = 0;
-    const shakeMult = routingConfig.cameraShakeStrength;
-    if (shakeMult > 0 && !routingConfig.reducedFlash) {
+    // Screen shake: ONLY the YouTube iframe stage screen shakes on kicks
+    let kickShakeX = 0;
+    let kickShakeY = 0;
+    const shakeMult = routingConfig.screenShakeIntensity ?? 1.0;
+    if (shakeMult > 0 && !routingConfig.reducedFlash && this.isPlaying) {
       const kickPower = Math.max(features.stems.kick, features.isKick ? (features.kickIntensity || 1.0) : 0);
       if (kickPower > 0.22) {
-        rumble = Math.pow(kickPower, 1.4) * 0.18 * shakeMult;
-        shakeX = (Math.random() - 0.5) * rumble * 1.25;
-        shakeY = (Math.random() - 0.5) * rumble * 0.95;
-        this.camera.position.x += shakeX;
-        this.camera.position.y += shakeY;
+        const shakePx = Math.pow(kickPower, 1.4) * 16.0 * shakeMult;
+        kickShakeX = (Math.random() - 0.5) * 2 * shakePx;
+        kickShakeY = (Math.random() - 0.5) * 2 * shakePx;
       }
     }
 
-    // Audio-synchronized shake for the YouTube iframe (pixel displacement)
+    // Audio-synchronized kick shake for the YouTube iframe (pixel displacement only)
     if (this.onStageShake) {
-      const pixelsPerUnit = window.innerHeight / 15.82;
-      const pxX = -shakeX * pixelsPerUnit;
-      const pxY = shakeY * pixelsPerUnit;
-      this.onStageShake(pxX, pxY);
+      this.onStageShake(kickShakeX, kickShakeY);
     }
 
     // Always look directly at the center of the solid rectangular concert stage screen
     this.camera.lookAt(0, 4.4, -4.5);
 
     // Dynamic FOV punch on kicks/drops
-    const fovPunch = routingConfig.reducedFlash
+    const fovPunch = routingConfig.reducedFlash || !this.isPlaying
       ? 0
-      : (features.isDrop ? 3.5 : (features.isKick ? features.kickIntensity * 2.5 : 0));
+      : (features.isDrop ? 3.5 : (features.isKick ? (features.kickIntensity || 0.8) * 2.5 : 0));
     const desiredFov = 60 + fovPunch;
-    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * deltaSeconds * 14.0;
+    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * (this.isPlaying ? rawDelta * 14.0 : 1.0);
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // Window flash overlay disabled: visual kick is delivered by 3D white spotlights thrown at camera
-    this.renderer.toneMappingExposure = 1.15;
-    this.onWindowFlash?.(0, '#ffffff');
+    // 4. Kick Screen Flash with Bass-Modulated Thumbnail Color Gradients
+    const flashMult = routingConfig.screenFlashIntensity ?? 1.0;
+    if (this.isPlaying && !routingConfig.reducedFlash && features.isKick) {
+      const kickVal = Math.max(features.stems.kick, features.kickIntensity || 0.8);
+      if (kickVal > 0.30) {
+        const targetOpacity = Math.min(0.85, (0.35 + kickVal * 0.45) * flashMult);
+        if (targetOpacity > this.currentFlashOpacity) {
+          this.currentFlashOpacity = targetOpacity;
+        }
+      }
+    } else {
+      // Rapid decay for snappy concert strobe flash
+      this.currentFlashOpacity = Math.max(0, this.currentFlashOpacity - (rawDelta * 14.0));
+    }
+
+    if (this.onWindowFlash) {
+      if (this.currentFlashOpacity > 0.01) {
+        // Bass intensity modulates color: Low intensity -> white; High intensity -> thumbnail color gradient
+        const bassVal = Math.max(features.stems.bass, features.bass || 0);
+        const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
+        const colorRatio = Math.min(1.0, Math.max(0, (bassVal - 0.25) / 0.55) * satMult);
+
+        let flashBg: string;
+        if (colorRatio < 0.20) {
+          // Low bass: pure brilliant white strobe
+          flashBg = 'radial-gradient(circle at center, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.15) 100%)';
+        } else {
+          // High bass: thumbnail-extracted gradient palette blended with white center
+          const prim = this.activePalette.primary;
+          const sec = this.activePalette.secondary;
+          const acc = this.activePalette.accent || prim;
+          flashBg = `radial-gradient(circle at center, rgba(255,255,255,0.9) 10%, ${prim} 40%, ${sec} 75%, ${acc} 100%)`;
+        }
+        this.onWindowFlash(this.currentFlashOpacity, flashBg);
+      } else {
+        this.onWindowFlash(0, '#ffffff');
+      }
+    }
 
     // Dynamic stage key lighting intensity driven by Bass STEM and RoutingConfig
     const maxBri = routingConfig.maxBrightnessLimit || 1.0;

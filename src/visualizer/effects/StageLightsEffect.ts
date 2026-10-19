@@ -1,14 +1,13 @@
 /**
  * Synwave Concert Moving-Head Stage Lights Effect
  * 
- * Professional concert stage lighting rig matching live festival stages:
+ * Professional concert stage lighting rig:
  * - Dynamic Colouring Spotlights: Default count of 3 (adjustable via slider),
  *   colored dynamically by sampling the official video thumbnail color gradients!
- * - Perimeter Screen Cross-Beam Lights: Fixtures all around the screen frame
- *   throwing criss-crossing scissor beams across the stage, with their pan/tilt
- *   sweeping movements driven directly by the VOCAL STEM!
- * - Dedicated Kick-Activated White Spotlights (Blinders) flashing on sharp drum kicks.
- * - Subtle ambient stage wash matching the video thumbnail palette.
+ * - 360° Continuous Rotatable Perimeter Lights around the YouTube Screen:
+ *   Activated and manipulated on the BASS STEM and bass frequency with high visibility.
+ * - Bottom white blinder circles removed; kick impact is handled by window screen flash.
+ * - Freeze support: when playback is paused (deltaSeconds === 0), all lights freeze in place.
  */
 
 import * as THREE from 'three';
@@ -26,29 +25,21 @@ interface MovingHead {
   index: number;
 }
 
-interface PerimeterCrossLight {
+interface PerimeterBassLight {
   group: THREE.Group;
   lensMesh: THREE.Mesh;
   coneMesh: THREE.Mesh;
   basePos: THREE.Vector3;
   baseTarget: THREE.Vector3;
   currentTarget: THREE.Vector3;
-  side: 'left' | 'right' | 'top';
+  side: 'left' | 'right' | 'top' | 'bottom';
+  phaseOffset: number;
   index: number;
-}
-
-interface KickBlinder {
-  group: THREE.Group;
-  lensMesh: THREE.Mesh;
-  coneMesh: THREE.Mesh;
-  basePos: THREE.Vector3;
-  targetPos: THREE.Vector3;
-  intensity: number;
 }
 
 export class StageLightsEffect extends BaseEffect {
   readonly id = 'stage-lights';
-  readonly name = 'Concert Moving Head Lights & Kick Blinders';
+  readonly name = 'Concert Moving Head Lights & 360° Perimeter Bass Beams';
   readonly family = 'Stage Lighting';
   readonly cost = 'medium';
 
@@ -57,10 +48,13 @@ export class StageLightsEffect extends BaseEffect {
   private customSpotlightColors: THREE.Color[] = [];
 
   private fixtures: MovingHead[] = [];
-  private perimeterCrossLights: PerimeterCrossLight[] = [];
-  private kickBlinders: KickBlinder[] = [];
+  private perimeterBassLights: PerimeterBassLight[] = [];
   private washLight1!: THREE.PointLight;
   private washLight2!: THREE.PointLight;
+
+  // Internal time accumulation (freezes when deltaSeconds === 0)
+  private internalTime = 0;
+  private perimeterRotationAngle = 0;
 
   public setSpotlightCount(count: number): void {
     this.spotlightCount = Math.max(1, Math.min(8, Math.round(count)));
@@ -89,7 +83,7 @@ export class StageLightsEffect extends BaseEffect {
     this.disposables.push(baseGeo, baseMat);
 
     // Lens flare sphere
-    const lensGeo = new THREE.SphereGeometry(0.20, 10, 10);
+    const lensGeo = new THREE.SphereGeometry(0.24, 12, 12);
     this.disposables.push(lensGeo);
 
     // Volumetric Light Cone thrown forward along local +Z axis
@@ -100,7 +94,6 @@ export class StageLightsEffect extends BaseEffect {
     this.disposables.push(coneGeo);
 
     // 1. Colouring Spotlights (Up to 8 fixtures mounted on overhead truss)
-    // Symmetrically spaced across the stage: x = -10.5 to +10.5
     const overheadPositions: THREE.Vector3[] = [
       new THREE.Vector3(-7.5, 12.2, -4.0), // 0: Left
       new THREE.Vector3(0.0, 12.4, -4.0),  // 1: Center
@@ -161,30 +154,39 @@ export class StageLightsEffect extends BaseEffect {
       });
     }
 
-    // 2. Perimeter Screen Cross-Beam Lights (All around the screen)
-    // Mounted along left tower, right tower, and top truss around the screen frame
-    const crossConeLength = 25;
-    const crossConeGeo = new THREE.ConeGeometry(0.9, crossConeLength, 14, 1, true);
-    crossConeGeo.translate(0, -crossConeLength / 2, 0);
-    crossConeGeo.rotateX(-Math.PI / 2);
-    this.disposables.push(crossConeGeo);
+    // 2. High-Intensity 360° Perimeter Bass Lights Framing the YouTube Screen
+    // Wide conical beam geometry for maximum visual presence across the stage
+    const periConeLength = 28;
+    const periConeGeo = new THREE.ConeGeometry(1.4, periConeLength, 16, 1, true);
+    periConeGeo.translate(0, -periConeLength / 2, 0);
+    periConeGeo.rotateX(-Math.PI / 2);
+    this.disposables.push(periConeGeo);
 
-    const perimeterConfigs: { pos: THREE.Vector3; target: THREE.Vector3; side: 'left' | 'right' | 'top' }[] = [
-      // Left side tower fixtures (aim across to stage right)
-      { pos: new THREE.Vector3(-11.8, 2.2, -4.1), target: new THREE.Vector3(12.0, 1.8, 12.0), side: 'left' },
-      { pos: new THREE.Vector3(-11.8, 4.6, -4.1), target: new THREE.Vector3(11.0, 3.5, 14.0), side: 'left' },
-      { pos: new THREE.Vector3(-11.8, 7.0, -4.1), target: new THREE.Vector3(9.5, 5.0, 16.0), side: 'left' },
-      { pos: new THREE.Vector3(-11.8, 9.4, -4.1), target: new THREE.Vector3(8.0, 6.5, 18.0), side: 'left' },
+    const perimeterConfigs: {
+      pos: THREE.Vector3;
+      target: THREE.Vector3;
+      side: 'left' | 'right' | 'top' | 'bottom';
+      phaseOffset: number;
+    }[] = [
+      // Left tower fixtures (aim across towards right & forward)
+      { pos: new THREE.Vector3(-12.0, 2.2, -4.1), target: new THREE.Vector3(12.0, 2.0, 12.0), side: 'left', phaseOffset: 0.0 },
+      { pos: new THREE.Vector3(-12.0, 4.6, -4.1), target: new THREE.Vector3(11.0, 3.8, 14.0), side: 'left', phaseOffset: 0.8 },
+      { pos: new THREE.Vector3(-12.0, 7.0, -4.1), target: new THREE.Vector3(10.0, 5.5, 16.0), side: 'left', phaseOffset: 1.6 },
+      { pos: new THREE.Vector3(-12.0, 9.4, -4.1), target: new THREE.Vector3(9.0, 7.0, 18.0), side: 'left', phaseOffset: 2.4 },
 
-      // Right side tower fixtures (aim across to stage left)
-      { pos: new THREE.Vector3(11.8, 2.2, -4.1), target: new THREE.Vector3(-12.0, 1.8, 12.0), side: 'right' },
-      { pos: new THREE.Vector3(11.8, 4.6, -4.1), target: new THREE.Vector3(-11.0, 3.5, 14.0), side: 'right' },
-      { pos: new THREE.Vector3(11.8, 7.0, -4.1), target: new THREE.Vector3(-9.5, 5.0, 16.0), side: 'right' },
-      { pos: new THREE.Vector3(11.8, 9.4, -4.1), target: new THREE.Vector3(-8.0, 6.5, 18.0), side: 'right' },
+      // Right tower fixtures (aim across towards left & forward)
+      { pos: new THREE.Vector3(12.0, 2.2, -4.1), target: new THREE.Vector3(-12.0, 2.0, 12.0), side: 'right', phaseOffset: 3.2 },
+      { pos: new THREE.Vector3(12.0, 4.6, -4.1), target: new THREE.Vector3(-11.0, 3.8, 14.0), side: 'right', phaseOffset: 4.0 },
+      { pos: new THREE.Vector3(12.0, 7.0, -4.1), target: new THREE.Vector3(-10.0, 5.5, 16.0), side: 'right', phaseOffset: 4.8 },
+      { pos: new THREE.Vector3(12.0, 9.4, -4.1), target: new THREE.Vector3(-9.0, 7.0, 18.0), side: 'right', phaseOffset: 5.6 },
 
-      // Top truss fixtures (aim down-cross across stage)
-      { pos: new THREE.Vector3(-6.0, 11.2, -4.2), target: new THREE.Vector3(7.0, 0.8, 14.0), side: 'top' },
-      { pos: new THREE.Vector3(6.0, 11.2, -4.2), target: new THREE.Vector3(-7.0, 0.8, 14.0), side: 'top' },
+      // Top truss fixtures (sweep downward across the deck)
+      { pos: new THREE.Vector3(-6.5, 11.4, -4.2), target: new THREE.Vector3(7.5, 0.8, 14.0), side: 'top', phaseOffset: 1.2 },
+      { pos: new THREE.Vector3(6.5, 11.4, -4.2), target: new THREE.Vector3(-7.5, 0.8, 14.0), side: 'top', phaseOffset: 4.4 },
+
+      // Bottom screen frame fixtures (cross upward into audience space)
+      { pos: new THREE.Vector3(-8.0, 0.8, -4.1), target: new THREE.Vector3(8.0, 6.0, 15.0), side: 'bottom', phaseOffset: 2.0 },
+      { pos: new THREE.Vector3(8.0, 0.8, -4.1), target: new THREE.Vector3(-8.0, 6.0, 15.0), side: 'bottom', phaseOffset: 5.2 },
     ];
 
     for (let i = 0; i < perimeterConfigs.length; i++) {
@@ -195,7 +197,7 @@ export class StageLightsEffect extends BaseEffect {
       const pLensMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.95,
       });
       this.disposables.push(pLensMat);
       const pLens = new THREE.Mesh(lensGeo, pLensMat);
@@ -205,20 +207,20 @@ export class StageLightsEffect extends BaseEffect {
       const pConeMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.14,
+        opacity: 0.32,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.FrontSide,
       });
       this.disposables.push(pConeMat);
-      const pCone = new THREE.Mesh(crossConeGeo, pConeMat);
+      const pCone = new THREE.Mesh(periConeGeo, pConeMat);
       pCone.position.set(0, 0, 0.1);
       pGroup.add(pCone);
 
       pGroup.lookAt(cfg.target);
       this.group.add(pGroup);
 
-      this.perimeterCrossLights.push({
+      this.perimeterBassLights.push({
         group: pGroup,
         lensMesh: pLens,
         coneMesh: pCone,
@@ -226,67 +228,12 @@ export class StageLightsEffect extends BaseEffect {
         baseTarget: cfg.target.clone(),
         currentTarget: cfg.target.clone(),
         side: cfg.side,
+        phaseOffset: cfg.phaseOffset,
         index: i,
       });
     }
 
-    // 3. Dedicated Kick-Activated White Spotlights (Blinders)
-    const blinderConfigs = [
-      { pos: new THREE.Vector3(-9.0, 11.5, 1.2), tgt: new THREE.Vector3(-7.5, 1.8, 16.0) },
-      { pos: new THREE.Vector3(-4.5, 11.5, 1.2), tgt: new THREE.Vector3(-3.5, 2.0, 16.0) },
-      { pos: new THREE.Vector3(0.0, 11.5, 1.2), tgt: new THREE.Vector3(0.0, 2.2, 16.0) },
-      { pos: new THREE.Vector3(4.5, 11.5, 1.2), tgt: new THREE.Vector3(3.5, 2.0, 16.0) },
-      { pos: new THREE.Vector3(9.0, 11.5, 1.2), tgt: new THREE.Vector3(7.5, 1.8, 16.0) },
-      { pos: new THREE.Vector3(-5.5, 0.4, 4.0), tgt: new THREE.Vector3(-4.5, 1.6, 16.0) },
-      { pos: new THREE.Vector3(0.0, 0.4, 4.2), tgt: new THREE.Vector3(0.0, 1.6, 16.0) },
-      { pos: new THREE.Vector3(5.5, 0.4, 4.0), tgt: new THREE.Vector3(4.5, 1.6, 16.0) },
-    ];
-
-    const blinderConeGeo = new THREE.ConeGeometry(0.7, 18, 14, 1, true);
-    blinderConeGeo.translate(0, -9, 0);
-    blinderConeGeo.rotateX(-Math.PI / 2);
-    this.disposables.push(blinderConeGeo);
-
-    for (let i = 0; i < blinderConfigs.length; i++) {
-      const cfg = blinderConfigs[i];
-      const bGroup = new THREE.Group();
-      bGroup.position.copy(cfg.pos);
-
-      const bLensMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.0,
-      });
-      this.disposables.push(bLensMat);
-      const bLens = new THREE.Mesh(lensGeo, bLensMat);
-      bGroup.add(bLens);
-
-      const bConeMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.0,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.FrontSide,
-      });
-      this.disposables.push(bConeMat);
-      const bCone = new THREE.Mesh(blinderConeGeo, bConeMat);
-      bGroup.add(bCone);
-
-      bGroup.lookAt(cfg.tgt);
-      this.group.add(bGroup);
-
-      this.kickBlinders.push({
-        group: bGroup,
-        lensMesh: bLens,
-        coneMesh: bCone,
-        basePos: cfg.pos,
-        targetPos: cfg.tgt,
-        intensity: 0.0,
-      });
-    }
-
-    // 4. Dynamic Stage Wash Point Lights
+    // 3. Dynamic Stage Wash Point Lights (Tinted by Thumbnail Palette)
     this.washLight1 = new THREE.PointLight(0xff6600, 0.6, 25, 1.8);
     this.washLight1.position.set(-6, 6.0, -1.0);
     this.group.add(this.washLight1);
@@ -298,7 +245,10 @@ export class StageLightsEffect extends BaseEffect {
 
   public update(context: VisualEffectContext): void {
     const { features, deltaSeconds, palette, directorState, routingConfig } = context;
-    const time = performance.now() * 0.001;
+
+    // Time advances strictly when playing (deltaSeconds > 0). Freezes when paused!
+    this.internalTime += deltaSeconds;
+    const time = this.internalTime;
 
     const isLightsEnabled =
       (routingConfig?.enabledEffects?.lights ?? true) &&
@@ -309,13 +259,9 @@ export class StageLightsEffect extends BaseEffect {
         (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
       }
-      for (const p of this.perimeterCrossLights) {
+      for (const p of this.perimeterBassLights) {
         (p.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         (p.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      for (const blinder of this.kickBlinders) {
-        (blinder.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (blinder.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
       }
       this.washLight1.intensity = 0;
       this.washLight2.intensity = 0;
@@ -324,13 +270,11 @@ export class StageLightsEffect extends BaseEffect {
 
     const bassBeamMult = routingConfig?.bassToBeamIntensity ?? 1.0;
     const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
-    const isReducedFlash = routingConfig?.reducedFlash ?? false;
-    const kickSens = routingConfig?.kickSensitivity ?? 1.0;
+    const periSpeedMult = routingConfig?.perimeterBassRotationSpeed ?? 1.0;
 
     const bassStem = features.stems.bass;
-    const kickStem = features.stems.kick;
     const instStem = features.stems.instruments;
-    const vocalStem = features.stems.vocals;
+    const bassFactor = Math.max(bassStem, features.bass || 0);
 
     // Palette: utilize video thumbnail colors if extracted, otherwise fallback to stage palette
     const hasCustomColors = this.customSpotlightColors.length > 0;
@@ -348,7 +292,7 @@ export class StageLightsEffect extends BaseEffect {
 
     const beatPulse = Math.sin(features.beatPhase * Math.PI) * 0.025;
     const rawBrightness = 0.07 + (bassStem * 0.09 * bassBeamMult) + beatPulse + (features.isDrop ? 0.05 : 0);
-    const baseBrightness = Math.min(0.18 * maxBri, rawBrightness * maxBri);
+    const baseBrightness = Math.min(0.22 * maxBri, rawBrightness * maxBri);
 
     // -------------------------------------------------------------
     // 1. Colouring Spotlights (Active Count: this.spotlightCount)
@@ -359,7 +303,6 @@ export class StageLightsEffect extends BaseEffect {
       const fix = this.fixtures[i];
 
       if (i >= activeCount) {
-        // Disabled beyond selected count
         (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         continue;
@@ -379,7 +322,9 @@ export class StageLightsEffect extends BaseEffect {
         fix.targetPos.set(sweepX, sweepY, sweepZ);
       }
 
-      fix.currentTarget.lerp(fix.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
+      if (deltaSeconds > 0) {
+        fix.currentTarget.lerp(fix.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
+      }
       fix.group.lookAt(fix.currentTarget);
 
       // Color from thumbnail extracted color gradient
@@ -391,46 +336,57 @@ export class StageLightsEffect extends BaseEffect {
 
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
       coneMat.color.copy(lightCol);
-      coneMat.opacity = Math.min(0.18 * maxBri, baseBrightness);
+      coneMat.opacity = Math.min(0.22 * maxBri, baseBrightness);
 
       const beamScale = 1.0 + bassStem * 0.35 * bassBeamMult;
       fix.coneMesh.scale.set(beamScale, beamScale, 1.0);
     }
 
     // -------------------------------------------------------------
-    // 2. Perimeter Screen Cross-Beam Lights (VOCAL REACTIVE)
+    // 2. 360° Rotatable Perimeter Lights Around Screen (BASS ACTIVATED)
     // -------------------------------------------------------------
-    // The lights all around the screen cross the stage across,
-    // with their pan/tilt scissor movement driven directly by VOCALS!
-    const vocalEnergy = Math.max(0, vocalStem);
-    const vocalSpeed = 1.2 + vocalEnergy * 2.8;
+    // The rotation speed and movements are directly manipulated by bass frequency and energy.
+    // Full 360° continuous rotation around their mounts!
+    const bassRotationSpeed = (1.4 + Math.pow(bassFactor, 1.3) * 5.5) * periSpeedMult;
+    if (deltaSeconds > 0) {
+      this.perimeterRotationAngle += deltaSeconds * bassRotationSpeed;
+    }
 
-    for (let i = 0; i < this.perimeterCrossLights.length; i++) {
-      const pLight = this.perimeterCrossLights[i];
+    for (let i = 0; i < this.perimeterBassLights.length; i++) {
+      const pLight = this.perimeterBassLights[i];
 
-      // Scissor crossing motion driven by vocal stem
-      const vocalSweep = Math.sin(time * vocalSpeed + i * 0.65) * (0.35 + vocalEnergy * 0.85);
-      const verticalSweep = Math.cos(time * (vocalSpeed * 0.8) + i * 0.5) * (0.4 + vocalEnergy * 0.6);
+      // 360° Continuous orbital rotation angle modulated by bass
+      const orbitAngle = this.perimeterRotationAngle + pLight.phaseOffset;
+      const orbitRadiusX = 5.5 + bassFactor * 6.5;
+      const orbitRadiusY = 3.8 + bassFactor * 5.0;
 
       const target = pLight.baseTarget.clone();
 
       if (pLight.side === 'left') {
-        // Sweep across towards right and forward into arena
-        target.x += vocalSweep * 6.5;
-        target.y += verticalSweep * 3.0;
-        target.z += vocalEnergy * 4.0;
+        // Full 360° cone rotation sweeping across the stage & ceiling
+        target.x += Math.sin(orbitAngle) * orbitRadiusX;
+        target.y += Math.cos(orbitAngle) * orbitRadiusY;
+        target.z += Math.sin(orbitAngle * 1.5) * 5.0 + bassFactor * 4.0;
       } else if (pLight.side === 'right') {
-        // Sweep across towards left and forward into arena
-        target.x -= vocalSweep * 6.5;
-        target.y += verticalSweep * 3.0;
-        target.z += vocalEnergy * 4.0;
+        // Reverse 360° cone rotation symmetrically
+        target.x -= Math.sin(orbitAngle) * orbitRadiusX;
+        target.y += Math.cos(orbitAngle) * orbitRadiusY;
+        target.z += Math.sin(orbitAngle * 1.5) * 5.0 + bassFactor * 4.0;
+      } else if (pLight.side === 'top') {
+        // Top lights orbit in circular sweeps down across the stage
+        target.x += Math.cos(orbitAngle) * orbitRadiusX;
+        target.y += Math.sin(orbitAngle) * (orbitRadiusY * 0.7);
+        target.z += Math.cos(orbitAngle * 2.0) * 4.0;
       } else {
-        // Top lights cross down across the deck
-        target.x += Math.sin(time * vocalSpeed * 1.2 + i) * (4.0 + vocalEnergy * 5.0);
-        target.y += Math.cos(time * vocalSpeed + i) * 2.0;
+        // Bottom lights sweep up into the arena
+        target.x += Math.sin(orbitAngle) * orbitRadiusX;
+        target.y += Math.abs(Math.cos(orbitAngle)) * orbitRadiusY + 1.0;
+        target.z += Math.sin(orbitAngle) * 4.0;
       }
 
-      pLight.currentTarget.lerp(target, deltaSeconds * (5.0 + vocalEnergy * 8.0));
+      if (deltaSeconds > 0) {
+        pLight.currentTarget.lerp(target, deltaSeconds * (6.0 + bassFactor * 9.0));
+      }
       pLight.group.lookAt(pLight.currentTarget);
 
       // Color from thumbnail palette
@@ -438,52 +394,26 @@ export class StageLightsEffect extends BaseEffect {
 
       const pLensMat = pLight.lensMesh.material as THREE.MeshBasicMaterial;
       pLensMat.color.copy(crossCol);
-      pLensMat.opacity = Math.min(0.95 * maxBri, (0.55 + vocalEnergy * 0.45) * maxBri);
+      pLensMat.opacity = Math.min(0.98 * maxBri, (0.65 + bassFactor * 0.35) * maxBri);
 
+      // Prominent, highly visible volumetric cone
       const pConeMat = pLight.coneMesh.material as THREE.MeshBasicMaterial;
       pConeMat.color.copy(crossCol);
-      // Brightness dynamically pulses with vocal movements
-      const vocalBrightness = (0.08 + vocalEnergy * 0.14) * maxBri;
-      pConeMat.opacity = Math.min(0.24 * maxBri, vocalBrightness);
+      const bassBrightness = (0.16 + bassFactor * 0.32 * bassBeamMult) * maxBri;
+      pConeMat.opacity = Math.min(0.48 * maxBri, bassBrightness);
 
-      const crossScale = 1.0 + vocalEnergy * 0.4;
-      pLight.coneMesh.scale.set(crossScale, crossScale, 1.0);
+      // Expand beam thickness with bass hits
+      const beamExpansion = 1.0 + bassFactor * 0.45 * bassBeamMult;
+      pLight.coneMesh.scale.set(beamExpansion, beamExpansion, 1.0);
     }
 
     // -------------------------------------------------------------
-    // 3. Kick-Activated White Spotlights (Blinders)
-    // -------------------------------------------------------------
-    const isKickTrigger = features.isKick && (kickStem * kickSens) > 0.40;
-
-    for (let i = 0; i < this.kickBlinders.length; i++) {
-      const blinder = this.kickBlinders[i];
-
-      if (isKickTrigger) {
-        blinder.intensity = 1.0;
-      } else {
-        const decaySpeed = 7.5 / (routingConfig?.effectDecay ?? 1.0);
-        blinder.intensity = Math.max(0, blinder.intensity - deltaSeconds * decaySpeed);
-      }
-
-      const maxBlinderOpacity = isReducedFlash ? 0.05 : (0.16 * maxBri);
-
-      const bLensMat = blinder.lensMesh.material as THREE.MeshBasicMaterial;
-      bLensMat.opacity = blinder.intensity * 0.85 * maxBri;
-
-      const bConeMat = blinder.coneMesh.material as THREE.MeshBasicMaterial;
-      bConeMat.opacity = blinder.intensity * maxBlinderOpacity;
-
-      const scale = 1.0 + blinder.intensity * 0.25;
-      blinder.coneMesh.scale.set(scale, scale, 1.0);
-    }
-
-    // -------------------------------------------------------------
-    // 4. Wash Lights (Tinted by Thumbnail Palette)
+    // 3. Wash Lights (Tinted by Thumbnail Palette)
     // -------------------------------------------------------------
     this.washLight1.color.copy(primaryCol);
     this.washLight1.intensity = Math.min(1.2 * maxBri, (0.45 + bassStem * 0.55 * bassBeamMult) * maxBri);
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.45 + vocalStem * 0.55 * bassBeamMult) * maxBri);
+    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.45 + instStem * 0.55 * bassBeamMult) * maxBri);
   }
 }

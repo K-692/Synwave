@@ -49,7 +49,6 @@ export class ShowDirector {
       lights: routingConfig.enabledEffects.lights,
       lasers: routingConfig.enabledEffects.lasers,
       flames: routingConfig.enabledEffects.flames && !routingConfig.disablePyrotechnics,
-      smoke: routingConfig.enabledEffects.smoke,
       screen: routingConfig.enabledEffects.screen,
     };
 

@@ -1,12 +1,14 @@
 /**
  * Synwave Header Component
  * Top navigation bar attached to window edge with auto-hide behavior.
+ * Includes the Load Audio File container relocated to the top bar.
  */
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Activity,
   SlidersHorizontal,
+  Upload,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -19,6 +21,7 @@ interface HeaderProps {
   onToggleDiagnostic?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  onFilesSelected?: (files: FileList | File[]) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,7 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDiagnostic,
   onMouseEnter,
   onMouseLeave,
+  onFilesSelected,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
   return (
     <header
       className={`synwave-header glass-panel ${isVisible || isRoutingOpen || isDiagnosticOpen ? 'visible' : ''}`}
@@ -48,8 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="brand-title">SYNWAVE</span>
           {currentTrackTitle && (
             <span className="brand-subtitle" title={currentTrackTitle}>
-              {currentTrackTitle.length > 32
-                ? `${currentTrackTitle.substring(0, 32)}...`
+              {currentTrackTitle.length > 28
+                ? `${currentTrackTitle.substring(0, 28)}...`
                 : currentTrackTitle}
             </span>
           )}
@@ -67,6 +74,41 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
       </div>
+
+      {/* Top Bar Load Audio File Container */}
+      {onFilesSelected && (
+        <div
+          className={`header-audio-loader ${isDragging ? 'drag-over' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              onFilesSelected(e.dataTransfer.files);
+            }
+          }}
+          title="Click to select or drag & drop audio file to pre-process & play"
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                onFilesSelected(e.target.files);
+              }
+            }}
+          />
+          <Upload size={14} className="header-upload-icon" />
+          <span className="header-upload-text">LOAD AUDIO / DROP FILE</span>
+        </div>
+      )}
 
       {/* Right Drawer & Console Toggles */}
       <div className="header-toggles">
