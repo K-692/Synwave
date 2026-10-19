@@ -10,7 +10,7 @@ import json
 import hashlib
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import numpy as np
 import torch
 from demucs.api import Separator
@@ -167,6 +167,75 @@ def migrate_legacy_stems_cache() -> None:
                         index_changed = True
                     except Exception as e:
                         print(f"[DemucsService] Error removing duplicate {other.name}: {e}")
+
+    # 3. Recalculate drop sections for any cached files that have empty or fragmented micro-sections
+    for f in list(CACHE_DIR.glob("stems_*.json")):
+        try:
+            with open(f, "r") as fp:
+                data = json.load(fp)
+            if not isinstance(data, dict) or "stems" not in data:
+                continue
+            drops = data.get("triStemDropSections", [])
+            needs_update = len(drops) == 0 or all((sec.get("endTime", 0) - sec.get("startTime", 0)) < 1.5 for sec in drops)
+            if needs_update:
+                stems = data.get("stems", {})
+                drums_vec = np.array(stems.get("drums", []))
+                bass_vec = np.array(stems.get("bass", []))
+                inst_vec = np.array(stems.get("instruments", []))
+                fps = data.get("fps", 25)
+                kick_onsets = data.get("kickOnsets") or [k["time"] for k in data.get("kickEvents", [])]
+                min_len = min(len(drums_vec), len(bass_vec), len(inst_vec))
+                if min_len >= fps * 5:
+                    win = max(5, int(fps * 1.5))
+                    kernel = np.ones(win) / win
+                    d_smooth = np.convolve(drums_vec[:min_len], kernel, mode='same')
+                    b_smooth = np.convolve(bass_vec[:min_len], kernel, mode='same')
+                    i_smooth = np.convolve(inst_vec[:min_len], kernel, mode='same')
+                    avg_d = float(np.mean(drums_vec[:min_len]))
+                    avg_b = float(np.mean(bass_vec[:min_len]))
+                    avg_i = float(np.mean(inst_vec[:min_len]))
+                    joint = d_smooth * 0.40 + b_smooth * 0.40 + i_smooth * 0.20
+                    avg_j = avg_d * 0.40 + avg_b * 0.40 + avg_i * 0.20
+                    is_drop = (joint > avg_j * 1.10) & ((d_smooth > avg_d * 0.85) | (b_smooth > avg_b * 0.85))
+
+                    new_drops = []
+                    in_d = False
+                    start_f = 0
+                    g_count = 0
+                    g_limit = int(fps * 2.0)
+                    for i in range(min_len):
+                        if is_drop[i]:
+                            if not in_d:
+                                in_d = True
+                                start_f = i
+                            g_count = 0
+                        else:
+                            if in_d:
+                                g_count += 1
+                                if g_count > g_limit:
+                                    end_f = i - g_count
+                                    if (end_f - start_f) / fps >= 3.0:
+                                        t_start = round(start_f / fps, 2)
+                                        nearby = [k for k in kick_onsets if (t_start - 0.25) <= k <= (t_start + 0.65)]
+                                        snapped = min(nearby, key=lambda k: abs(k - t_start)) if nearby else t_start
+                                        new_drops.append({"startTime": round(snapped, 3), "endTime": round(end_f / fps, 2)})
+                                    in_d = False
+                                    g_count = 0
+                    if in_d:
+                        end_f = min_len - 1
+                        if (end_f - start_f) / fps >= 3.0:
+                            t_start = round(start_f / fps, 2)
+                            nearby = [k for k in kick_onsets if (t_start - 0.25) <= k <= (t_start + 0.65)]
+                            snapped = min(nearby, key=lambda k: abs(k - t_start)) if nearby else t_start
+                            new_drops.append({"startTime": round(snapped, 3), "endTime": round(end_f / fps, 2)})
+
+                    if len(new_drops) > 0:
+                        data["triStemDropSections"] = new_drops
+                        with open(f, "w") as out_fp:
+                            json.dump(data, out_fp)
+                        print(f"[DemucsService] Refreshed drop sections for {f.name}: {len(new_drops)} sections")
+        except Exception as e:
+            print(f"[DemucsService] Error refreshing drops for {f.name}: {e}")
 
     if index_changed:
         save_stems_index(index)
@@ -435,25 +504,35 @@ class DemucsService:
             if in_sec:
                 above_avg_sections.append({"startTime": sec_start, "endTime": round(min_len / self.target_fps, 2)})
 
-            # Tri-STEM Drop Pinpointing:
-            # Active when Kick, Bass, and Instruments ALL simultaneously exceed their full-track averages,
-            # pinpointing the smaller concentrated peak energy segment (drop)
+            # Robust Multi-STEM Drop Pinpointing:
+            # Uses windowed moving-average envelope followers (1.5s window) and musical gap bridging (2.0s)
+            # to guarantee that drop sections are accurately detected and continuous across rhythmic off-beats.
             avg_drums = float(np.mean(drums_vec[:min_len]))
             avg_bass = float(np.mean(bass_vec[:min_len]))
             avg_inst = float(np.mean(inst_vec[:min_len]))
 
-            tri_drop_mask = (drums_vec[:min_len] > avg_drums) & (bass_vec[:min_len] > avg_bass) & (inst_vec[:min_len] > avg_inst)
-            joint_scores = (drums_vec[:min_len] + bass_vec[:min_len] + inst_vec[:min_len]) / 3.0
-            qualifying = joint_scores[tri_drop_mask]
+            # Windowed rolling envelope follower (~1.5s window = 37 frames at 25fps)
+            win = max(5, int(self.target_fps * 1.5))
+            kernel = np.ones(win) / win
+            d_smooth = np.convolve(drums_vec[:min_len], kernel, mode='same')
+            b_smooth = np.convolve(bass_vec[:min_len], kernel, mode='same')
+            i_smooth = np.convolve(inst_vec[:min_len], kernel, mode='same')
+
+            # Weighted joint energy envelope (drums + bass heavy, balanced by instruments)
+            joint = d_smooth * 0.40 + b_smooth * 0.40 + i_smooth * 0.20
+            avg_joint = avg_drums * 0.40 + avg_bass * 0.40 + avg_inst * 0.20
+
+            # Drop frame criteria: Joint energy elevated above average AND primary rhythmic stems active
+            is_drop_frame = (joint > avg_joint * 1.10) & ((d_smooth > avg_drums * 0.85) | (b_smooth > avg_bass * 0.85))
 
             kick_onsets = [k["time"] for k in kicks]
 
             def find_sudden_spike_time(raw_start: float) -> float:
                 start_idx = int(round(raw_start * self.target_fps))
-                search_start = max(1, start_idx - int(self.target_fps * 0.20))
+                search_start = max(1, start_idx - int(self.target_fps * 0.25))
                 search_end = min(min_len - 1, start_idx + int(self.target_fps * 0.65))
 
-                nearby_kicks = [k for k in kick_onsets if (raw_start - 0.18) <= k <= (raw_start + 0.55)]
+                nearby_kicks = [k for k in kick_onsets if (raw_start - 0.25) <= k <= (raw_start + 0.65)]
 
                 max_surge = -1e9
                 max_surge_idx = start_idx
@@ -466,29 +545,47 @@ class DemucsService:
                 surge_time = round(max_surge_idx / self.target_fps, 3)
                 if nearby_kicks:
                     best_kick = min(nearby_kicks, key=lambda k: abs(k - surge_time))
-                    if abs(best_kick - surge_time) <= 0.25:
+                    if abs(best_kick - surge_time) <= 0.30:
                         return round(best_kick, 3)
                 return surge_time
 
             tri_stem_drop_sections = []
-            if len(qualifying) > 0:
-                drop_threshold = float(np.percentile(qualifying, 45))
-                in_drop = False
-                drop_start = 0.0
-                for i in range(min_len):
-                    is_drop = bool(tri_drop_mask[i] and (joint_scores[i] >= drop_threshold))
-                    t = round(i / self.target_fps, 3)
-                    if is_drop and not in_drop:
+            in_drop = False
+            start_frame = 0
+            gap_count = 0
+            gap_limit = int(self.target_fps * 2.0)  # Bridge gaps up to 2.0s across off-beats and drum fills
+
+            for i in range(min_len):
+                if is_drop_frame[i]:
+                    if not in_drop:
                         in_drop = True
-                        drop_start = find_sudden_spike_time(t)
-                    elif not is_drop and in_drop:
-                        if t - drop_start >= 0.4:
-                            tri_stem_drop_sections.append({"startTime": drop_start, "endTime": t})
-                        in_drop = False
-                if in_drop:
-                    tri_stem_drop_sections.append({"startTime": drop_start, "endTime": round(min_len / self.target_fps, 3)})
-            else:
-                tri_stem_drop_sections = []
+                        start_frame = i
+                    gap_count = 0
+                else:
+                    if in_drop:
+                        gap_count += 1
+                        if gap_count > gap_limit:
+                            end_frame = i - gap_count
+                            duration_sec = (end_frame - start_frame) / self.target_fps
+                            if duration_sec >= 3.0:
+                                raw_start_sec = round(start_frame / self.target_fps, 3)
+                                snapped_start = find_sudden_spike_time(raw_start_sec)
+                                tri_stem_drop_sections.append({
+                                    "startTime": snapped_start,
+                                    "endTime": round(end_frame / self.target_fps, 2)
+                                })
+                            in_drop = False
+                            gap_count = 0
+
+            if in_drop:
+                end_frame = min_len - 1
+                if (end_frame - start_frame) / self.target_fps >= 3.0:
+                    raw_start_sec = round(start_frame / self.target_fps, 3)
+                    snapped_start = find_sudden_spike_time(raw_start_sec)
+                    tri_stem_drop_sections.append({
+                        "startTime": snapped_start,
+                        "endTime": round(end_frame / self.target_fps, 2)
+                    })
         else:
             global_intensity = [0.0]
             avg_amplitude = 0.30

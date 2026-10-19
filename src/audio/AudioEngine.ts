@@ -386,7 +386,7 @@ export class AudioEngine {
     const isCalm = avgEnergyWindow < 0.24 && rawSubBass < 0.35 && avgSubBass < 0.22;
     const musicMode: 'calm' | 'festival' = isCalm ? 'calm' : 'festival';
 
-    // Drum Kick Detection (Specifically low-frequency percussive transient)
+    // Drum Kick Detection (Specifically low-frequency percussive transient across sub-bass & punchy bass)
     let isKick = false;
     let kickIntensity = 0;
     const now = performance.now();
@@ -394,12 +394,16 @@ export class AudioEngine {
     if (this.kickHoldFrames > 0) {
       this.kickHoldFrames--;
     }
-    const kickThreshold = avgSubBass * 1.35 + 0.12;
-    if (rawSubBass > kickThreshold && rawSubBass > 0.32 && this.kickHoldFrames === 0 && (now - this.lastKickTime > 160)) {
+    // Combined kick punch band: sub-bass (<60Hz) and punchy low bass (60-140Hz)
+    const rawKickBand = rawSubBass * 0.60 + rawBass * 0.40;
+    const avgKickBand = avgSubBass * 0.60 + this.smoothedBass * 0.40;
+    const kickThreshold = avgKickBand * 1.22 + 0.08;
+
+    if (rawKickBand > kickThreshold && rawKickBand > 0.25 && this.kickHoldFrames === 0 && (now - this.lastKickTime > 140)) {
       isKick = true;
-      this.kickHoldFrames = 6;
+      this.kickHoldFrames = 5;
       this.lastKickTime = now;
-      kickIntensity = Math.min(1.0, (rawSubBass - kickThreshold) * 3.0 + 0.4);
+      kickIntensity = Math.min(1.0, (rawKickBand - kickThreshold) * 3.5 + 0.45);
     }
 
     // Drop Climax Detection (Massive wall of sub-bass in EDM / Melodic Dubstep)
@@ -734,34 +738,42 @@ export class AudioEngine {
   }
 
   public isTriStemDropActive(currentTime: number): boolean {
+    // 1. Primary: Check pre-computed continuous drop sections from Demucs
     if (this.triStemDropSections.length > 0) {
-      return this.triStemDropSections.some(
+      const inDrop = this.triStemDropSections.some(
         (sec) => currentTime >= sec.startTime && currentTime <= sec.endTime
       );
+      if (inDrop) return true;
     }
+
+    // 2. Secondary: Check above-average energy sections with active rhythm
     if (this.aboveAverageSections.length > 0) {
-      return this.aboveAverageSections.some(
+      const inAboveAvg = this.aboveAverageSections.some(
         (sec) => currentTime >= sec.startTime && currentTime <= sec.endTime
       );
+      if (inAboveAvg && (this.currentKickStem > this.drumsAverageAmplitude * 0.85 || this.smoothedBass > this.bassAverageAmplitude * 0.85)) {
+        return true;
+      }
     }
+
+    // 3. Tertiary: Live sampled stems check (handles dual-stem surge or joint energy surge)
     if (this.demucsStems) {
       const sampled = sampleStemValues(this.demucsStems, currentTime);
-      const isAboveAll =
-        sampled.kick > this.drumsAverageAmplitude &&
-        sampled.bass > this.bassAverageAmplitude &&
-        sampled.instruments > this.instAverageAmplitude;
-      const jointIntensity = (sampled.kick + sampled.bass + sampled.instruments) / 3;
-      const avgJoint = (this.drumsAverageAmplitude + this.bassAverageAmplitude + this.instAverageAmplitude) / 3;
-      return isAboveAll && jointIntensity >= avgJoint * 1.25;
+      const isDualSurge =
+        (sampled.kick > this.drumsAverageAmplitude * 0.85 && sampled.bass > this.bassAverageAmplitude * 0.85) ||
+        (sampled.kick > 0.40 && sampled.bass > 0.40);
+      const jointIntensity = sampled.kick * 0.40 + sampled.bass * 0.40 + sampled.instruments * 0.20;
+      const avgJoint = this.drumsAverageAmplitude * 0.40 + this.bassAverageAmplitude * 0.40 + this.instAverageAmplitude * 0.20;
+      return isDualSurge || jointIntensity >= avgJoint * 1.08;
     }
-    // Real-time fallback
-    const isAboveAll =
-      this.currentKickStem > this.drumsAverageAmplitude &&
-      this.smoothedBass > this.bassAverageAmplitude &&
-      this.smoothedMidRangeEnergy > this.instAverageAmplitude;
-    const jointIntensity = (this.currentKickStem + this.smoothedBass + this.smoothedMidRangeEnergy) / 3;
-    const avgJoint = (this.drumsAverageAmplitude + this.bassAverageAmplitude + this.instAverageAmplitude) / 3;
-    return isAboveAll && jointIntensity >= avgJoint * 1.25;
+
+    // 4. Quaternary: Real-time audio spectrum fallback (YouTube or raw audio streams)
+    const isDualSurge =
+      (this.currentKickStem > this.drumsAverageAmplitude * 0.85 && this.smoothedBass > this.bassAverageAmplitude * 0.85) ||
+      (this.currentKickStem > 0.40 && this.smoothedBass > 0.40);
+    const jointIntensity = this.currentKickStem * 0.40 + this.smoothedBass * 0.40 + this.smoothedMidRangeEnergy * 0.20;
+    const avgJoint = this.drumsAverageAmplitude * 0.40 + this.bassAverageAmplitude * 0.40 + this.instAverageAmplitude * 0.20;
+    return isDualSurge || jointIntensity >= avgJoint * 1.08;
   }
 
   public isTimestampAboveAverage(currentTime: number): boolean {

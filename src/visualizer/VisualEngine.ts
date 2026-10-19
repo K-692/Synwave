@@ -654,58 +654,61 @@ export class VisualEngine {
         this.hasDispatchedZeroFlash = true;
       }
     } else {
-      // Audio-reactivity: detect fresh kick transient onset with musical spacing lockout
+      // Audio-reactivity: Screen flash is strictly manipulated by kick transients (no beat grid clock ticks)
       const timeSinceLastKick = trackTimeSeconds - this.lastKickTimestamp;
       const isKickOnset = features.isKick && !this.wasKickLastFrame;
-      const isBeatKick = features.isBeat && (features.stems.kick > 0.28 || features.onsetStrength > 0.25);
-      const isTransientKick = (isKickOnset || isBeatKick) && (timeSinceLastKick > 0.16 || this.lastKickTimestamp === 0);
+      this.wasKickLastFrame = Boolean(features.isKick);
 
-      this.wasKickLastFrame = features.isKick;
+      // Lockout of 100ms prevents double-triggering across a single kick's decay while supporting up to 600 BPM rolls.
+      // Negative delta handling accounts for user scrubbing/seeking backward.
+      const isKickLockoutCleared = timeSinceLastKick > 0.10 || timeSinceLastKick < 0 || this.lastKickTimestamp === 0;
+      const kickSens = routingConfig.kickSensitivity ?? 1.0;
+      const rawKickPower = Math.max(features.kickIntensity, features.stems?.kick ?? 0);
+      const kickVal = rawKickPower * kickSens;
+
+      // Strictly triggered by kick onset and sufficient kick transient energy
+      const isTransientKick = isKickOnset && isKickLockoutCleared && kickVal > 0.16;
 
       if (isTransientKick) {
         this.lastKickTimestamp = trackTimeSeconds;
-        const kickVal = Math.max(features.stems.kick, features.kickIntensity || 0.5, features.onsetStrength || 0.5);
+        const flashColors = this.getActiveFlashColors();
 
-        if (kickVal > 0.22) {
-          const flashColors = this.getActiveFlashColors();
+        // Advance flash sequence:
+        // A new sequence is initiated on musical phrase/bar boundaries or after pauses (> 0.65s).
+        // Every sequence begins with Step 0: Compulsory Pure White (#FFFFFF).
+        // Subsequent kicks in the sequence cycle through the active song palette.
+        if (timeSinceLastKick > 0.65 || features.isBar) {
+          this.flashSequenceStep = 0; // Compulsory Pure White (#FFFFFF)
+        } else {
+          this.flashSequenceStep = (this.flashSequenceStep + 1) % flashColors.length;
+        }
 
-          // Advance flash sequence:
-          // A new sequence is initiated on musical phrase/bar boundaries or after pauses (> 0.65s).
-          // Every sequence begins with Step 0: Compulsory Pure White (#FFFFFF).
-          // Subsequent kicks in the sequence cycle through the active song palette.
-          if (timeSinceLastKick > 0.65 || features.isBar) {
-            this.flashSequenceStep = 0; // Compulsory Pure White (#FFFFFF)
-          } else {
-            this.flashSequenceStep = (this.flashSequenceStep + 1) % flashColors.length;
+        const selectedHex = flashColors[this.flashSequenceStep] || '#ffffff';
+        const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
+
+        if (this.flashSequenceStep === 0 || selectedHex.toLowerCase() === '#ffffff') {
+          // Step 0: Compulsory Brilliant Pure White (#FFFFFF) full-window concert blinder
+          this.currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.96) 35%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0.72) 100%)';
+        } else {
+          // Distinct Song Palette Colors with white-hot filament center and radiant full-window wash
+          const col = new THREE.Color(selectedHex);
+          if (satMult !== 1.0) {
+            const hsl = { h: 0, s: 0, l: 0 };
+            col.getHSL(hsl);
+            col.setHSL(hsl.h, Math.min(1.0, hsl.s * satMult), hsl.l);
           }
+          const r = Math.round(col.r * 255);
+          const g = Math.round(col.g * 255);
+          const b = Math.round(col.b * 255);
 
-          const selectedHex = flashColors[this.flashSequenceStep] || '#ffffff';
-          const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
+          this.currentFlashBg = `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.92) 25%, rgba(${r},${g},${b},0.90) 60%, rgba(${r},${g},${b},0.75) 100%)`;
+        }
 
-          if (this.flashSequenceStep === 0 || selectedHex.toLowerCase() === '#ffffff') {
-            // Step 0: Compulsory Brilliant Pure White (#FFFFFF) full-window concert blinder
-            this.currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.96) 35%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0.72) 100%)';
-          } else {
-            // Distinct Song Palette Colors with white-hot filament center and radiant full-window wash
-            const col = new THREE.Color(selectedHex);
-            if (satMult !== 1.0) {
-              const hsl = { h: 0, s: 0, l: 0 };
-              col.getHSL(hsl);
-              col.setHSL(hsl.h, Math.min(1.0, hsl.s * satMult), hsl.l);
-            }
-            const r = Math.round(col.r * 255);
-            const g = Math.round(col.g * 255);
-            const b = Math.round(col.b * 255);
-
-            this.currentFlashBg = `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.92) 25%, rgba(${r},${g},${b},0.90) 60%, rgba(${r},${g},${b},0.75) 100%)`;
-          }
-
-          const maxBri = routingConfig.maxBrightnessLimit || 1.0;
-          const maxAllowed = 0.96 * maxBri;
-          const targetOpacity = Math.min(maxAllowed, (0.50 + kickVal * 0.48) * flashMult * maxBri);
-          if (targetOpacity > this.currentFlashOpacity) {
-            this.currentFlashOpacity = targetOpacity;
-          }
+        const maxBri = routingConfig.maxBrightnessLimit || 1.0;
+        const maxAllowed = 0.98 * maxBri;
+        const targetOpacity = Math.min(maxAllowed, (0.42 + Math.min(1.0, kickVal) * 0.56) * flashMult * maxBri);
+        if (targetOpacity > this.currentFlashOpacity) {
+          this.currentFlashOpacity = targetOpacity;
         }
       }
 

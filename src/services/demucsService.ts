@@ -455,12 +455,13 @@ export function sampleStemValues(
   const instrumentalActivity = sampleArray(data.instrumentalActivity);
   const globalIntensity = sampleArray(data.globalIntensity);
 
-  // Check if near kick onset
+  // Check if precisely at kick onset (window aligned with exact transient arrival: -15ms to +45ms)
   let isKickOnset = false;
   let kickIntensity = 0;
   if (data.kickEvents && data.kickEvents.length > 0) {
     for (const event of data.kickEvents) {
-      if (Math.abs(timeSeconds - event.time) < 0.08) {
+      const dt = timeSeconds - event.time;
+      if (dt >= -0.015 && dt <= 0.048) {
         isKickOnset = true;
         kickIntensity = event.intensity;
         break;
@@ -468,7 +469,8 @@ export function sampleStemValues(
     }
   } else if (data.kickOnsets && data.kickOnsets.length > 0) {
     for (const onset of data.kickOnsets) {
-      if (Math.abs(timeSeconds - onset) < 0.08) {
+      const dt = timeSeconds - onset;
+      if (dt >= -0.015 && dt <= 0.048) {
         isKickOnset = true;
         kickIntensity = kick;
         break;

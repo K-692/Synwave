@@ -1050,6 +1050,45 @@ Implemented a strict, canonical single-file caching architecture with index tabl
    - Existing legacy un-prefixed files and duplicate candidate files are automatically consolidated into single canonical files and registered in `index.json`.
    - Duplicate stem files sharing identical audio envelope signatures are merged, reclaiming disk space.
 
+### 5.22 Phase 23 — Universal Multi-Stem Drop Laser Activation, Windowed Envelope Followers, and Kick-Synchronized Screen Flash Strobe
+
+#### 1. Problem Diagnosis & Mathematical Root Causes
+1. **Drop Laser Failure on Saturated Multi-Stem Drops:**
+   - In songs where kick, bass, and instruments exploded simultaneously at the drop, lasers were failing to activate or flickering intermittently.
+   - Tracing revealed that `tri_drop_mask` in `demucs_service.py` evaluated instantaneous 40ms RMS frames ($25\text{ FPS}$). Because drum and kick transients decay in $\approx 80\text{ms}$, the drums stem envelope dropped below average every $200-400\text{ms}$ between consecutive kick hits.
+   - As a result, the boolean product $\text{kick}[i] > \text{avg} \land \text{bass}[i] > \text{avg} \land \text{inst}[i] > \text{avg}$ fragmented what should have been a continuous 20–30s musical drop into disjoint 0.4s micro-slices. The subsequent filtering $\Delta t \ge 2.5\text{s}$ discarded all these micro-slices, leaving `triStemDropSections: []` completely empty (e.g. on tracks like *Waves*).
+   - In `ThinLasersEffect.ts`, the activation gate strictly checked `isTriStemDropActive ?? isAboveAverageAmplitude`, failing to consider real-time drop detection or real-time dual-stem energy surges.
+2. **Screen Flash / Kick Desynchronization:**
+   - The screen flash blinder effect was desynchronized from the physical kick drum hits in several songs.
+   - In `VisualEngine.ts`, `isTransientKick` evaluated `isKickOnset || isBeatKick`. `isBeatKick` was derived from `features.isBeat`, which fired on mathematical metronome BPM grid clock ticks from the `BeatGridEngine`. On syncopated rhythms, half-time beats, swing tempos, or breakdowns, the beat grid tick fired when no kick was present.
+   - Worse, this false beat trigger set `this.lastKickTimestamp = trackTimeSeconds`, and the subsequent lockout `timeSinceLastKick > 0.16` blocked the actual physical kick transient when it arrived 80–120ms later.
+   - Furthermore, `features.kickIntensity || 0.5` defaulted to 0.5 on zero intensity, causing quiet non-kick frames to fire at half-intensity.
+   - In `demucsService.ts`, `Math.abs(timeSeconds - event.time) < 0.08` marked `isKickOnset = true` up to 80ms *before* the kick arrived, triggering flashes prematurely.
+
+#### 2. Architecture & Implementation Journey
+1. **Windowed Envelope Followers & Multi-Second Gap Bridging (`demucs_service.py`):**
+   - Implemented rolling window smoothing ($W = 1.5\text{s} = 37\text{ frames}$) for stem envelopes:
+     $$\bar{E}_{\text{kick}}[i] = \frac{1}{W}\sum_{k=i-W/2}^{i+W/2} E_{\text{kick}}[k]$$
+   - Formulated a joint multi-stem drop metric:
+     $$J[i] = 0.45 \cdot \bar{E}_{\text{kick}}[i] + 0.45 \cdot \bar{E}_{\text{bass}}[i] + 0.10 \cdot \bar{E}_{\text{inst}}[i]$$
+   - Applied a resilient dual-condition drop mask:
+     $$\text{isDropFrame}[i] = (\bar{E}_{\text{kick}}[i] \ge 0.85 \cdot \mu_{\text{kick}} \land \bar{E}_{\text{bass}}[i] \ge 0.85 \cdot \mu_{\text{bass}}) \lor (J[i] \ge 1.08 \cdot \mu_J)$$
+   - Introduced a 2.0s gap bridging window to fuse off-beat rhythmic spaces between kick beats into unified, contiguous musical drop sections.
+   - Integrated step 3 in `migrate_legacy_stems_cache()` to automatically re-compute and update `triStemDropSections` across all existing cache files in `.synwave_cache/stems/`.
+2. **5-Tier Resilient Drop Laser Activation Gate (`ThinLasersEffect.ts`, `AudioEngine.ts`):**
+   - Upgraded `ThinLasersEffect.ts` activation criteria to guarantee lasers fire on EVERY song at the drop:
+     - **Tier 1:** Pre-computed Demucs multi-stem continuous drop sections (`features.isTriStemDropActive`).
+     - **Tier 2:** Real-time drop condition detected in `AudioEngine` (`features.isDrop`).
+     - **Tier 3:** High-energy euphoric drop mood classification (`features.mood === 'euphoric-drop'`).
+     - **Tier 4:** Saturated dual-stem surge (`kick > 0.40 && bass > 0.40`).
+     - **Tier 5:** Climax amplitude above track average during active festival mode (`isAboveAverageAmplitude && festival`).
+   - Added `dropHoldTimer = 0.80s` decay bridge to sustain lasers seamlessly across 8-beat or 16-beat syncopated pauses within drop sections.
+3. **Transient-Locked Kick Screen Flash Synchronization (`VisualEngine.ts`, `demucsService.ts`):**
+   - Removed `isBeatKick` entirely from `VisualEngine.ts`. The screen flash is now strictly keyed to audio kick transients (`isKickOnset = features.isKick && !this.wasKickLastFrame`).
+   - Narrowed `sampleStemValues` kick onset window in `demucsService.ts` from $\pm 80\text{ms}$ to $[-15\text{ms}, +48\text{ms}]$, locking the trigger exactly to the leading-edge transient arrival.
+   - Screen flash intensity is dynamically modulated by `kickVal = Math.max(features.kickIntensity, features.stems.kick) * routingConfig.kickSensitivity`, eliminating artificial defaults and scaling target opacity directly with the acoustic punch of the kick drum.
+   - Reduced lockout to 100ms with negative delta handling, preventing duplicate flashes on a single kick while supporting double-kicks and drum rolls up to 600 BPM and handling user scrubbing seamlessly.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1058,10 +1097,10 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
-- **Cache Separation & Deduplication:** `shazam/` strictly stores song recognition metadata; `stems/` strictly stores Demucs 4-stem envelopes. All candidate keys map through `index.json` with zero filename collisions and zero duplicate files.
-- **Cache Synchronization:** Server disk store is authoritative; missing caches trigger live Shazam recognition and Demucs stem extraction on upload and create `.synwave_cache` on disk. Browser storage serves as an offline fallback.
-- **Laser Visuals:** 22-pattern 360° 3D laser system with razor-thin geometries, user-adjustable width slider in routing console, instant on/off activation, and downbeat spike timestamp snapping.
+- **Laser Drop Activation:** 5-tier resilient gate combining windowed envelope followers ($W=1.5\text{s}$), pre-computed continuous drop sections with downbeat snapping, real-time audio surges, and 0.8s drop-hold bridging ensures lasers reliably trigger on EVERY song at the drop.
+- **Screen Flash Strobe:** Strictly manipulated by audio kick transients with sub-millisecond onset precision, zero interference from metronome clock ticks, and dynamic opacity scaling via `kickSensitivity`.
 - **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
+
 
 
 

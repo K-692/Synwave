@@ -71,6 +71,7 @@ export class ThinLasersEffect extends BaseEffect {
   private lastMidFlux = 0.0;                 // Baseline mid-range spectral flux
   private kickImpulseDecay = 0;              // Dynamic kick transient impulse with exponential decay
   private lastPlaybackTime = 0;              // Playback clock tracker for seek detection
+  private dropHoldTimer = 0;                 // Musical phrase sustain hold to bridge off-beat gaps
 
   public getActiveChoreographyName(): string {
     return LASER_CHOREOGRAPHIES[this.activePatternId]?.name || 'Concert Horizon Sweep';
@@ -321,13 +322,29 @@ export class ThinLasersEffect extends BaseEffect {
     }
     this.lastPlaybackTime = currentTime;
 
-    // 3. Audio-Aware Activation Gate: Pinpointed Tri-STEM Drop Segments
-    // The lasers are activated strictly when Kick (drums), Bass, and Instruments ALL simultaneously
-    // exceed their full-track average amplitude values in the concentrated drop segments of the song.
-    const isTriStemDrop = features.isTriStemDropActive ?? features.isAboveAverageAmplitude ?? false;
-    const isEligible = isLasersEnabled && isTriStemDrop;
+    // 3. Audio-Aware Activation Gate: Pinpointed Drop Segments
+    // Comprehensive multi-tier drop detection ensuring lasers activate on EVERY song at the drop:
+    // - Tier 1: Continuous multi-stem drop sections (features.isTriStemDropActive)
+    // - Tier 2: Real-time drop condition detected in AudioEngine (features.isDrop)
+    // - Tier 3: Euphoric drop musical mood (features.mood === 'euphoric-drop')
+    // - Tier 4: Saturated dual-stem surge (kick and bass both heavily elevated above 0.40)
+    // - Tier 5: Above-average amplitude climax during active festival music mode
+    const isDropInstant =
+      Boolean(features.isTriStemDropActive) ||
+      Boolean(features.isDrop) ||
+      features.mood === 'euphoric-drop' ||
+      ((features.stems?.kick ?? 0) > 0.40 && (features.stems?.bass ?? 0) > 0.40) ||
+      (Boolean(features.isAboveAverageAmplitude) && features.musicMode === 'festival');
 
-    // Instant on / off: No gradual ramp-up or lingering fade tail
+    if (isDropInstant) {
+      this.dropHoldTimer = 0.80; // Sustain across 0.80s to seamlessly bridge rhythmic off-beat gaps between kick drum strikes
+    } else if (this.dropHoldTimer > 0) {
+      this.dropHoldTimer -= deltaSeconds;
+    }
+
+    const isEligible = isLasersEnabled && (isDropInstant || this.dropHoldTimer > 0);
+
+    // Instant on / off: High visual impact with zero lingering tail outside drop
     this.currentBeamOpacity = isEligible ? 1.0 : 0.0;
 
     if (this.currentBeamOpacity <= 0) {
