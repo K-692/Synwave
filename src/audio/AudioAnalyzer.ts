@@ -193,12 +193,26 @@ export class AudioAnalyzer {
           const isDrop = triDropMask[i] && score >= dropThresh;
           if (isDrop && !inDrop) {
             inDrop = true;
-            dropStart = f.timeSeconds;
+            // Snap to the exact sudden spike timestamp
+            let bestSpikeTime = f.timeSeconds;
+            let maxSpike = -1;
+            const searchStart = Math.max(0, i - 4);
+            const searchEnd = Math.min(frames.length - 1, i + 10);
+            for (let j = searchStart; j <= searchEnd; j++) {
+              const frame = frames[j];
+              const prev = frames[Math.max(0, j - 1)];
+              const surge = (frame.bass - prev.bass) * 1.5 + (frame.onsetStrength - prev.onsetStrength) * 1.2;
+              if (surge > maxSpike) {
+                maxSpike = surge;
+                bestSpikeTime = frame.timeSeconds;
+              }
+            }
+            dropStart = Number(bestSpikeTime.toFixed(3));
           } else if (!isDrop && inDrop) {
             if (f.timeSeconds - dropStart >= 0.4) {
               triStemDropSections.push({
                 startTime: dropStart,
-                endTime: f.timeSeconds,
+                endTime: Number(f.timeSeconds.toFixed(3)),
               });
             }
             inDrop = false;

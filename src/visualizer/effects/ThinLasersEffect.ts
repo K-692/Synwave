@@ -21,6 +21,7 @@ import {
   type LaserBeamParams,
 } from './laserChoreography';
 import { resolveLaserPaletteColors } from './laserColorUtils';
+import { RoutingStore } from '../director/RoutingStore';
 
 interface TopLaserBeam {
   group: THREE.Group;
@@ -83,24 +84,24 @@ export class ThinLasersEffect extends BaseEffect {
     super.initialize(context);
 
     // 1. Shared Beam Geometries (Unit cylinder aligned along +Z with smooth 24 radial segments)
-    // 24 smooth radial facets completely eliminate polygonal silhouette creases and stroke-like borders
-    // - Core: Razor-sharp luminous neon filament
-    const coreGeo = new THREE.CylinderGeometry(0.005, 0.012, 1.0, 24, 1, true);
+    // Razor-thin festival concert laser filaments with zero polygonal silhouette creases
+    // - Core: Ultra-thin razor-sharp luminous neon filament
+    const coreGeo = new THREE.CylinderGeometry(0.002, 0.0045, 1.0, 24, 1, true);
     coreGeo.rotateX(Math.PI / 2);
     this.disposables.push(coreGeo);
 
-    // - Sheath: Concentrated volumetric colored beam envelope
-    const sheathGeo = new THREE.CylinderGeometry(0.018, 0.040, 1.0, 24, 1, true);
+    // - Sheath: Sleek volumetric colored beam envelope
+    const sheathGeo = new THREE.CylinderGeometry(0.0055, 0.012, 1.0, 24, 1, true);
     sheathGeo.rotateX(Math.PI / 2);
     this.disposables.push(sheathGeo);
 
-    // - Halo: Soft atmospheric dispersion layer providing smooth Gaussian-like feathering
-    const haloGeo = new THREE.CylinderGeometry(0.040, 0.085, 1.0, 24, 1, true);
+    // - Halo: Feathered atmospheric dispersion layer eliminating hard edge artifacts
+    const haloGeo = new THREE.CylinderGeometry(0.012, 0.025, 1.0, 24, 1, true);
     haloGeo.rotateX(Math.PI / 2);
     this.disposables.push(haloGeo);
 
-    // 2. Tiny pin-point diode dot geometry for emitter nozzle origin (NO white circles)
-    const dotGeo = new THREE.SphereGeometry(0.04, 10, 10);
+    // 2. Compact pin-point diode dot geometry for emitter nozzle origin
+    const dotGeo = new THREE.SphereGeometry(0.025, 10, 10);
     this.disposables.push(dotGeo);
 
     // 3. Mount 3 Stations at the Top of the YouTube Screen
@@ -326,14 +327,10 @@ export class ThinLasersEffect extends BaseEffect {
     const isTriStemDrop = features.isTriStemDropActive ?? features.isAboveAverageAmplitude ?? false;
     const isEligible = isLasersEnabled && isTriStemDrop;
 
-    // Target activation: 1.0 strictly within drop segments; 0.0 outside
-    const targetActivation = isEligible ? 1.0 : 0.0;
+    // Instant on / off: No gradual ramp-up or lingering fade tail
+    this.currentBeamOpacity = isEligible ? 1.0 : 0.0;
 
-    // Configurable fade: Smooth fade-in (~0.35s) and gentle fade-out (~0.60s) to eliminate abrupt visual cuts
-    const fadeRate = targetActivation > this.currentBeamOpacity ? 3.5 : 1.8;
-    this.currentBeamOpacity += (targetActivation - this.currentBeamOpacity) * Math.min(1.0, deltaSeconds * fadeRate);
-
-    if (this.currentBeamOpacity < 0.005) {
+    if (this.currentBeamOpacity <= 0) {
       this.setAllLasersVisible(false);
       return;
     }
@@ -459,8 +456,10 @@ export class ThinLasersEffect extends BaseEffect {
         beam.group.position.copy(station.origin);
         beam.group.lookAt(lookTarget);
 
-        // Subtle thickness expansion on kick and mid-range punch
-        const beamThickness = 1.0 + Math.min(0.5, midRangeEnergy * 0.25 + this.kickImpulseDecay * 0.35);
+        // Laser width calibration from routing console and dynamic punch
+        const userWidthScale = RoutingStore.getInstance().getConfig().laserBeamWidth ?? 1.0;
+        const dynamicExpansion = 1.0 + Math.min(0.25, midRangeEnergy * 0.15 + this.kickImpulseDecay * 0.20);
+        const beamThickness = userWidthScale * dynamicExpansion;
         beam.coreMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);
         beam.sheathMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);
         beam.haloMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);

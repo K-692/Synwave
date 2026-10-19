@@ -136,7 +136,7 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
             </p>
             <button className="btn btn-accent mt-3" onClick={onLoadTestTrack}>
               <Sparkles size={16} />
-              <span>Load My Music: Waves</span>
+              <span>Load Demo: Waves</span>
             </button>
           </div>
         ) : (

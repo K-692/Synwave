@@ -637,12 +637,13 @@ export class AudioEngine {
 
       if (isDropFrame && !inSection) {
         inSection = true;
-        secStart = t;
+        // Snap raw cluster start to the exact timestamp where the music suddenly spikes (Task: "just on that timestamp where the music is suddenly getting a spike")
+        secStart = this.findSuddenMusicSpikeTimestamp(t, drums, bass, inst, data.kickOnsets, fps);
       } else if (!isDropFrame && inSection) {
         if (t - secStart >= minDurationSec) {
           sections.push({
-            startTime: Number(secStart.toFixed(2)),
-            endTime: Number(t.toFixed(2)),
+            startTime: Number(secStart.toFixed(3)),
+            endTime: Number(t.toFixed(3)),
           });
         }
         inSection = false;
@@ -653,8 +654,8 @@ export class AudioEngine {
       const finalT = n / fps;
       if (finalT - secStart >= minDurationSec) {
         sections.push({
-          startTime: Number(secStart.toFixed(2)),
-          endTime: Number(finalT.toFixed(2)),
+          startTime: Number(secStart.toFixed(3)),
+          endTime: Number(finalT.toFixed(3)),
         });
       }
     }
@@ -672,6 +673,64 @@ export class AudioEngine {
 
     this.triStemDropSections = mergedSections;
     console.info(`[AudioEngine] Pinpointed ${mergedSections.length} tri-STEM drop segments (avgD: ${avgDrums.toFixed(2)}, avgB: ${avgBass.toFixed(2)}, avgI: ${avgInst.toFixed(2)})`);
+  }
+
+  /**
+   * Identifies the exact timestamp of a sudden music spike (transient kick onset or maximal energy surge)
+   * around candidate drop activation to ensure lasers activate on the exact downbeat impact.
+   */
+  private findSuddenMusicSpikeTimestamp(
+    rawStartTime: number,
+    drums: number[],
+    bass: number[],
+    inst: number[],
+    kickOnsets: number[] | undefined,
+    fps: number
+  ): number {
+    const n = Math.min(drums.length, bass.length, inst.length);
+    const startFrame = Math.round(rawStartTime * fps);
+    const searchStart = Math.max(1, startFrame - Math.round(fps * 0.20));
+    const searchEnd = Math.min(n - 1, startFrame + Math.round(fps * 0.65));
+
+    // 1. Check for kick onsets in the search window [rawStartTime - 0.18s, rawStartTime + 0.55s]
+    const nearbyKicks = (kickOnsets || []).filter(
+      (k) => k >= rawStartTime - 0.18 && k <= rawStartTime + 0.55
+    );
+
+    // 2. Compute sudden energy slope / surge (drums + bass sudden attack)
+    let maxSurge = -1e9;
+    let maxSurgeFrame = startFrame;
+    for (let j = searchStart; j <= searchEnd; j++) {
+      const dSurge = drums[j] - drums[j - 1];
+      const bSurge = bass[j] - bass[j - 1];
+      const iSurge = inst[j] - inst[j - 1];
+      const surge = dSurge * 1.6 + bSurge * 1.6 + iSurge;
+      if (surge > maxSurge) {
+        maxSurge = surge;
+        maxSurgeFrame = j;
+      }
+    }
+
+    const maxSurgeTime = maxSurgeFrame / fps;
+
+    // 3. If a kick onset is close to the peak surge, snap to that exact kick onset downbeat
+    if (nearbyKicks.length > 0) {
+      let bestKick = nearbyKicks[0];
+      let minDiff = Math.abs(bestKick - maxSurgeTime);
+      for (const k of nearbyKicks) {
+        const diff = Math.abs(k - maxSurgeTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestKick = k;
+        }
+      }
+      if (minDiff <= 0.25) {
+        return Number(bestKick.toFixed(3));
+      }
+    }
+
+    // 4. Otherwise snap to the peak positive derivative spike frame
+    return Number(maxSurgeTime.toFixed(3));
   }
 
   public isTriStemDropActive(currentTime: number): boolean {

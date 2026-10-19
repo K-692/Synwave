@@ -271,7 +271,7 @@ async def separate_stems(
                 }
 
             # Save to temporary path for demucs processing
-            temp_dir = Path(__file__).resolve().parent / ".synwave_cache" / "temp"
+            temp_dir = Path(__file__).resolve().parent / ".syncwave_cache" / "temp"
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_file = temp_dir / f"upload_{computed_hash}.mp3"
             with open(temp_file, "wb") as f:

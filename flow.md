@@ -921,7 +921,59 @@ During concert visualizer testing across varied music video styles, five visual 
   - Full-window blinder wash with elliptical radial gradients and increased peak brightness ($0.96$) pinned to `inset: 0` covering entire viewport (`100vw` by `100vh`).
   - Master audio hardware clock drift monitoring loop ($100\text{ms}$) with instant snap on `PLAYING` transitions to ensure perfect audio-video lip-sync.
   - Pinpointed Tri-STEM drop activation engine: computes track-wide baselines $\bar{A}_{\text{drums}}, \bar{A}_{\text{bass}}, \bar{A}_{\text{inst}}$, isolating the smaller peak drop segments where all 3 stems simultaneously exceed their averages, gating lasers to only activate during climactic drop sections.
-- **Git Repository:** Follows Rule 8 (do not push to GitHub repo until instructed). All code maintained cleanly locally.
+### 5.19 Phase 20 — Razor-Thin Laser Geometries, Routing Width Slider, Instant On/Off Transitions, Exact Spike Timestamp Alignment & Unified .syncwave_cache
+
+#### 1. Architectural Motivation & Problem Diagnosis
+During rigorous festival visual testing, four key refinements were identified:
+1. **Volumetric Beam Thickness:** Previous laser cylinder radii ($r_{\text{core}} = 0.005 - 0.012$, $r_{\text{sheath}} = 0.018 - 0.040$, $r_{\text{halo}} = 0.040 - 0.085$) appeared bulky rather than razor-sharp stadium diode beams. Users lacked an interactive runtime calibration slider in the Audio-to-Visual Routing Console.
+2. **Gradual Fade In/Out Latency:** Previous activation applied a continuous exponential interpolation ($\text{fadeRate} = 3.5 / 1.8$, $\approx 0.35\text{s} - 0.60\text{s}$), softening the arrival of drops and creating visual sluggishness.
+3. **Drop Boundary Alignment with Musical Spike:** The initial tri-STEM frame cluster start occurred when joint energy passed the static threshold, which often caught pre-drop risers or drum rolls $100\text{ms} - 300\text{ms}$ before the actual drop downbeat impact.
+4. **Cache Directory Standardization:** Standardized the disk cache directory across Python microservices to `.syncwave_cache/stems` and `.syncwave_cache/temp`, purging old/ambiguous cache locations.
+5. **Repository Hygiene:** Purged local `My Music` folder and untracked sample blueprints from git history and workspace.
+
+#### 2. Razor-Thin Geometries & User Width Slider (`ThinLasersEffect.ts`, `RoutingConsole.tsx`, `types/index.ts`)
+- **Ultra-Thin Diode Geometries:**
+  - Luminous Core: $r_{\text{top}} = 0.002, r_{\text{bottom}} = 0.0045$ (reduced by $> 60\%$ to achieve needle-thin neon filaments).
+  - Volumetric Sheath: $r_{\text{top}} = 0.0055, r_{\text{bottom}} = 0.012$.
+  - Atmospheric Halo: $r_{\text{top}} = 0.012, r_{\text{bottom}} = 0.025$.
+  - Diode Dot Emitter: Sphere radius reduced to $0.025\text{m}$.
+- **Interactive Routing Slider (`laserBeamWidth`):**
+  - Added `laserBeamWidth?: number` ($0.2\times$ to $2.5\times$, default $1.0\times$) in `AudioVisualRoutingConfig`.
+  - Added dedicated slider in Section 4 ("360° DOWNWARD INSTRUMENT LASERS") of `RoutingConsole.tsx`.
+  - In `ThinLasersEffect.update`, beam thickness is computed as:
+    $$\text{beamThickness} = \text{userWidthScale} \times \left(1.0 + \min(0.25, E_{\text{mid}} \times 0.15 + I_{\text{kick}} \times 0.20)\right)$$
+
+#### 3. Instant On / Off Transitions Without Fading (`ThinLasersEffect.ts`)
+- Completely eliminated the gradual exponential easing curve:
+  $$\text{currentBeamOpacity} = \text{isEligible} \;?\; 1.0 : 0.0$$
+- If $\text{currentBeamOpacity} \le 0$, `setAllLasersVisible(false)` is invoked immediately and the render loop exits.
+- When entering a drop, lasers ignite to full $1.0$ opacity with zero-frame latency, creating dramatic concert lighting cuts.
+
+#### 4. Exact Downbeat Spike Timestamp Alignment (`AudioEngine.ts`, `demucs_service.py`, `AudioAnalyzer.ts`)
+- **Sudden Music Spike Detector (`findSuddenMusicSpikeTimestamp`):**
+  - For each qualifying drop cluster starting at raw time $t_{\text{raw}}$, searches the immediate temporal neighborhood $[t_{\text{raw}} - 0.18\text{s}, t_{\text{raw}} + 0.55\text{s}]$.
+  - Computes the instantaneous energy surge derivative:
+    $$\Delta \text{surge}[j] = 1.6 \times (D[j] - D[j-1]) + 1.6 \times (B[j] - B[j-1]) + (I[j] - I[j-1])$$
+  - Filters nearby kick onsets from `kickOnsets`. If a kick onset is located near the peak surge ($\le 0.25\text{s}$), snaps $t_{\text{start}}$ directly to that kick downbeat timestamp; otherwise snaps to the peak derivative frame.
+  - Guarantees that lasers ignite precisely on the sudden music spike downbeat.
+
+#### 5. Cache Directory Standardization to `.syncwave_cache`
+- Updated `CACHE_DIR = BASE_DIR / ".syncwave_cache" / "stems"` in `demucs_service.py`.
+- Updated `temp_dir = Path(__file__).resolve().parent / ".syncwave_cache" / "temp"` in `shazam_server.py`.
+- Added `.syncwave_cache/` to `.gitignore`.
+- Purged any obsolete `.synwave_cache` files.
+
+---
+
+## 6. Current Implementation State & Quality Verification
+
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
+- **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
+- **Vite Development Server:** Running continuously at `http://localhost:5173/`.
+- **Audio Intelligence Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/`, with caching under `.syncwave_cache`.
+- **Laser Visuals:** 22-pattern 360° 3D laser system with razor-thin geometries, user-adjustable width slider in routing console, instant on/off activation, and downbeat spike timestamp snapping.
+- **Repository Hygiene:** Clean working tree; `Synwave_procedural_music_visualizer_blueprint.md` removed from git; `My Music` removed from workspace.
+
 
 
 

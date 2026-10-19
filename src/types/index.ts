@@ -109,6 +109,7 @@ export interface AudioVisualRoutingConfig {
   instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, arena cathedral laser fan speed)
   vocalToScreenGlow: number;            // 0.2 to 2.0 (default 1.0)
   laserDensity: number;                 // 0.2 to 2.0 (default 1.0)
+  laserBeamWidth?: number;              // 0.2 to 2.5 (default 1.0, user-adjustable razor laser beam thickness)
   spotlightCount: number;               // 1 to 8 (active/target count, default 3)
   minSpotlightCount?: number;           // 1 to 4 (default 1 at BPM <= 70)
   maxSpotlightCount?: number;           // 4 to 8 (default 7 at BPM >= 160)

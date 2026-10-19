@@ -28,6 +28,7 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       bassToBeamIntensity: 1.2,
       vocalToScreenGlow: 1.0,
       laserDensity: 1.25,
+      laserBeamWidth: 1.0,
       spotlightCount: 3,
       minSpotlightCount: 1,
       maxSpotlightCount: 7,

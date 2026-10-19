@@ -304,6 +304,23 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 />
                 <span className="slider-hint">Adjusts active razor beam count from the 3 top laser stations</span>
               </div>
+
+              {/* Laser Beam Width / Thickness Slider */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Laser Beam Width</span>
+                  <span className="slider-val">{(config.laserBeamWidth ?? 1.0).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.5"
+                  step="0.05"
+                  value={config.laserBeamWidth ?? 1.0}
+                  onChange={(e) => handleSliderChange('laserBeamWidth', parseFloat(e.target.value))}
+                />
+                <span className="slider-hint">Adjusts razor laser thickness from ultra-thin filament threads to wider volumetric shafts</span>
+              </div>
             </div>
           </div>
 

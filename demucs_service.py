@@ -17,7 +17,7 @@ from demucs.api import Separator
 
 # Absolute Cache directory for extracted stem envelopes
 BASE_DIR = Path(__file__).resolve().parent
-CACHE_DIR = BASE_DIR / ".synwave_cache" / "stems"
+CACHE_DIR = BASE_DIR / ".syncwave_cache" / "stems"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 class DemucsService:
@@ -187,6 +187,30 @@ class DemucsService:
             joint_scores = (drums_vec[:min_len] + bass_vec[:min_len] + inst_vec[:min_len]) / 3.0
             qualifying = joint_scores[tri_drop_mask]
 
+            kick_onsets = [k["time"] for k in kicks]
+
+            def find_sudden_spike_time(raw_start: float) -> float:
+                start_idx = int(round(raw_start * self.target_fps))
+                search_start = max(1, start_idx - int(self.target_fps * 0.20))
+                search_end = min(min_len - 1, start_idx + int(self.target_fps * 0.65))
+
+                nearby_kicks = [k for k in kick_onsets if (raw_start - 0.18) <= k <= (raw_start + 0.55)]
+
+                max_surge = -1e9
+                max_surge_idx = start_idx
+                for j in range(search_start, search_end + 1):
+                    surge = (drums_vec[j] - drums_vec[j - 1]) * 1.6 + (bass_vec[j] - bass_vec[j - 1]) * 1.6 + (inst_vec[j] - inst_vec[j - 1])
+                    if surge > max_surge:
+                        max_surge = surge
+                        max_surge_idx = j
+
+                surge_time = round(max_surge_idx / self.target_fps, 3)
+                if nearby_kicks:
+                    best_kick = min(nearby_kicks, key=lambda k: abs(k - surge_time))
+                    if abs(best_kick - surge_time) <= 0.25:
+                        return round(best_kick, 3)
+                return surge_time
+
             tri_stem_drop_sections = []
             if len(qualifying) > 0:
                 drop_threshold = float(np.percentile(qualifying, 45))
@@ -194,16 +218,16 @@ class DemucsService:
                 drop_start = 0.0
                 for i in range(min_len):
                     is_drop = bool(tri_drop_mask[i] and (joint_scores[i] >= drop_threshold))
-                    t = round(i / self.target_fps, 2)
+                    t = round(i / self.target_fps, 3)
                     if is_drop and not in_drop:
                         in_drop = True
-                        drop_start = t
+                        drop_start = find_sudden_spike_time(t)
                     elif not is_drop and in_drop:
                         if t - drop_start >= 0.4:
                             tri_stem_drop_sections.append({"startTime": drop_start, "endTime": t})
                         in_drop = False
                 if in_drop:
-                    tri_stem_drop_sections.append({"startTime": drop_start, "endTime": round(min_len / self.target_fps, 2)})
+                    tri_stem_drop_sections.append({"startTime": drop_start, "endTime": round(min_len / self.target_fps, 3)})
             else:
                 tri_stem_drop_sections = []
         else:
@@ -214,9 +238,9 @@ class DemucsService:
             avg_drums = 0.25
             avg_bass = 0.25
             avg_inst = 0.25
+            kick_onsets = []
 
         duration_seconds = round(total_frames / self.target_fps, 2)
-        kick_onsets = [k["time"] for k in kicks]
         demucs_tempo = self.calculate_tempo_from_kicks(kick_onsets)
 
         return {

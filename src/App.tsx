@@ -34,7 +34,7 @@ import type {
   VisualSettings,
 } from './types';
 
-// Bundled test track configurations from local "My Music" directory
+// Bundled demo test track configurations
 const BUNDLED_TEST_TRACKS: TrackRecord[] = [
   {
     id: 'feel-something-track',
