@@ -176,6 +176,18 @@ export interface TimedEvent {
   label?: string;
 }
 
+export interface DemucsStemData {
+  fps: number;
+  durationSeconds: number;
+  stems: {
+    drums: number[];
+    bass: number[];
+    instruments: number[];
+    vocals: number[];
+  };
+  kickOnsets: number[];
+}
+
 export interface TrackAnalysis {
   schemaVersion: number;
   trackId: string;
@@ -185,6 +197,7 @@ export interface TrackAnalysis {
   frames: FeatureFrame[];
   events: TimedEvent[];
   sections: SectionEvent[];
+  demucsStems?: DemucsStemData;
   descriptors: {
     energy: 'low' | 'medium' | 'high';
     brightness: 'dark' | 'balanced' | 'bright';
@@ -206,6 +219,7 @@ export interface TrackRecord {
   file?: File;
   analysisStatus: AnalysisStatus;
   analysis?: TrackAnalysis;
+  demucsStems?: DemucsStemData;
   seed: number; // Deterministic random seed for this track
 }
 

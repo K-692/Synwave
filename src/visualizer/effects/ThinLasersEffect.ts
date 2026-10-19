@@ -50,12 +50,12 @@ export class ThinLasersEffect extends BaseEffect {
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // 1. Sleek, Bold Volumetric Beam Geometries (unit length along Z)
-    const coreGeo = new THREE.CylinderGeometry(0.02, 0.045, 1.0, 8, 1, true);
+    // 1. Razor-Thin Volumetric Laser Beam Geometries (unit length along Z)
+    const coreGeo = new THREE.CylinderGeometry(0.005, 0.010, 1.0, 8, 1, true);
     coreGeo.rotateX(Math.PI / 2); // Align length along Z
     this.disposables.push(coreGeo);
 
-    const sheathGeo = new THREE.CylinderGeometry(0.05, 0.12, 1.0, 8, 1, true);
+    const sheathGeo = new THREE.CylinderGeometry(0.012, 0.024, 1.0, 8, 1, true);
     sheathGeo.rotateX(Math.PI / 2); // Align length along Z
     this.disposables.push(sheathGeo);
 
@@ -290,7 +290,7 @@ export class ThinLasersEffect extends BaseEffect {
     const whiteLaser = new THREE.Color(0xffffff);
 
     const baseLaserBrightness = (0.22 + instStem * 0.35 + (features.isDrop ? 0.15 : 0)) * maxBri;
-    const beamThickness = (1.0 + instStem * 0.45) * Math.min(1.4, laserDensity);
+    const beamThickness = (0.5 + instStem * 0.25) * Math.min(1.0, laserDensity);
     const activeLaserCount = Math.max(4, Math.min(this.lasers.length, Math.round(this.lasers.length * Math.min(1.0, laserDensity))));
 
     for (let i = 0; i < this.lasers.length; i++) {
@@ -386,8 +386,8 @@ export class ThinLasersEffect extends BaseEffect {
       machine.beamGroup.position.copy(midpoint);
       machine.beamGroup.lookAt(machine.currentTarget);
 
-      // Bass thickness expansion
-      const bassThickness = (1.4 + bassPulse * 1.8) * Math.min(1.4, laserDensity);
+      // Bass thickness expansion (razor-thin core with vibrant bass pulse)
+      const bassThickness = (0.32 + bassPulse * 0.38) * Math.min(1.0, laserDensity);
       machine.beamGroup.scale.set(bassThickness, bassThickness, dist);
 
       // Window coverage fan scale: expands outward towards the camera edges

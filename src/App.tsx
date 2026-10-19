@@ -17,6 +17,9 @@ import { detectHardwareProfile } from './utils/hardwareDetector';
 import { identifyAudioWithShazam } from './services/shazamService';
 import { searchYouTubeVideo } from './services/youtubeService';
 import { extractThumbnailColors } from './services/thumbnailColorService';
+import { StemSeparationLoader } from './components/StemSeparationLoader';
+import { separateAudioWithDemucs } from './services/demucsService';
+import { Upload } from 'lucide-react';
 import type {
   QualityPreset,
   RepeatMode,
@@ -103,7 +106,8 @@ export const App: React.FC = () => {
   // Synchronized YouTube Video & Shazam State
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const [currentVideoTitle, setCurrentVideoTitle] = useState<string>('');
-  const [isRecognizing, setIsRecognizing] = useState<boolean>(false);
+  const [isSeparatingStems, setIsSeparatingStems] = useState<boolean>(false);
+  const [separationStatus, setSeparationStatus] = useState<string>('');
   const [isDraggingOverScreen, setIsDraggingOverScreen] = useState<boolean>(false);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,7 +154,6 @@ export const App: React.FC = () => {
       'stage-lights',
       'thin-lasers',
       'fire-shooters',
-      'smoke-machines',
       'shockwave-rings',
       'starfield-warp',
       'terrain-grid',
@@ -317,6 +320,19 @@ export const App: React.FC = () => {
 
       if (audioEngineRef.current) {
         audioEngineRef.current.setTrackBeatGrid(track.id, track.analysis?.estimatedBpm, track.analysis?.bpmConfidence);
+        // Load Demucs neural stems (from cache or track record)
+        if (track.demucsStems) {
+          audioEngineRef.current.setDemucsStems(track.demucsStems);
+        } else {
+          separateAudioWithDemucs(track.file || track.url)
+            .then((stems) => {
+              if (stems) {
+                track.demucsStems = stems;
+                audioEngineRef.current?.setDemucsStems(stems);
+              }
+            })
+            .catch((err) => console.warn('[App] Demucs load error:', err));
+        }
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
       }
 
@@ -439,14 +455,29 @@ export const App: React.FC = () => {
     };
 
     setTracks([track]);
-    await loadTrack(track, true);
-
-    // Reset previous video state
     setCurrentVideoId(null);
     setCurrentVideoTitle('');
 
-    // Trigger ShazamIO identification in parallel
-    setIsRecognizing(true);
+    // Trigger Demucs 4-stem neural extraction with loading overlay
+    setIsSeparatingStems(true);
+    setSeparationStatus('Separating Drums, Bass, Instruments, and Vocals with Demucs...');
+
+    const demucsPromise = separateAudioWithDemucs(audioFile, (status) => setSeparationStatus(status))
+      .then((stems) => {
+        if (stems) {
+          track.demucsStems = stems;
+          audioEngineRef.current?.setDemucsStems(stems);
+        }
+      })
+      .catch((err) => console.warn('Demucs separation error:', err))
+      .finally(() => {
+        setIsSeparatingStems(false);
+      });
+
+    await loadTrack(track, true);
+    await demucsPromise;
+
+    // Trigger silent ShazamIO identification in background (no popup)
     try {
       const match = await identifyAudioWithShazam(audioFile);
       if (match.success && match.title) {
@@ -476,8 +507,6 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.warn('Shazam / YouTube pipeline error:', err);
-    } finally {
-      setIsRecognizing(false);
     }
   };
 
@@ -695,9 +724,9 @@ export const App: React.FC = () => {
         onClose={() => setIsDiagnosticOpen(false)}
       />
 
-      {/* Center Screen Interactive Click & Drag-Drop Target */}
+      {/* Center Screen Compact Drop Target */}
       <div
-        className={`stage-center-drop-target ${isDraggingOverScreen ? 'drag-hover' : ''} ${currentVideoId ? 'has-video' : ''}`}
+        className={`stage-center-drop-target ${isDraggingOverScreen ? 'drag-hover' : ''}`}
         onClick={() => audioFileInputRef.current?.click()}
         onDragOver={(e) => {
           e.preventDefault();
@@ -711,7 +740,7 @@ export const App: React.FC = () => {
             handleFilesSelected(e.dataTransfer.files);
           }
         }}
-        title="Click center screen or drag & drop music file here to play"
+        title="Click or drag & drop music file to play"
       >
         <input
           type="file"
@@ -724,14 +753,19 @@ export const App: React.FC = () => {
           accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
           style={{ display: 'none' }}
         />
-
-        {isRecognizing && (
-          <div className="shazam-recognizing-badge">
-            <span className="shazam-pulse-dot" />
-            <span>IDENTIFYING WITH SHAZAM...</span>
-          </div>
-        )}
+        <div className="stage-drop-label">
+          <Upload size={14} />
+          <span>LOAD AUDIO / DROP FILE</span>
+        </div>
       </div>
+
+      {/* Demucs Neural Stem Separation Pre-Processing Loader */}
+      <StemSeparationLoader
+        isVisible={isSeparatingStems}
+        songTitle={currentTrack?.title}
+        songArtist={currentTrack?.artist}
+        statusText={separationStatus}
+      />
 
       {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}
       <PlayerControls

@@ -2000,69 +2000,258 @@ html, body, #root {
 .stage-center-drop-target {
   position: absolute;
   left: 50%;
-  top: 48.6%;
-  transform: translate(-50%, -50%);
-  width: min(73.3vw, 130.3vh);
-  aspect-ratio: 16 / 9;
-  border-radius: 6px;
+  bottom: 84px;
+  transform: translateX(-50%);
+  width: 250px;
+  max-width: 80vw;
+  height: 38px;
+  border-radius: 20px;
   cursor: pointer;
-  z-index: 5;
+  z-index: 10;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  padding-bottom: 24px;
-  transition: all 0.25s ease;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: rgba(10, 16, 28, 0.75);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 12px rgba(0, 240, 255, 0.08);
+  transition: all 0.22s ease;
   user-select: none;
   pointer-events: auto;
 }
 
-.stage-center-drop-target:not(.has-video):hover {
-  background: rgba(0, 240, 255, 0.02);
-  border: 1px dashed rgba(0, 240, 255, 0.35);
-  box-shadow: 0 0 30px rgba(0, 240, 255, 0.12);
+.stage-center-drop-target:hover {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.6);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.25);
+  transform: translateX(-50%) translateY(-2px);
 }
 
 .stage-center-drop-target.drag-hover {
-  background: rgba(0, 240, 255, 0.08);
+  background: rgba(0, 240, 255, 0.16);
   border: 2px dashed var(--neon-cyan) !important;
-  box-shadow: 0 0 50px rgba(0, 240, 255, 0.35);
-  transform: translate(-50%, -50%) scale(1.02);
+  box-shadow: 0 0 35px rgba(0, 240, 255, 0.45);
+  transform: translateX(-50%) scale(1.05);
 }
 
-/* Shazam Identifying Pill */
-.shazam-recognizing-badge {
-  position: absolute;
-  top: -38px;
-  left: 50%;
-  transform: translateX(-50%);
+.stage-drop-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
   display: flex;
   align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.stage-drop-label svg {
+  color: var(--neon-cyan);
+}
+
+.stage-center-drop-target:hover .stage-drop-label {
+  color: #f1f5f9;
+}
+
+/* =============================================================
+ * Demucs Neural Stem Separation Loader Modal Overlay
+ * ============================================================= */
+.demucs-loader-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(3, 6, 12, 0.88);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: demucs-fade-in 0.3s ease-out;
+}
+
+@keyframes demucs-fade-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.demucs-loader-card {
+  width: 520px;
+  max-width: 90vw;
+  background: rgba(11, 17, 32, 0.95);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 10px 45px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 240, 255, 0.18);
+  border-radius: 14px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.demucs-loader-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 5px 14px;
-  background: rgba(10, 15, 30, 0.9);
-  border: 1px solid var(--neon-cyan);
+}
+
+.demucs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.3);
   border-radius: 20px;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--neon-cyan);
   letter-spacing: 0.6px;
-  box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
-  animation: pulse-shazam 1.5s infinite ease-in-out;
 }
 
-.shazam-pulse-dot {
-  width: 7px;
-  height: 7px;
+.demucs-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin: 0;
+  background: linear-gradient(135deg, #ffffff 30%, var(--neon-cyan) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.demucs-subtitle {
+  font-size: 0.85rem;
+  margin: 0;
+  color: #94a3b8;
+}
+
+.demucs-track-name {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.demucs-track-artist {
+  color: #64748b;
+}
+
+.demucs-stems-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.demucs-stem-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(18, 24, 40, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: all 0.25s ease;
+}
+
+.demucs-stem-card.active {
+  background: rgba(24, 34, 56, 0.9);
+}
+
+.stem-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.stem-info {
+  flex: 1;
+}
+
+.stem-name {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.stem-desc {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.stem-pulse-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stem-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--neon-cyan);
-  box-shadow: 0 0 8px var(--neon-cyan);
+  opacity: 0.35;
+  transition: all 0.2s ease;
 }
 
-@keyframes pulse-shazam {
-  0%, 100% { opacity: 0.85; transform: translateX(-50%) scale(1); }
-  50% { opacity: 1; transform: translateX(-50%) scale(1.04); }
+.stem-dot.pulse {
+  opacity: 1;
+  transform: scale(1.35);
+  box-shadow: 0 0 10px currentColor;
+}
+
+.demucs-progress-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.demucs-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.demucs-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 45%;
+  background: linear-gradient(90deg, #00f0ff, #ff3366, #ffea00);
+  border-radius: 3px;
+  animation: demucs-shimmer 1.8s infinite ease-in-out;
+}
+
+@keyframes demucs-shimmer {
+  0% { left: -45%; width: 35%; }
+  50% { width: 65%; }
+  100% { left: 100%; width: 35%; }
+}
+
+.demucs-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.demucs-status-label {
+  color: #94a3b8;
+}
+
+.demucs-acceleration-badge {
+  color: var(--neon-cyan);
+  font-weight: 700;
 }
 
 /* =============================================================

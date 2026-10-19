@@ -3,9 +3,10 @@
  * Manages Web Audio API graph, authoritative media clock, and real-time audio feature extraction.
  */
 
-import type { AudioFeatures, AudioStems, BeatGridState, MusicMood } from '../types';
+import type { AudioFeatures, AudioStems, BeatGridState, DemucsStemData, MusicMood } from '../types';
 import { StemSeparationService } from './StemSeparationService';
 import { BeatGridEngine } from './BeatGridEngine';
+import { sampleStemValues } from '../services/demucsService';
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
@@ -38,6 +39,7 @@ export class AudioEngine {
   private dropConfidence = 0;
   private currentKickStem = 0;
   private lastFeatureTime = performance.now();
+  private demucsStems: DemucsStemData | null = null;
 
   // Callbacks
   public onTimeUpdate?: (currentTime: number, duration: number) => void;
@@ -357,15 +359,30 @@ export class AudioEngine {
     const deltaSeconds = Math.min(0.1, (now - this.lastFeatureTime) / 1000);
     this.lastFeatureTime = now;
 
-    // Real-Time 4-STEM Decomposition (Kick, Bass, Instruments, Vocals)
-    const stems: AudioStems = StemSeparationService.extractRealtimeStems(
-      this.frequencyData,
-      this.timeDomainData,
-      isKick,
-      kickIntensity,
-      this.currentKickStem,
-      deltaSeconds
-    );
+    // Real-Time 4-STEM Decomposition (Driven by Demucs AI stems when available)
+    let stems: AudioStems;
+    if (this.demucsStems) {
+      const sampled = sampleStemValues(this.demucsStems, currentTime);
+      stems = {
+        kick: sampled.kick,
+        bass: sampled.bass,
+        instruments: sampled.instruments,
+        vocals: sampled.vocals,
+      };
+      if (sampled.isKickOnset || sampled.kick > 0.52) {
+        isKick = true;
+        kickIntensity = Math.max(kickIntensity, sampled.kick);
+      }
+    } else {
+      stems = StemSeparationService.extractRealtimeStems(
+        this.frequencyData,
+        this.timeDomainData,
+        isKick,
+        kickIntensity,
+        this.currentKickStem,
+        deltaSeconds
+      );
+    }
     this.currentKickStem = stems.kick;
 
     // Beat Grid Synchronization (Continuous phase, monotonic beat & bar indexing)
@@ -403,6 +420,14 @@ export class AudioEngine {
 
   public setTrackBeatGrid(trackId: string, preAnalyzedBpm?: number, confidence?: number): void {
     this.beatGridEngine.setTrack(trackId, preAnalyzedBpm, confidence);
+  }
+
+  public setDemucsStems(data: DemucsStemData | null): void {
+    this.demucsStems = data;
+  }
+
+  public getDemucsStems(): DemucsStemData | null {
+    return this.demucsStems;
   }
 
   public setManualBpm(bpm: number): void {

@@ -1,12 +1,14 @@
 """
-Synwave Shazam Recognition Microservice
-Local lightweight FastAPI service utilizing ShazamIO to identify songs
-from raw audio files without requiring any API keys or external credentials.
+Synwave Audio Intelligence & Neural Processing Microservice
+- ShazamIO song identification
+- Demucs AI 4-stem separation (drums, bass, instruments, vocals)
+Runs locally on port 8765 with zero external API credentials required.
 """
 
 import os
 import certifi
 import asyncio
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from shazamio import Shazam
@@ -14,7 +16,7 @@ from shazamio import Shazam
 # Ensure macOS uses certifi CA certificates for SSL
 os.environ["SSL_CERT_FILE"] = certifi.where()
 
-app = FastAPI(title="Synwave Shazam Recognition Service")
+app = FastAPI(title="Synwave Audio Intelligence Service")
 
 # Allow CORS for local Vite dev server
 app.add_middleware(
@@ -30,7 +32,12 @@ shazam = Shazam()
 @app.get("/health")
 async def health_check():
     """Health check endpoint to verify service status."""
-    return {"status": "ok", "service": "Synwave ShazamIO Engine"}
+    return {
+        "status": "ok",
+        "service": "Synwave Audio Intelligence Engine",
+        "demucs": True,
+        "shazam": True,
+    }
 
 @app.post("/api/recognize")
 async def recognize_audio(
@@ -43,7 +50,6 @@ async def recognize_audio(
     try:
         data = None
         if file is not None:
-            # Read uploaded file bytes
             data = await file.read()
             if not data or len(data) == 0:
                 raise HTTPException(status_code=400, detail="Empty audio file provided.")
@@ -62,7 +68,6 @@ async def recognize_audio(
         genres = track.get("genres", {}).get("primary")
         cover_art = track.get("images", {}).get("coverart")
 
-        # Extract album name if present in sections metadata
         for section in track.get("sections", []):
             if section.get("type") == "SONG":
                 for meta in section.get("metadata", []):
@@ -87,6 +92,62 @@ async def recognize_audio(
             }
 
     except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/api/separate-stems")
+async def separate_stems(
+    file: UploadFile = File(None),
+    filePath: str = Form(None),
+    fileHash: str = Form(None)
+):
+    """
+    Separates 4 stems (drums, bass, instruments, vocals) from the audio file using Demucs.
+    Returns normalized RMS envelope curves for real-time visualization sync.
+    """
+    try:
+        from demucs_service import get_demucs_service
+        service = get_demucs_service()
+
+        if filePath and os.path.exists(filePath):
+            result = service.separate_file(filePath, fileHash)
+            return result
+        elif file is not None:
+            data = await file.read()
+            if not data:
+                raise HTTPException(status_code=400, detail="Empty audio file provided.")
+            computed_hash = fileHash or service.compute_hash(data)
+
+            # Check cache before writing to disk
+            cached = service.get_cached_result(computed_hash)
+            if cached:
+                return {
+                    "success": True,
+                    "cached": True,
+                    "fileHash": computed_hash,
+                    **cached,
+                }
+
+            # Save to temporary path for demucs processing
+            temp_dir = Path(".synwave_cache/temp")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = temp_dir / f"upload_{computed_hash}.mp3"
+            with open(temp_file, "wb") as f:
+                f.write(data)
+
+            try:
+                result = service.separate_file(str(temp_file), computed_hash)
+                return result
+            finally:
+                if temp_file.exists():
+                    temp_file.unlink()
+        else:
+            raise HTTPException(status_code=400, detail="No file or filePath provided.")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e)

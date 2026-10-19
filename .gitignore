@@ -33,5 +33,6 @@ public/music/
 .venv/
 __pycache__/
 *.py[cod]
+.synwave_cache/
 .env
 .env.local

@@ -15,7 +15,6 @@ import {
   Sliders,
   Flame,
   Lightbulb,
-  Cloud,
   Tv,
   Zap,
   Shield,
@@ -165,13 +164,6 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 <span>Flame Cannons</span>
               </button>
 
-              <button
-                className={`effect-toggle-pill ${config.enabledEffects.smoke ? 'active' : ''}`}
-                onClick={() => handleToggleEffect('smoke')}
-              >
-                <Cloud size={16} />
-                <span>Cryo Smoke & Haze</span>
-              </button>
 
               <button
                 className={`effect-toggle-pill ${config.enabledEffects.screen ? 'active' : ''}`}

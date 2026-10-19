@@ -37,24 +37,20 @@ export class FireShootersEffect extends BaseEffect {
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // 8 Flame Cannons: Flanking both sides of the screen (in reference photo) and along stage front
+    // 8 Flame Cannons: Positioned directly in front of the stage screen bottom rim
     const cannonConfigs = [
-      // Left Flank of screen (angled outward like photo)
-      { pos: new THREE.Vector3(-11.5, 0.4, -3.2), rotZ: 0.18 },
-      { pos: new THREE.Vector3(-8.8, 0.1, -2.5), rotZ: 0.10 },
-      // Left Front Deck
-      { pos: new THREE.Vector3(-5.5, -0.4, 3.8), rotZ: 0.05 },
-      { pos: new THREE.Vector3(-2.0, -0.4, 4.0), rotZ: 0.0 },
-      // Right Front Deck
-      { pos: new THREE.Vector3(2.0, -0.4, 4.0), rotZ: 0.0 },
-      { pos: new THREE.Vector3(5.5, -0.4, 3.8), rotZ: -0.05 },
-      // Right Flank of screen (angled outward like photo)
-      { pos: new THREE.Vector3(8.8, 0.1, -2.5), rotZ: -0.10 },
-      { pos: new THREE.Vector3(11.5, 0.4, -3.2), rotZ: -0.18 },
+      { pos: new THREE.Vector3(-7.2, -1.35, -3.85), rotZ: 0.08 },
+      { pos: new THREE.Vector3(-5.1, -1.35, -3.85), rotZ: 0.05 },
+      { pos: new THREE.Vector3(-3.1, -1.35, -3.85), rotZ: 0.03 },
+      { pos: new THREE.Vector3(-1.0, -1.35, -3.85), rotZ: 0.01 },
+      { pos: new THREE.Vector3(1.0, -1.35, -3.85), rotZ: -0.01 },
+      { pos: new THREE.Vector3(3.1, -1.35, -3.85), rotZ: -0.03 },
+      { pos: new THREE.Vector3(5.1, -1.35, -3.85), rotZ: -0.05 },
+      { pos: new THREE.Vector3(7.2, -1.35, -3.85), rotZ: -0.08 },
     ];
 
-    // Shared Cannon Base Geometry
-    const baseGeo = new THREE.CylinderGeometry(0.35, 0.48, 0.6, 12);
+    // Shared Cannon Base Geometry (compact industrial nozzle)
+    const baseGeo = new THREE.CylinderGeometry(0.22, 0.32, 0.45, 12);
     const baseMat = new THREE.MeshStandardMaterial({
       color: 0x11141c,
       metalness: 0.9,
@@ -62,14 +58,14 @@ export class FireShootersEffect extends BaseEffect {
     });
     this.disposables.push(baseGeo, baseMat);
 
-    // Inner Radiant Flame Core (cylinder stretching upward from base)
-    const coreGeo = new THREE.CylinderGeometry(0.25, 0.9, 13.0, 12, 6, true);
-    coreGeo.translate(0, 6.5, 0); // Pivot at base
+    // Inner Radiant Flame Core (scaled to cover the middle of the screen)
+    const coreGeo = new THREE.CylinderGeometry(0.16, 0.45, 5.2, 10, 4, true);
+    coreGeo.translate(0, 2.6, 0); // Pivot at base
     this.disposables.push(coreGeo);
 
-    // Outer Billowing Flame Plume (expanding tapered cone)
-    const outerGeo = new THREE.ConeGeometry(2.4, 15.0, 16, 6, true);
-    outerGeo.translate(0, 7.5, 0); // Pivot at base
+    // Outer Billowing Flame Plume (small flame throw covering lower-to-middle screen)
+    const outerGeo = new THREE.ConeGeometry(0.95, 6.0, 12, 4, true);
+    outerGeo.translate(0, 3.0, 0); // Pivot at base
     this.disposables.push(outerGeo);
 
     // Pilot flame geometry (resting spark)

@@ -34,7 +34,6 @@ import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
 import { ThinLasersEffect } from './effects/ThinLasersEffect';
 import { FireShootersEffect } from './effects/FireShootersEffect';
-import { SmokeMachinesEffect } from './effects/SmokeMachinesEffect';
 import { ShockwaveRingEffect } from './effects/ShockwaveRingEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
@@ -49,17 +48,17 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   {
     id: 'stadium-mainstage',
     name: 'MAINSTAGE FESTIVAL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers', 'fire-shooters', 'smoke-machines', 'shockwave-rings'],
+    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers', 'fire-shooters', 'shockwave-rings'],
   },
   {
     id: 'pyro-drop-frenzy',
     name: 'MAINSTAGE DROP FRENZY',
-    activeEffectIds: ['stage-structure', 'fire-shooters', 'thin-lasers', 'smoke-machines', 'stage-lights', 'shockwave-rings'],
+    activeEffectIds: ['stage-structure', 'fire-shooters', 'thin-lasers', 'stage-lights', 'shockwave-rings'],
   },
   {
     id: 'laser-cathedral',
     name: 'MAINSTAGE LASER CATHEDRAL',
-    activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights', 'smoke-machines'],
+    activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights'],
   },
 ];
 
@@ -176,7 +175,6 @@ export class VisualEngine {
       new StageLightsEffect(),     // 16 Moving-head volumetric lights thrown forward towards camera
       new ThinLasersEffect(),      // 28 Razor-thin lasers thrown forward towards camera & audience
       new FireShootersEffect(),    // 8 Front & flank flame blasters (Kick STEM activated)
-      new SmokeMachinesEffect(),   // 4 Cryo CO2 smoke cannons & rolling stage haze
       new ShockwaveRingEffect(),   // Bass stage floor shockwave ripples
     ];
 
@@ -497,21 +495,17 @@ export class VisualEngine {
     this.camera.position.z = this.cameraBaseZ;
 
     // Sub-bass rumble / vibration on heavy kicks and drops (governed by routingConfig)
+    // Screen and camera shake strictly activated by drums/kicks
     let rumble = 0;
     let shakeX = 0;
     let shakeY = 0;
     const shakeMult = routingConfig.cameraShakeStrength;
     if (shakeMult > 0 && !routingConfig.reducedFlash) {
-      if (features.isDrop) {
-        rumble = 0.16 * (1 + features.stems.bass) * shakeMult;
-      } else if (features.stems.kick > 0.40 || features.isKick) {
-        rumble = (features.stems.kick * 0.12 + features.stems.bass * 0.08) * shakeMult;
-      } else if (features.stems.bass > 0.6) {
-        rumble = features.stems.bass * 0.07 * shakeMult;
-      }
-      if (rumble > 0) {
-        shakeX = (Math.random() - 0.5) * rumble;
-        shakeY = (Math.random() - 0.5) * rumble * 0.85;
+      const kickPower = Math.max(features.stems.kick, features.isKick ? (features.kickIntensity || 1.0) : 0);
+      if (kickPower > 0.22) {
+        rumble = Math.pow(kickPower, 1.4) * 0.18 * shakeMult;
+        shakeX = (Math.random() - 0.5) * rumble * 1.25;
+        shakeY = (Math.random() - 0.5) * rumble * 0.95;
         this.camera.position.x += shakeX;
         this.camera.position.y += shakeY;
       }
