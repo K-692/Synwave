@@ -6,8 +6,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { PlayerControls } from './components/PlayerControls';
-import { PlaylistDrawer } from './components/PlaylistDrawer';
-import { InspectorDrawer } from './components/InspectorDrawer';
+import { YouTubeStagePlayer } from './components/YouTubeStagePlayer';
 import { AudioEngine } from './audio/AudioEngine';
 import { AudioAnalyzer } from './audio/AudioAnalyzer';
 import { VisualEngine } from './visualizer/VisualEngine';
@@ -15,6 +14,8 @@ import { RoutingConsole } from './components/RoutingConsole';
 import { DiagnosticOverlay } from './components/DiagnosticOverlay';
 import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
 import { detectHardwareProfile } from './utils/hardwareDetector';
+import { identifyAudioWithShazam } from './services/shazamService';
+import { searchYouTubeVideo } from './services/youtubeService';
 import type {
   QualityPreset,
   RepeatMode,
@@ -91,15 +92,19 @@ export const App: React.FC = () => {
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
 
-  // UI Drawer & Console State
-  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  // Console Modal State
   const [isRoutingOpen, setIsRoutingOpen] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [activeProfile, setActiveProfile] = useState<StageProfile>(
     RoutingStore.getInstance().getActiveProfile()
   );
-  const [currentSection, setCurrentSection] = useState('GROOVE');
+
+  // Synchronized YouTube Video & Shazam State
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [currentVideoTitle, setCurrentVideoTitle] = useState<string>('');
+  const [isRecognizing, setIsRecognizing] = useState<boolean>(false);
+  const [isDraggingOverScreen, setIsDraggingOverScreen] = useState<boolean>(false);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to RoutingStore profile changes
   useEffect(() => {
@@ -129,10 +134,6 @@ export const App: React.FC = () => {
       'terrain-grid',
     ],
   });
-
-  const [effectsList, setEffectsList] = useState<
-    { id: string; name: string; family: string; enabled: boolean }[]
-  >([]);
 
   // 1. Mouse Hover & Auto-Hide Logic
   useEffect(() => {
@@ -198,16 +199,10 @@ export const App: React.FC = () => {
       const visualEngine = new VisualEngine(canvasRef.current);
       visualEngineRef.current = visualEngine;
 
-      visualEngine.onCurrentSectionChange = (section) => {
-        setCurrentSection(section);
-      };
-
       visualEngine.onWindowFlash = (_opacity, colorHex) => {
         setWindowFlashOpacity(0);
         if (colorHex) setWindowFlashColor(colorHex);
       };
-
-      setEffectsList(visualEngine.getEffectsList());
 
       // Start continuous Three.js render loop with authoritative media clock
       visualEngine.start(
@@ -371,64 +366,80 @@ export const App: React.FC = () => {
     visualEngineRef.current?.setQuality(quality);
   };
 
-  const handleUpdateVisualSettings = (newSettings: Partial<VisualSettings>) => {
-    setVisualSettings((prev) => ({ ...prev, ...newSettings }));
-    if (newSettings.effectIntensity !== undefined) {
-      visualEngineRef.current?.setEffectIntensity(newSettings.effectIntensity);
-    }
-    if (newSettings.cameraSpeed !== undefined) {
-      visualEngineRef.current?.setCameraSpeed(newSettings.cameraSpeed);
-    }
-  };
-
-  const handleToggleEffect = (id: string) => {
-    visualEngineRef.current?.toggleEffect(id);
-    if (visualEngineRef.current) {
-      setEffectsList(visualEngineRef.current.getEffectsList());
-    }
-  };
-
-  // Ingest Selected Files from Local Disk or Folder
-  const handleFilesSelected = (fileList: FileList | File[]) => {
-    const newTracks: TrackRecord[] = [];
+  // Ingest Selected Audio File from Center Screen Click or Drag-and-Drop
+  const handleFilesSelected = async (fileList: FileList | File[]) => {
     const filesArray = Array.from(fileList);
+    const audioFile = filesArray.find(
+      (f) => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i)
+    );
 
-    for (const file of filesArray) {
-      if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i)) {
-        continue;
-      }
+    if (!audioFile) return;
 
-      let hash = 0;
-      for (let i = 0; i < file.name.length; i++) {
-        hash = (hash << 5) - hash + file.name.charCodeAt(i);
-        hash |= 0;
-      }
-
-      const baseName = file.name.replace(/\.[^/.]+$/, '');
-      const parts = baseName.split(' - ');
-      const artist = parts.length > 1 ? parts[0].trim() : 'Local Audio';
-      const title = parts.length > 1 ? parts.slice(1).join(' - ').trim() : baseName;
-
-      const track: TrackRecord = {
-        id: `local-${file.name}-${file.size}-${file.lastModified}`,
-        name: file.name,
-        title,
-        artist,
-        album: 'Local Library',
-        duration: 0,
-        url: URL.createObjectURL(file),
-        sizeBytes: file.size,
-        file,
-        analysisStatus: 'unscanned',
-        seed: Math.abs(hash),
-      };
-
-      newTracks.push(track);
+    let hash = 0;
+    for (let i = 0; i < audioFile.name.length; i++) {
+      hash = (hash << 5) - hash + audioFile.name.charCodeAt(i);
+      hash |= 0;
     }
 
-    if (newTracks.length > 0) {
-      setTracks((prev) => [...prev, ...newTracks]);
-      loadTrack(newTracks[0], true);
+    const baseName = audioFile.name.replace(/\.[^/.]+$/, '');
+    const parts = baseName.split(' - ');
+    const initialArtist = parts.length > 1 ? parts[0].trim() : 'Local Audio';
+    const initialTitle = parts.length > 1 ? parts.slice(1).join(' - ').trim() : baseName;
+
+    const track: TrackRecord = {
+      id: `local-${audioFile.name}-${audioFile.size}-${audioFile.lastModified}`,
+      name: audioFile.name,
+      title: initialTitle,
+      artist: initialArtist,
+      album: 'Local Audio',
+      duration: 0,
+      url: URL.createObjectURL(audioFile),
+      sizeBytes: audioFile.size,
+      file: audioFile,
+      analysisStatus: 'unscanned',
+      seed: Math.abs(hash),
+    };
+
+    setTracks([track]);
+    await loadTrack(track, true);
+
+    // Reset previous video state
+    setCurrentVideoId(null);
+    setCurrentVideoTitle('');
+
+    // Trigger ShazamIO identification in parallel
+    setIsRecognizing(true);
+    try {
+      const match = await identifyAudioWithShazam(audioFile);
+      if (match.success && match.title) {
+        const recognizedTitle = match.title;
+        const recognizedArtist = match.artist || initialArtist;
+
+        // Update track metadata and stage screen
+        setCurrentTrack((prev) =>
+          prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
+        );
+        visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
+
+        // Fetch official video from YouTube Data API v3
+        const searchQuery = match.query || `${recognizedTitle} ${recognizedArtist}`;
+        const ytResult = await searchYouTubeVideo(searchQuery);
+        if (ytResult) {
+          setCurrentVideoId(ytResult.videoId);
+          setCurrentVideoTitle(ytResult.title);
+        }
+      } else {
+        // Fallback search with filename
+        const ytResult = await searchYouTubeVideo(`${initialTitle} ${initialArtist}`);
+        if (ytResult) {
+          setCurrentVideoId(ytResult.videoId);
+          setCurrentVideoTitle(ytResult.title);
+        }
+      }
+    } catch (err) {
+      console.warn('Shazam / YouTube pipeline error:', err);
+    } finally {
+      setIsRecognizing(false);
     }
   };
 
@@ -571,17 +582,12 @@ export const App: React.FC = () => {
       {/* Top Header Bar (Attached flush to window top, auto-hides) */}
       <Header
         currentTrackTitle={currentTrack?.title}
-        isPlaylistOpen={isPlaylistOpen}
-        isInspectorOpen={isInspectorOpen}
         isRoutingOpen={isRoutingOpen}
         isDiagnosticOpen={isDiagnosticOpen}
         activeProfileName={STAGE_PROFILES[activeProfile]?.name}
         isVisible={isTopBarVisible}
-        onTogglePlaylist={() => setIsPlaylistOpen((prev) => !prev)}
-        onToggleInspector={() => setIsInspectorOpen((prev) => !prev)}
         onToggleRouting={() => setIsRoutingOpen((prev) => !prev)}
         onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
-        onFilesSelected={handleFilesSelected}
         onMouseEnter={() => setIsTopBarVisible(true)}
       />
 
@@ -633,67 +639,60 @@ export const App: React.FC = () => {
         onClose={() => setIsDiagnosticOpen(false)}
       />
 
-      {/* Left Drawer: Playlist & Library */}
-      <PlaylistDrawer
-        isOpen={isPlaylistOpen}
-        tracks={tracks}
-        currentTrackId={currentTrack?.id}
-        isPlaying={isPlaying}
-        onClose={() => setIsPlaylistOpen(false)}
-        onSelectTrack={(t) => loadTrack(t, true)}
-        onClearPlaylist={() => setTracks([])}
-        onLoadTestTrack={() => {
-          setTracks(BUNDLED_TEST_TRACKS);
-          loadTrack(BUNDLED_TEST_TRACKS[0], true);
+      {/* Center Screen Interactive Click & Drag-Drop Target */}
+      <div
+        className={`stage-center-drop-target ${isDraggingOverScreen ? 'drag-hover' : ''} ${currentVideoId ? 'has-video' : ''}`}
+        onClick={() => audioFileInputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingOverScreen(true);
         }}
-        onDropFiles={handleFilesSelected}
-      />
-
-      {/* Right Drawer: Audio & Visual Inspector */}
-      <InspectorDrawer
-        isOpen={isInspectorOpen}
-        onClose={() => setIsInspectorOpen(false)}
-        getLiveFeatures={() =>
-          audioEngineRef.current?.getLiveFeatures() || {
-            timeSeconds: 0,
-            rms: 0,
-            bass: 0,
-            subBass: 0,
-            lowMid: 0,
-            highMid: 0,
-            treble: 0,
-            spectralCentroid: 0.5,
-            onsetStrength: 0,
-            beatConfidence: 0,
-            isBeat: false,
-            isKick: false,
-            kickIntensity: 0,
-            isDrop: false,
-            dropIntensity: 0,
-            musicMode: 'festival',
-            mood: 'euphoric-drop',
-            stems: {
-              kick: 0,
-              bass: 0,
-              instruments: 0,
-              vocals: 0,
-            },
-            estimatedBpm: 128,
-            beatIndex: 0,
-            barIndex: 1,
-            beatPhase: 0,
-            isBar: false,
-            isPhrase: false,
-            frequencyData: new Uint8Array(1024),
-            timeDomainData: new Uint8Array(1024),
+        onDragLeave={() => setIsDraggingOverScreen(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingOverScreen(false);
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFilesSelected(e.dataTransfer.files);
           }
-        }
-        settings={visualSettings}
-        onUpdateSettings={handleUpdateVisualSettings}
-        effectsList={effectsList}
-        onToggleEffect={handleToggleEffect}
-        currentSection={currentSection}
-        detectedBpm={currentTrack?.analysis?.estimatedBpm || 0}
+        }}
+        title="Click center screen or drag & drop music file here to play"
+      >
+        <input
+          type="file"
+          ref={audioFileInputRef}
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              handleFilesSelected(e.target.files);
+            }
+          }}
+          accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
+          style={{ display: 'none' }}
+        />
+
+        {isRecognizing && (
+          <div className="shazam-recognizing-badge">
+            <span className="shazam-pulse-dot" />
+            <span>IDENTIFYING WITH SHAZAM...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Synchronized YouTube Iframe Stage Screen Player */}
+      <YouTubeStagePlayer
+        videoId={currentVideoId}
+        videoTitle={currentVideoTitle}
+        currentTime={currentTime}
+        isPlaying={isPlaying}
+        onKeySaved={() => {
+          if (currentTrack) {
+            searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
+              if (res) {
+                setCurrentVideoId(res.videoId);
+                setCurrentVideoTitle(res.title);
+              }
+            });
+          }
+        }}
       />
 
       {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}

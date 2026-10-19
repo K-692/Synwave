@@ -139,7 +139,32 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 
 ---
 
-## 7. Keyboard Show Controls
+---
+
+## 7. ShazamIO Audio Recognition & Synchronized YouTube Stage Player
+
+1. **Automated Song Identification (`shazamio` + `shazam_server.py`):**
+   - Integrates [ShazamIO](https://github.com/shazamio/ShazamIO) via a lightweight local Python FastAPI microservice running in an isolated virtual environment (`.venv`) on `http://127.0.0.1:8765`.
+   - **Zero Credentials Required:** Shazam recognition operates directly through public fingerprinting endpoints without requiring any Shazam or Apple API keys.
+   - When the user clicks or drops an audio file on the center stage screen, Synwave sends the audio file to the local endpoint (`/api/recognize`) which extracts the verified song title, artist, album, and primary genre.
+
+2. **YouTube Data API v3 Search (`youtubeService.ts`):**
+   - Uses the official Google Cloud YouTube Data API v3 (`https://www.googleapis.com/youtube/v3/search`) to search for the official music video matching `${title} ${artist}` and retrieves the top video result (`videoId`).
+   - Requires a Google Cloud **YouTube Data API v3 Key** configured via `.env` (`VITE_YOUTUBE_API_KEY`) or via the in-app key setup modal.
+
+3. **Synchronized Video Iframe Player (`YouTubeStagePlayer.tsx`):**
+   - Mounts a 16:9 YouTube video iframe positioned directly on the 3D stadium stage screen.
+   - **Strict Volume Muting (`volume=0`, `mute()`):** Prevents double-audio playback so the high-fidelity local audio file runs purely through Synwave's procedural Web Audio engine.
+   - **Authoritative Timestamp Synchronization:** The YouTube video's playback state and playhead are continuously locked to the local audio engine's `currentTime`. Pausing, playing, or seeking the audio file automatically seeks and re-aligns the video playhead with $<0.35\text{s}$ tolerance.
+
+4. **Streamlined UI & Center-Screen Interaction:**
+   - Removed folder-level playing, Track Queue (Playlist Drawer), and Signal & Visual Inspector Drawer.
+   - Removed "Open File" and "Open Folder" header buttons.
+   - Replaced with an intuitive center-screen dropzone: clicking anywhere on the stage screen opens the system audio picker, while dragging and dropping any audio file initiates instant playback, Shazam recognition, and synchronized video playback.
+
+---
+
+## 8. Keyboard Show Controls
 
 | Shortcut Key | Action |
 |---|---|
@@ -157,10 +182,10 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 
 ---
 
-## 8. Current Implementation State & Quality Verification
+## 9. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly in 460ms).
 - **Vite Development Server:** Running continuously at `http://localhost:5173/`.
+- **ShazamIO Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` using `.venv`. Verified with `Feel Something.mp3`.
 - **Git Repository:** Committed locally on branch `main` (Rule 8: awaiting explicit user push instruction).
-- **Screen Aesthetics:** Completely free of UI badges, STEM telemetry bars, and section tags on the 3D screen; bold song title, artist, and audio-reactive waveform line centered with spotlight ambient wash.
-- **Initial Song State:** Starts clean with no pre-loaded default audio file.
+- **Screen Aesthetics:** Center screen acts as an interactive click/drop zone; when a track is identified, the synchronized YouTube video iframe renders on the concert stage screen muted and locked to audio time.

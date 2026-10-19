@@ -28,3 +28,10 @@ dist-ssr
 My Music/
 My Music
 public/music/
+
+# Python Virtual Environment & Cache
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.local

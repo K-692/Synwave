@@ -1993,3 +1993,180 @@ html, body, #root {
   color: #cbd5e1;
 }
 
+/* =============================================================
+ * Center Screen Interactive Click & Drag-Drop Target
+ * ============================================================= */
+.stage-center-drop-target {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  width: min(640px, 68vw);
+  height: min(340px, 48vh);
+  border-radius: 14px;
+  cursor: pointer;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 24px;
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.stage-center-drop-target:hover {
+  background: rgba(0, 240, 255, 0.02);
+  border: 1px dashed rgba(0, 240, 255, 0.35);
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.12);
+}
+
+.stage-center-drop-target.drag-hover {
+  background: rgba(0, 240, 255, 0.08);
+  border: 2px dashed var(--neon-cyan);
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.35);
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+.stage-center-drop-target.has-video {
+  pointer-events: none;
+}
+
+/* Shazam Identifying Pill */
+.shazam-recognizing-badge {
+  position: absolute;
+  top: -38px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  background: rgba(10, 15, 30, 0.9);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  letter-spacing: 0.6px;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+  animation: pulse-shazam 1.5s infinite ease-in-out;
+}
+
+.shazam-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+}
+
+@keyframes pulse-shazam {
+  0%, 100% { opacity: 0.85; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.04); }
+}
+
+/* =============================================================
+ * Synchronized YouTube Stage Screen Player
+ * ============================================================= */
+.synwave-youtube-stage-screen {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  width: min(720px, 66vw);
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.3), 0 0 90px rgba(0, 0, 0, 0.95);
+  border: 2px solid rgba(0, 240, 255, 0.35);
+  background: #000;
+}
+
+.synwave-youtube-stage-screen.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.yt-iframe-target {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.yt-stage-pill {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(3, 6, 16, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #e2e8f0;
+  backdrop-filter: blur(8px);
+  z-index: 6;
+}
+
+.yt-pill-tag {
+  color: var(--neon-cyan);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.btn-yt-key-setup {
+  position: absolute;
+  top: 68px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(10, 15, 30, 0.82);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--neon-cyan);
+  cursor: pointer;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.btn-yt-key-setup:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+}
+
+.api-key-input-group {
+  margin: 14px 0;
+}
+
+.api-key-help {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.api-key-help ol {
+  margin-left: 18px;
+  margin-top: 6px;
+}
+
