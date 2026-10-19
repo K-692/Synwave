@@ -3,7 +3,7 @@
  * Coordinates AudioEngine, VisualEngine, Track Queue, and Auto-Hiding Edge-Attached Controls.
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { PlayerControls } from './components/PlayerControls';
 import { PlaylistDrawer } from './components/PlaylistDrawer';
@@ -14,6 +14,7 @@ import { VisualEngine } from './visualizer/VisualEngine';
 import { RoutingConsole } from './components/RoutingConsole';
 import { DiagnosticOverlay } from './components/DiagnosticOverlay';
 import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
+import { detectHardwareProfile } from './utils/hardwareDetector';
 import type {
   QualityPreset,
   RepeatMode,
@@ -67,9 +68,12 @@ export const App: React.FC = () => {
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const visualEngineRef = useRef<VisualEngine | null>(null);
 
-  // Playback State
+  // Detect Host Hardware Capabilities (GPU / Apple MPS vs CPU Fallback)
+  const hardwareProfile = useMemo(() => detectHardwareProfile(), []);
+
+  // Playback State (Default null: no track auto-selected on launch)
   const [tracks, setTracks] = useState<TrackRecord[]>(BUNDLED_TEST_TRACKS);
-  const [currentTrack, setCurrentTrack] = useState<TrackRecord | null>(BUNDLED_TEST_TRACKS[0]);
+  const [currentTrack, setCurrentTrack] = useState<TrackRecord | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -105,14 +109,14 @@ export const App: React.FC = () => {
     return unsub;
   }, []);
 
-  // Visual Settings
+  // Visual Settings: Default to GPU/MPS if present, otherwise 60 FPS standard
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
     effectIntensity: 1.0,
     cameraSpeed: 1.0,
     bloomGlow: true,
     wireframe: false,
     paletteId: 'cyberpunk-neon',
-    quality: 'high',
+    quality: hardwareProfile.recommendedQuality,
     directorMode: 'auto',
     activeEffects: [
       'stage-structure',
@@ -210,10 +214,9 @@ export const App: React.FC = () => {
         () => audioEngine.getLiveFeatures(),
         () => audioEngine.getCurrentTime()
       );
+      // Initialize visual engine with hardware-detected quality preset
+      visualEngine.setQuality(detectHardwareProfile().recommendedQuality);
     }
-
-    // Load initial default test track
-    loadTrack(BUNDLED_TEST_TRACKS[0], false);
 
     return () => {
       audioEngine.dispose();
@@ -309,13 +312,17 @@ export const App: React.FC = () => {
     if (isPlaying) {
       audioEngineRef.current.pause();
     } else {
+      if (!currentTrack && tracks.length > 0) {
+        loadTrack(tracks[0], true);
+        return;
+      }
       audioEngineRef.current.play();
     }
   };
 
   const handlePreviousTrack = () => {
     if (tracks.length === 0) return;
-    const currentIndex = tracks.findIndex((t) => t.id === currentTrack?.id);
+    const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : 0;
     const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
     loadTrack(tracks[prevIndex], true);
   };
@@ -326,7 +333,7 @@ export const App: React.FC = () => {
     if (shuffle) {
       nextIndex = Math.floor(Math.random() * tracks.length);
     } else {
-      const currentIndex = tracks.findIndex((t) => t.id === currentTrack?.id);
+      const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : -1;
       nextIndex = (currentIndex + 1) % tracks.length;
     }
     loadTrack(tracks[nextIndex], true);
@@ -695,7 +702,6 @@ export const App: React.FC = () => {
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={duration}
-        currentSection={currentSection}
         volume={volume}
         isMuted={isMuted}
         shuffle={shuffle}

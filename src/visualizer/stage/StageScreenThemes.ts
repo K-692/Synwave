@@ -65,7 +65,7 @@ export class StageScreenThemes {
     _timeSeconds?: number,
     trackTitle?: string,
     trackArtist?: string,
-    currentSection?: string,
+    _currentSection?: string,
     _themeIndex?: number
   ): void {
     const ctx = this.ctx;
@@ -75,7 +75,6 @@ export class StageScreenThemes {
     let features: AudioFeatures;
     let title = '';
     let artist = '';
-    let section = '';
     let lightColor = '#ff6600';
 
     if ('features' in (optsOrFeatures as RenderThemeOptions)) {
@@ -83,13 +82,11 @@ export class StageScreenThemes {
       features = opts.features;
       title = opts.trackTitle;
       artist = opts.trackArtist;
-      section = opts.currentSection;
       lightColor = opts.spotlightColor || '#ff6600';
     } else {
       features = optsOrFeatures as AudioFeatures;
       title = trackTitle || '';
       artist = trackArtist || '';
-      section = currentSection || '';
     }
 
     // 1. Solid Pitch-Black Screen (No designs, no person-like figures)
@@ -122,12 +119,12 @@ export class StageScreenThemes {
       ctx.fillRect(0, y, w, 1.2);
     }
 
-    // 4. Centered Song Name and Details
-    this.renderCenteredTrackDetails(ctx, w, h, title, artist, section, features, lightColor, r, g, b);
+    // Centered Song Name and Reactive Waveform (Zero distracting UI badges or STEM bars)
+    this.renderCenteredTrackDetails(ctx, w, h, title, artist, features, r, g, b);
   }
 
   /**
-   * Renders the track title, artist, and details right in the centre of the screen.
+   * Renders the track title, artist, and audio-reactive waveform right in the centre of the screen.
    */
   private renderCenteredTrackDetails(
     ctx: CanvasRenderingContext2D,
@@ -135,9 +132,7 @@ export class StageScreenThemes {
     h: number,
     title: string,
     artist: string,
-    section: string,
     features: AudioFeatures,
-    lightColor: string,
     r: number,
     g: number,
     b: number
@@ -145,51 +140,32 @@ export class StageScreenThemes {
     const cx = w / 2;
     const cy = h / 2;
 
-    // A. Center Status Badge (REAL-TIME VISUALS / LIVE REACTIVE MODE)
-    const badgeText = features.isDrop ? '⚡ LIVE REACTIVE MODE • FESTIVAL DROP' : '● REAL-TIME VISUALS • NOW PLAYING';
-    ctx.font = 'bold 16px "Orbitron", -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    // 1. Song Title (Massive, Crisp, Bold Headline in Screen Center)
+    const displayTitle = (title || 'SYNWAVE').toUpperCase();
+    const cleanTitle = displayTitle.length > 32 ? displayTitle.slice(0, 32) + '...' : displayTitle;
 
-    // Badge pill
-    const badgeW = 320;
-    const badgeH = 34;
-    const badgeY = cy - 130;
-
-    ctx.fillStyle = 'rgba(10, 14, 24, 0.82)';
-    ctx.strokeStyle = features.isDrop ? '#ff0055' : lightColor;
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.roundRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 17);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = features.isDrop ? '#ff3366' : lightColor;
-    ctx.fillText(badgeText, cx, badgeY);
-
-    // B. Song Title (Massive, Crisp, Bold Headline in Screen Center)
-    const displayTitle = (title || 'SYNWAVE CONCERT').toUpperCase();
-    const cleanTitle = displayTitle.length > 28 ? displayTitle.slice(0, 28) + '...' : displayTitle;
-
-    // Title with sharp contrast shadow
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
     ctx.fillStyle = '#ffffff';
-    ctx.font = '900 52px "Orbitron", -apple-system, sans-serif';
-    ctx.fillText(cleanTitle, cx, cy - 40);
+    ctx.font = '900 56px "Orbitron", -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(cleanTitle, cx, cy - 25);
     ctx.restore();
 
-    // C. Artist Name (Directly below title)
+    // 2. Artist Name (Directly below title)
     if (artist) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '500 24px "Outfit", -apple-system, sans-serif';
-      ctx.fillText(artist, cx, cy + 20);
+      ctx.fillText(artist, cx, cy + 30);
     }
 
-    // D. Audio Reactive Frequency / Waveform Line in Center
-    const waveW = 420;
-    const waveY = cy + 65;
+    // 3. Audio Reactive Frequency / Waveform Line in Center
+    const waveW = 460;
+    const waveY = cy + 78;
     ctx.beginPath();
     ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
     ctx.lineWidth = 2.4;
@@ -204,46 +180,5 @@ export class StageScreenThemes {
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
-
-    // E. 4-Channel STEM Indicators (Centered telemetry pills)
-    const stemY = cy + 120;
-    const stemConfigs = [
-      { name: 'KICK', value: features.stems.kick, color: '#ff3366' },
-      { name: 'BASS', value: features.stems.bass, color: '#ffaa00' },
-      { name: 'INST', value: features.stems.instruments, color: '#00f0ff' },
-      { name: 'VOCALS', value: features.stems.vocals, color: '#a855f7' },
-    ];
-
-    const stemTotalW = 380;
-    const stemSlotW = stemTotalW / 4;
-    const stemStartX = cx - stemTotalW / 2 + stemSlotW / 2;
-
-    for (let i = 0; i < stemConfigs.length; i++) {
-      const cfg = stemConfigs[i];
-      const sX = stemStartX + i * stemSlotW;
-
-      // Stem label
-      ctx.font = 'bold 12px "JetBrains Mono", monospace';
-      ctx.fillStyle = cfg.color;
-      ctx.fillText(cfg.name, sX, stemY - 14);
-
-      // Level bar
-      const barW = stemSlotW - 18;
-      const barH = 6;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.fillRect(sX - barW / 2, stemY, barW, barH);
-
-      const fillW = Math.max(2, Math.min(barW, barW * cfg.value));
-      ctx.fillStyle = cfg.color;
-      ctx.fillRect(sX - barW / 2, stemY, fillW, barH);
-    }
-
-    // F. Section Pill at bottom of screen
-    const sectionText = features.isDrop
-      ? '⚡ MAXIMUM ENERGY DROP'
-      : `SECTION: ${section || 'MAIN STAGE'} • 4K HDR`;
-    ctx.font = 'bold 13px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
-    ctx.fillText(sectionText, cx, cy + 175);
   }
 }

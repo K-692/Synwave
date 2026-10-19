@@ -21,13 +21,12 @@
    - **Industrial Underground:** Raw warehouse techno with dense haze, cold strobing kick blinders, tight laser tunnels, and pyrotechnics disabled.
    - **Rock Arena:** Warm tungsten & gold spotlights, chorus fire bursts, heavy floor wash, and rhythmic moving head sweeps.
    - **Cinematic Ambient:** Intimate and ethereal chillout with soft cyan/violet volumetric haze, zero camera shake, delicate laser lines, and no flames.
-5. **Synchronized Song Timeline:** Interactive waveform amplitude silhouette, colored section blocks (`INTRO`, `BUILDUP`, `DROP`, `BREAKDOWN`, `OUTRO`), beat ticks, hover timestamp, and clickable seeking.
-6. **Telemetry & Synchronization Diagnostic HUD (Hotkey: `D`):** Real-time overlay showing live BPM, beat confidence, beat/bar counter, beat phase bar ($0.0 \to 1.0$), active section & choreography pattern, 4-STEM levels, rendering FPS, and active stage profile.
-7. **Architectural Separation of Modes:**
-   - **Mode 1: Instant Reactive Multi-Band Analysis** (local, zero-upload, instantaneous estimated signals).
-   - **Mode 2: AI Stem Separation** (optional async remote KIE service for source-separated lossless audio).
-   - Screen badge permanently updated to `● REAL-TIME VISUALS • NOW PLAYING` / `⚡ LIVE REACTIVE MODE • FESTIVAL DROP`.
-8. **Solid Pitch-Black Stage Arena & Blowout-Free Optical Rig:** Pure `#000000` stadium backdrop, centered track details on the Jumbotron screen, and calibrated volumetric optical shaders (`FrontSide` rendering, cone radius $1.2\text{m}$, opacities $0.08 - 0.22$) preventing additive white blowout.
+5. **Synchronized Song Timeline:** Interactive waveform amplitude silhouette with played progress fill, playhead handle, hover timestamp tooltip, and clickable seeking (streamlined UI slider with section blocks and badges removed per user preference).
+6. **Clean Minimal Stadium Jumbotron Screen:** Centered song title, artist name, and audio-reactive waveform line illuminated by ambient spotlight wash. Distracting telemetry overlays (Real-Time Visuals badge, Kick/Bass/Instrument/Vocals STEM bars, and Section: Verse 4K HDR pill) completely removed from the 3D stage display.
+7. **Zero-Default Input Track State:** The application initializes in a clean standby state (`currentTrack = null`, display title "SYNWAVE", prompt "STAGE READY • SELECT OR DROP AUDIO") without automatically taking or playing "Feel Something".
+8. **Dynamic Hardware & GPU / MPS Profiler (`detectHardwareProfile`):** Inspects WebGL unmasked renderer strings to detect hardware GPUs (NVIDIA, AMD Radeon, Intel Arc) and Apple Silicon MPS (Metal Performance Shaders on Apple M1/M2/M3/M4). Default settings automatically select GPU acceleration (`'high'`, up to $2.0\times$ device pixel ratio), falling back to 60 FPS CPU standard mode if only software emulation is detected.
+9. **Telemetry & Synchronization Diagnostic HUD (Hotkey: `D`):** Real-time diagnostic overlay showing live BPM, beat confidence, beat/bar counter, beat phase bar ($0.0 \to 1.0$), active section & choreography pattern, 4-STEM levels, rendering FPS, and active stage profile.
+10. **Solid Pitch-Black Stage Arena & Blowout-Free Optical Rig:** Pure `#000000` stadium backdrop, calibrated volumetric optical shaders (`FrontSide` rendering, cone radius $1.2\text{m}$, opacities $0.08 - 0.22$) preventing additive white blowout.
 
 ---
 
@@ -118,22 +117,25 @@ The Routing Console gives users complete control over how acoustic features tran
 
 ## 5. Synchronized Song Timeline (`SongTimeline`)
 
-Replaced simple 1-line progress slider with an interactive, full-fidelity track timeline:
-- **Waveform Profile:** 120-bin amplitude envelope computed from decoded PCM frames or procedural festival trajectory.
-- **Section Blocks:** Visually distinct color-coded zones (`INTRO` blue, `VERSE` slate, `BUILDUP` amber, `DROP` hot pink, `BREAKDOWN` purple, `OUTRO` indigo).
+The bottom timeline slider has been decluttered to focus purely on musical progression and waveform dynamics:
+- **Waveform Silhouette:** 120-bin amplitude envelope computed from decoded PCM frames or synthetic waveform trajectory.
+- **Section Blocks Removed:** Colored section blocks (`INTRO`, `BUILDUP`, `DROP`, etc.) and the section badge pill have been removed from the UI slider per user request, leaving an uncluttered, modern player seekbar.
 - **Interactive Seeking:** Clicking any position seeks audio immediately, recalculating beat phase and active section.
 - **Hover Timestamp Tooltip:** Displays precise time badge upon mouse hover.
-- **Active Section Tag:** Displays current musical section badge in real time.
 
 ---
 
-## 6. Telemetry & Synchronization Diagnostic HUD (`DiagnosticOverlay`)
+## 6. Hardware Acceleration & Quality Presets (`hardwareDetector`)
 
-Toggleable via hotkey `D` or the Header Activity button:
-- **Beat Grid Panel:** Live estimated BPM, Beat Confidence percentage, Beat Index counter, Bar Index, Downbeat/Phrase indicator, and continuous Beat Phase progress bar ($0.0 \to 1.0$).
-- **Show Director Panel:** Active musical section, active Stage Profile, choreography pattern name, intensity multiplier, and section progress bar.
-- **4-Channel STEM Panel:** Live level meters for Kick, Bass, Instruments, and Vocals.
-- **Engine Performance Panel:** Active mode badge (`Mode 1: Instant Reactive`), real-time rendering FPS, onset transient strength, spectral centroid, and drop climax state.
+Automatic runtime profiling determines system graphics capabilities via WebGL unmasked renderer queries:
+- **Apple Silicon MPS (Metal Performance Shaders):** Detects `Apple M1/M2/M3/M4` and `Apple GPU`. Automatically configures high-performance GPU profile with $2.0\times$ device pixel ratio.
+- **Dedicated Hardware GPU:** Detects NVIDIA GeForce / RTX, AMD Radeon, Intel Arc / Iris. Automatically applies high-performance GPU profile.
+- **Software / CPU Fallback:** Detects SwiftShader, llvmpipe, or software rasterizers. Defaults to 60 FPS standard mode with clamped $1.0\times$ pixel ratio to prevent CPU bottlenecking.
+- **User Selection:** Presets available in bottom transport dock:
+  - *Low (Battery Saver)*
+  - *60 FPS (CPU Standard)*
+  - *GPU / MPS (Accelerated)*
+  - *Ultra (Max GPU)*
 
 ---
 
@@ -157,7 +159,8 @@ Toggleable via hotkey `D` or the Header Activity button:
 
 ## 8. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 520ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly).
 - **Vite Development Server:** Running continuously at `http://localhost:5173/`.
 - **Git Repository:** Committed locally on branch `main` (Rule 8: awaiting explicit user push instruction).
-- **Optical Balance:** Stage lighting cones, kick blinders, and lasers maintain calibrated `FrontSide` rendering with opacities between $0.08$ and $0.22$, preventing white screen blowout.
+- **Screen Aesthetics:** Completely free of UI badges, STEM telemetry bars, and section tags on the 3D screen; bold song title, artist, and audio-reactive waveform line centered with spotlight ambient wash.
+- **Initial Song State:** Starts clean with no pre-loaded default audio file.

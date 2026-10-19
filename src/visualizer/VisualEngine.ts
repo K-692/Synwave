@@ -91,9 +91,9 @@ export class VisualEngine {
   private trackAnalysis: TrackAnalysis | null = null;
 
   // Track Metadata for Stage Screen
-  private trackTitle = 'Feel Something';
-  private trackArtist = 'ILLENIUM, Excision, I Prevail';
-  private currentMood: MusicMood = 'euphoric-drop';
+  private trackTitle = 'SYNWAVE';
+  private trackArtist = 'STAGE READY • SELECT OR DROP AUDIO';
+  private currentMood: MusicMood = 'uplifting-melodic';
 
   // Procedural Show Director & Track Duration
   private showDirector = new ShowDirector();
@@ -142,7 +142,7 @@ export class VisualEngine {
 
     // Update style to guarantee exact edge-to-edge full bleed
     this.renderer.setSize(width, height, true);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+    this.applyPixelRatioForQuality(this.quality);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
 
@@ -309,6 +309,20 @@ export class VisualEngine {
 
   public setQuality(quality: QualityPreset): void {
     this.quality = quality;
+    this.applyPixelRatioForQuality(quality);
+  }
+
+  private applyPixelRatioForQuality(quality: QualityPreset): void {
+    if (!this.renderer) return;
+    if (quality === 'ultra') {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+    } else if (quality === 'high') {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    } else if (quality === 'medium') {
+      this.renderer.setPixelRatio(1.0);
+    } else {
+      this.renderer.setPixelRatio(0.85);
+    }
   }
 
   private applyScene(sceneConfig: VisualSceneConfig): void {

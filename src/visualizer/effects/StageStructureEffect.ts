@@ -170,11 +170,11 @@ export class StageStructureEffect extends BaseEffect {
     this.stageScreenThemes.render({
       features,
       timeSeconds: context.trackTimeSeconds || performance.now() * 0.001,
-      trackTitle: context.trackTitle || 'FEEL SOMETHING',
-      trackArtist: context.trackArtist || 'ILLENIUM, Excision, I Prevail',
+      trackTitle: context.trackTitle || 'SYNWAVE',
+      trackArtist: context.trackArtist || 'STAGE READY • SELECT OR DROP AUDIO',
       currentSection: features.isDrop ? 'DROP' : features.isKick ? 'CLIMAX' : 'VERSE',
       themeIndex: 0,
-      mood: context.mood || features.mood || 'euphoric-drop',
+      mood: context.mood || features.mood || 'uplifting-melodic',
       spotlightColor: context.palette.primary,
     });
     this.screenTexture.needsUpdate = true;

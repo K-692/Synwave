@@ -27,7 +27,6 @@ interface PlayerControlsProps {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
-  currentSection?: string;
   volume: number;
   isMuted: boolean;
   shuffle: boolean;
@@ -52,7 +51,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   isPlaying,
   currentTime,
   duration,
-  currentSection,
   volume,
   isMuted,
   shuffle,
@@ -168,12 +166,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Synchronized Song Timeline with Waveform Peaks & Section Zones */}
+      {/* Synchronized Song Timeline with Waveform Peaks */}
       <SongTimeline
         currentTime={currentTime}
         duration={duration}
         analysis={currentTrack?.analysis}
-        currentSection={currentSection}
         onSeek={onSeek}
       />
 
@@ -189,7 +186,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               {currentTrack?.title || 'Ready to Play'}
             </span>
             <span className="track-artist">
-              {currentTrack?.artist || 'Synwave Audio Visualizer'}
+              {currentTrack?.artist || 'Select or Drop Audio to Begin'}
             </span>
           </div>
         </div>
@@ -269,16 +266,16 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           </div>
 
           {/* Quality Preset */}
-          <div className="quality-selector-wrap" title="Render Quality Preset">
+          <div className="quality-selector-wrap" title="Render Quality Preset (GPU / MPS accelerated)">
             <Cpu size={15} className="quality-icon" />
             <select
               value={quality}
               onChange={(e) => onSelectQuality(e.target.value as QualityPreset)}
               className="dock-select"
             >
-              <option value="low">Low (Battery)</option>
-              <option value="medium">Medium</option>
-              <option value="high">High (60 FPS)</option>
+              <option value="low">Low (Battery Saver)</option>
+              <option value="medium">60 FPS (CPU Standard)</option>
+              <option value="high">GPU / MPS (Accelerated)</option>
               <option value="ultra">Ultra (Max GPU)</option>
             </select>
           </div>
