@@ -106,36 +106,84 @@ export class StageStructureEffect extends BaseEffect {
     this.group.add(this.backWallMesh);
     this.disposables.push(backWallGeo, backWallMat);
 
-    // Jumbotron Screen Outer Frame Bezel (Always visible to frame both procedural visuals and YouTube video)
+    // Solid Black Surrounding Masking Walls:
+    // Guarantees that the YouTube video iframe NEVER leaks out past the 3D screen frame!
+    const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.disposables.push(maskMat);
+
+    // Top Masking Wall (spans from top of screen up to Y = 35)
+    const topMaskGeo = new THREE.PlaneGeometry(90, 24);
+    const topMask = new THREE.Mesh(topMaskGeo, maskMat);
+    topMask.position.set(0, 4.6 + screenHeight / 2 + 12.0, -4.46);
+    this.group.add(topMask);
+    this.disposables.push(topMaskGeo);
+
+    // Bottom Masking Wall (spans from bottom of screen down to Y = -20)
+    const btmMaskGeo = new THREE.PlaneGeometry(90, 20);
+    const btmMask = new THREE.Mesh(btmMaskGeo, maskMat);
+    btmMask.position.set(0, 4.6 - screenHeight / 2 - 10.0, -4.46);
+    this.group.add(btmMask);
+    this.disposables.push(btmMaskGeo);
+
+    // Left Masking Wall (spans from left edge of screen out to X = -45)
+    const sideMaskGeo = new THREE.PlaneGeometry(40, 45);
+    this.disposables.push(sideMaskGeo);
+    const leftMask = new THREE.Mesh(sideMaskGeo, maskMat);
+    leftMask.position.set(-(screenWidth / 2 + 20.0), 4.6, -4.46);
+    this.group.add(leftMask);
+
+    // Right Masking Wall (spans from right edge of screen out to X = +45)
+    const rightMask = new THREE.Mesh(sideMaskGeo, maskMat);
+    rightMask.position.set(screenWidth / 2 + 20.0, 4.6, -4.46);
+    this.group.add(rightMask);
+
+    // Jumbotron Screen Outer Frame Bezel (Bold industrial border framing the 16:9 aperture)
     const frameMat = new THREE.MeshStandardMaterial({
-      color: 0x111625,
-      roughness: 0.4,
-      metalness: 0.8,
+      color: 0x0c0f18,
+      roughness: 0.35,
+      metalness: 0.85,
     });
     this.disposables.push(frameMat);
 
+    const bezelThickness = 0.55;
+    const bezelDepth = 0.40;
+
     // Top Frame Bezel
-    const hFrameGeo = new THREE.BoxGeometry(screenWidth + 0.44, 0.22, 0.28);
+    const hFrameGeo = new THREE.BoxGeometry(screenWidth + bezelThickness * 2, bezelThickness, bezelDepth);
     this.disposables.push(hFrameGeo);
     const topFrame = new THREE.Mesh(hFrameGeo, frameMat);
-    topFrame.position.set(0, 4.6 + screenHeight / 2 + 0.11, -4.48);
+    topFrame.position.set(0, 4.6 + screenHeight / 2 + bezelThickness / 2, -4.44);
     this.group.add(topFrame);
 
     // Bottom Frame Bezel
     const btmFrame = new THREE.Mesh(hFrameGeo, frameMat);
-    btmFrame.position.set(0, 4.6 - screenHeight / 2 - 0.11, -4.48);
+    btmFrame.position.set(0, 4.6 - screenHeight / 2 - bezelThickness / 2, -4.44);
     this.group.add(btmFrame);
 
     // Left and Right Frame Bezels
-    const vFrameGeo = new THREE.BoxGeometry(0.22, screenHeight, 0.28);
+    const vFrameGeo = new THREE.BoxGeometry(bezelThickness, screenHeight, bezelDepth);
     this.disposables.push(vFrameGeo);
     const leftFrame = new THREE.Mesh(vFrameGeo, frameMat);
-    leftFrame.position.set(-(screenWidth / 2 + 0.11), 4.6, -4.48);
+    leftFrame.position.set(-(screenWidth / 2 + bezelThickness / 2), 4.6, -4.44);
     this.group.add(leftFrame);
 
     const rightFrame = new THREE.Mesh(vFrameGeo, frameMat);
-    rightFrame.position.set(screenWidth / 2 + 0.11, 4.6, -4.48);
+    rightFrame.position.set(screenWidth / 2 + bezelThickness / 2, 4.6, -4.44);
     this.group.add(rightFrame);
+
+    // Inner Glowing LED Trim along Aperture Border
+    const innerBorderPoints = [
+      new THREE.Vector3(-screenWidth / 2, 4.6 - screenHeight / 2, -4.43),
+      new THREE.Vector3(screenWidth / 2, 4.6 - screenHeight / 2, -4.43),
+      new THREE.Vector3(screenWidth / 2, 4.6 + screenHeight / 2, -4.43),
+      new THREE.Vector3(-screenWidth / 2, 4.6 + screenHeight / 2, -4.43),
+      new THREE.Vector3(-screenWidth / 2, 4.6 - screenHeight / 2, -4.43),
+    ];
+    const innerBorderGeo = new THREE.BufferGeometry().setFromPoints(innerBorderPoints);
+    const innerBorderMat = new THREE.LineBasicMaterial({ color: 0x00f0ff, linewidth: 2 });
+    const innerBorderLine = new THREE.Line(innerBorderGeo, innerBorderMat);
+    this.group.add(innerBorderLine);
+    this.disposables.push(innerBorderGeo, innerBorderMat);
 
     // Apply initial video active state if provided in context
     if (context.hasVideo) {

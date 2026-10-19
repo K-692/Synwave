@@ -49,10 +49,6 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
 
   if (!isOpen) return null;
 
-  const handleProfileSelect = (prof: StageProfile) => {
-    RoutingStore.getInstance().setProfile(prof, true);
-  };
-
   const handleSliderChange = (
     key: keyof Omit<AudioVisualRoutingConfig, 'enabledEffects' | 'reducedFlash' | 'disablePyrotechnics'>,
     value: number
@@ -105,34 +101,33 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
 
         {/* Modal Body */}
         <div className="routing-modal-body">
-          {/* Section 1: Stage & Mood Presets */}
+          {/* Section 1: Active Stage Mode */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Sparkles size={16} />
-              <span>STAGE & MOOD PRESETS (VISUAL PROFILES)</span>
+              <span>ACTIVE STAGE MODE</span>
             </h4>
             <div className="profile-grid">
               {(Object.keys(STAGE_PROFILES) as StageProfile[]).map((profKey) => {
                 const prof = STAGE_PROFILES[profKey];
                 const isActive = activeProfile === profKey;
                 return (
-                  <button
+                  <div
                     key={profKey}
                     className={`profile-card ${isActive ? 'active' : ''}`}
-                    onClick={() => handleProfileSelect(profKey)}
                     style={{
-                      borderColor: isActive ? prof.accentColor : 'rgba(255, 255, 255, 0.1)',
+                      borderColor: prof.accentColor,
                     }}
                   >
                     <div className="profile-card-top">
-                      <span className="profile-name" style={{ color: isActive ? prof.accentColor : '#f8fafc' }}>
+                      <span className="profile-name" style={{ color: prof.accentColor }}>
                         {prof.name}
                       </span>
-                      {isActive && <span className="profile-badge">ACTIVE</span>}
+                      <span className="profile-badge">ACTIVE</span>
                     </div>
                     <span className="profile-subtitle">{prof.subtitle}</span>
                     <p className="profile-desc">{prof.description}</p>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -278,6 +273,26 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   onChange={(e) => handleSliderChange('laserDensity', parseFloat(e.target.value))}
                 />
                 <span className="slider-hint">Adjusts active laser projector count and volumetric sheath</span>
+              </div>
+
+              {/* Colouring Spotlight Count */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Colouring Spotlights</span>
+                  <span className="slider-val">{config.spotlightCount ?? 3} Fixtures</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="8"
+                  step="1"
+                  value={config.spotlightCount ?? 3}
+                  onChange={(e) => {
+                    const count = parseInt(e.target.value, 10);
+                    RoutingStore.getInstance().setSpotlightCount(count);
+                  }}
+                />
+                <span className="slider-hint">Number of active colour-tinted spotlights sweeping the stage (default: 3)</span>
               </div>
 
               {/* Effect Decay */}

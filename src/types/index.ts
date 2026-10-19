@@ -76,7 +76,7 @@ export interface AudioFeatures {
 }
 
 export type ShowSection = 'intro' | 'verse' | 'buildup' | 'drop' | 'breakdown' | 'outro';
-export type StageProfile = 'festival-mainstage' | 'industrial-underground' | 'rock-arena' | 'cinematic-ambient';
+export type StageProfile = 'festival-mainstage';
 
 export interface EnabledEffectsConfig {
   lights: boolean;
@@ -92,6 +92,7 @@ export interface AudioVisualRoutingConfig {
   vocalToScreenGlow: number;    // 0.2 to 2.0 (default 1.0)
   pyroThreshold: number;        // 0.2 to 1.0 (default 0.45)
   laserDensity: number;         // 0.2 to 2.0 (default 1.0)
+  spotlightCount: number;       // 1 to 8 (default 3)
   effectDecay: number;          // 0.5 to 2.0 (default 1.0)
   cameraShakeStrength: number;  // 0.0 to 2.0 (default 1.0)
   reducedFlash: boolean;        // true/false

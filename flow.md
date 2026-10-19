@@ -15,18 +15,17 @@
 ### Key Architectural Pillars:
 1. **Authoritative Audio Clock & Beat Grid Engine:** Rhythmic quantization and continuous phase tracking ($0.0 \to 1.0$), monotonic beat counters, and bar/phrase boundaries (1 to 4/8 bars) driving synchronized fixture movements.
 2. **Procedural Show Director:** A rules-driven state machine that chooses which effects are permitted to fire and what choreographies they execute based on active track section and stage profile, avoiding chaotic instantaneous triggering.
-3. **Audio-to-Visual Routing Console:** Configurable mapping layer with versioned `localStorage` profiles. Users fine-tune kick sensitivity, bass-to-beam intensity, vocal-to-screen glow, pyro thresholds, laser density, effect decay, and camera shake.
-4. **4 Distinct Stage & Mood Presets (Visual Profiles):**
-   - **Festival Mainstage:** High-octane stadium EDM arena with wide laser fans, sync flame cannons, punchy moving heads, and bass-reactive floor wash.
-   - **Industrial Underground:** Raw warehouse techno with dense haze, cold strobing kick blinders, tight laser tunnels, and pyrotechnics disabled.
-   - **Rock Arena:** Warm tungsten & gold spotlights, chorus fire bursts, heavy floor wash, and rhythmic moving head sweeps.
-   - **Cinematic Ambient:** Intimate and ethereal chillout with soft cyan/violet volumetric haze, zero camera shake, delicate laser lines, and no flames.
-5. **Synchronized Song Timeline:** Interactive waveform amplitude silhouette with played progress fill, playhead handle, hover timestamp tooltip, and clickable seeking (streamlined UI slider with section blocks and badges removed per user preference).
-6. **Clean Minimal Stadium Jumbotron Screen:** Centered song title, artist name, and audio-reactive waveform line illuminated by ambient spotlight wash. Distracting telemetry overlays (Real-Time Visuals badge, Kick/Bass/Instrument/Vocals STEM bars, and Section: Verse 4K HDR pill) completely removed from the 3D stage display.
-7. **Zero-Default Input Track State:** The application initializes in a clean standby state (`currentTrack = null`, display title "SYNWAVE", prompt "STAGE READY • SELECT OR DROP AUDIO") without automatically taking or playing "Feel Something".
-8. **Dynamic Hardware & GPU / MPS Profiler (`detectHardwareProfile`):** Inspects WebGL unmasked renderer strings to detect hardware GPUs (NVIDIA, AMD Radeon, Intel Arc) and Apple Silicon MPS (Metal Performance Shaders on Apple M1/M2/M3/M4). Default settings automatically select GPU acceleration (`'high'`, up to $2.0\times$ device pixel ratio), falling back to 60 FPS CPU standard mode if only software emulation is detected.
-9. **Telemetry & Synchronization Diagnostic HUD (Hotkey: `D`):** Real-time diagnostic overlay showing live BPM, beat confidence, beat/bar counter, beat phase bar ($0.0 \to 1.0$), active section & choreography pattern, 4-STEM levels, rendering FPS, and active stage profile.
-10. **Solid Pitch-Black Stage Arena & Blowout-Free Optical Rig:** Pure `#000000` stadium backdrop, calibrated volumetric optical shaders (`FrontSide` rendering, cone radius $1.2\text{m}$, opacities $0.08 - 0.22$) preventing additive white blowout.
+3. **Audio-to-Visual Routing Console:** Configurable mapping layer with versioned `localStorage` profiles. Users fine-tune kick sensitivity, bass-to-beam intensity, vocal-to-screen glow, pyro thresholds, laser density, effect decay, camera shake, and active spotlight count.
+4. **Single Dedicated Stage Mode: Festival Mainstage:**
+   - High-octane stadium EDM arena with wide laser fans, sync flame cannons, punchy moving heads, and bass-reactive floor wash. Other legacy modes removed to focus exclusively on festival mainstage realism.
+5. **Synchronized Song Timeline:** Interactive waveform amplitude silhouette with played progress fill, playhead handle, hover timestamp tooltip, and clickable seeking.
+6. **Clean Minimal Stadium Jumbotron Screen & 3D Masking Aperture:** Solid pitch-black occluder walls completely enclose the stage screen opening ($21.0 \times 11.8\text{m}$ at $Z = -4.46$) with a bold industrial bezel, perfectly clipping and masking the YouTube video behind it so no video content or letterbox margins ever leak outside the stage boundaries.
+7. **Audio-Synchronized Iframe Screen Shake:** Real-time $(X, Y)$ screen pixel displacement calculated from camera shake in `VisualEngine.renderFrame()` directly mutates the YouTube video container's CSS transform at 60/120 FPS, shaking the video in unison with sub-bass audio kicks and drop climaxes.
+8. **Dynamic Video Thumbnail Color Gradient Extraction:** Asynchronously fetches the official YouTube video thumbnail (`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`), samples pixels on an offscreen canvas, filters letterboxing, computes color vibrancy, and dynamically tints stage spotlights and scene palettes to match the video's aesthetic palette.
+9. **Dual Top-of-Screen Bass Laser Machines:** Two heavy laser machines mounted on top of the stage screen (`(-8, 11.2, -4.3)` and `(8, 11.2, -4.3)`) fire straight high-intensity beams towards the camera that expand into wide volumetric fans covering the window, activated and modulated directly on bass and sub-bass energy.
+10. **Perimeter Cross-Stage Vocal Lights:** 10 fixtures mounted along the screen frame (left tower, right tower, top truss) project crossing scissor beams across the stage with pan/tilt sweep trajectories driven directly by the vocal STEM (`features.stems.vocals`).
+11. **Drop Aftermath Cryo Smoke & Haze:** Crisp, clear stage visibility during normal playback (preventing continuous foggy blowout), with realistic rolling floor fog and dense CO2 cryo blasts deployed around the stage floor and wings specifically when extreme music sections (like drops) come to an end.
+12. **Adjustable Colouring Spotlight Count:** Defaulted to 3 focused stage spotlights, with an interactive slider (1 to 8) in the Routing Console.
 
 ---
 
@@ -56,9 +55,6 @@ Live Onset Spikes (Energy Flux) ──────┘ (IOI Histogram & Median Cl
 ### 2.2 Instantaneous Seek Re-Synchronization
 Because all phase and index variables are mathematically computed directly from `currentTime`, seeking immediately re-aligns the beat grid, section progression, and visual phase with zero drift or phase artifacts.
 
-### 2.3 Local Storage Cache
-Track tempo estimates and manual calibrations are stored in `localStorage` under `synwave_beatgrid_${trackId}`, preserving calibrated BPM across sessions.
-
 ---
 
 ## 3. Procedural Show Director (`ShowDirector`)
@@ -78,11 +74,11 @@ Track Analysis / Trajectory ──► [ShowDirector] ──► ShowDirectorState
 
 | Section | Default Choreography Pattern | Allowed Stage Effects | Intensity Multiplier | Physical Stage Behavior |
 |---|---|---|---|---|
-| **`intro`** | *Ethereal Dawn* / *Warehouse Echo* | Lights, Screen Glow, Soft Haze (No Lasers, No Flames) | $0.65\times$ | Gentle synchronized moving-head sweeps, subtle screen illumination, ambient floor fog. |
-| **`verse`** | *Rhythmic Arena Pulse* / *Groove Synchronizer* | Lights, Gentle Lasers, Screen, Low Haze (No Flames) | $0.95\times$ | Moving heads pulse on beat phase ($\phi_{\text{beat}}$), laser cross-scans change every 8 beats, blinders quiet. |
+| **`intro`** | *Ethereal Dawn* | Lights, Screen Glow, Soft Haze (No Lasers, No Flames) | $0.65\times$ | Gentle synchronized moving-head sweeps, subtle screen illumination, ambient floor fog. |
+| **`verse`** | *Rhythmic Arena Pulse* | Lights, Gentle Lasers, Screen, Low Haze (No Flames) | $0.95\times$ | Moving heads pulse on beat phase ($\phi_{\text{beat}}$), laser cross-scans change every 8 beats, blinders quiet. |
 | **`buildup`** | *Tension Accelerando* | Lights, Converging Lasers, Cryo Bursts, Screen Strobing | $1.1\times \to 1.55\times$ | Moving heads tighten focus inward towards stage center; lasers form converging tunnel into audience; cryo CO2 warning bursts; intensity escalates with section progress. |
-| **`drop`** | *Ultra Stadium Climax* / *Cold Strobe Cataclysm* | **ALL Effects Unleashed** (Lights, Wide Lasers, Flames, Cryo, Screen) | $1.5\times \to 1.8\times$ | Full laser fan transformations changing pattern every 4th or 8th beat; flame cannons firing on drum kicks with cooldowns; high-speed moving head ballyhoos; bounded camera shake. |
-| **`breakdown`** | *Atmospheric Drift* | Dim Lights, Screen Ambient Wash, Rolling Fog | $0.70\times$ | Lights dim and fan wide into ceiling/sky; lasers and flame cannons silenced; soft drifting floor fog. |
+| **`drop`** | *Ultra Stadium Climax* | **ALL Effects Unleashed** (Lights, Top Bass Lasers, Wide Lasers, Flames, Cryo, Screen) | $1.5\times \to 1.8\times$ | Full laser fan transformations changing pattern every 4th or 8th beat; flame cannons firing on drum kicks with cooldowns; high-speed moving head ballyhoos; bounded camera shake. |
+| **`breakdown`** | *Drop Resolution Aftermath* | Dim Lights, Screen Ambient Wash, Dense Cryo Fog | $0.70\times$ | Rolling cryo floor fog floods the stage wings as drop energy dissipates; lasers and flame cannons silenced; soft drifting floor fog. |
 | **`outro`** | *Gentle Dissolve* | Dim Lights Fading, Dispersing Haze | $0.50\times$ | Moving heads settle into floor wash; smoke cannons idle; lighting fades into warm darkness. |
 
 ---
@@ -97,31 +93,38 @@ The Routing Console gives users complete control over how acoustic features tran
 |---|---|---|---|
 | **`kickSensitivity`** | $0.2\times - 2.0\times$ | $1.0\times$ | Scales drum kick detection threshold for white blinder spotlights and flame bursts. |
 | **`bassToBeamIntensity`** | $0.2\times - 2.0\times$ | $1.0\times$ | Modulates moving-head beam thickness, lens radiance, and stage floor wash intensity. |
-| **`vocalToScreenGlow`** | $0.2\times - 2.0\times$ | $1.0\times$ | Scales stage screen radial flare opacity and cryo smoke plume velocity. |
+| **`vocalToScreenGlow`** | $0.2\times - 2.0\times$ | $1.0\times$ | Scales stage screen radial flare opacity and perimeter vocal cross-light sweep velocity. |
 | **`pyroThreshold`** | $0.2 - 1.0$ | $0.45$ | Sensitivity floor for flame blasters (higher values require massive drop climaxes to trigger). |
-| **`laserDensity`** | $0.2\times - 2.0\times$ | $1.0\times$ | Controls active laser projector count (out of 28 fixtures) and volumetric sheath thickness. |
+| **`laserDensity`** | $0.2\times - 2.0\times$ | $1.0\times$ | Controls active laser projector count and volumetric sheath thickness. |
+| **`spotlightCount`** | $1 - 8$ | $3$ | Sets the number of active colour-tinted spotlights sweeping the stage. |
 | **`effectDecay`** | $0.5\times - 2.0\times$ | $1.0\times$ | Modulates attack and release envelope decay speed for blinders and fire bursts. |
-| **`cameraShakeStrength`** | $0.0\times - 2.0\times$ | $1.0\times$ | Sets visceral sub-bass vibration amplitude (set to $0.0$ for fully locked camera). |
+| **`cameraShakeStrength`** | $0.0\times - 2.0\times$ | $1.0\times$ | Sets visceral sub-bass vibration amplitude applied to both 3D camera and YouTube iframe. |
 | **`reducedFlash`** | Boolean | `false` | Limits blinder cone opacity to $\le 0.05$ and disables aggressive strobing for light sensitivity. |
 | **`disablePyrotechnics`** | Boolean | `false` | Global safety toggle: completely extinguishes all 8 stage flame cannons. |
 | **`maxBrightnessLimit`** | $0.3\times - 1.0\times$ | $1.0\times$ | Venue lumen ceiling: prevents overexposure and clamps maximum scene luminance. |
 
-### 4.2 Stage Profiles
-
-1. **Festival Mainstage (`festival-mainstage`):** Wide laser fans, full pyrotechnics, punchy moving heads, camera shake $1.2\times$, pyro threshold $0.45$.
-2. **Industrial Underground (`industrial-underground`):** Acid green / cold white strobes, tight laser tunnels, intense kick blinders, dense smoke, pyrotechnics permanently disabled.
-3. **Rock Arena (`rock-arena`):** Warm amber & gold spotlights, chorus fire bursts, heavy floor wash, camera shake $0.85\times$.
-4. **Cinematic Ambient (`cinematic-ambient`):** Cyan/violet volumetric haze, zero camera shake ($0.0\times$), delicate laser lines, no flames, reduced flash enabled.
-
 ---
 
-## 5. Synchronized Song Timeline (`SongTimeline`)
+## 5. Visual Lighting & Laser Engineering
 
-The bottom timeline slider has been decluttered to focus purely on musical progression and waveform dynamics:
-- **Waveform Silhouette:** 120-bin amplitude envelope computed from decoded PCM frames or synthetic waveform trajectory.
-- **Section Blocks Removed:** Colored section blocks (`INTRO`, `BUILDUP`, `DROP`, etc.) and the section badge pill have been removed from the UI slider per user request, leaving an uncluttered, modern player seekbar.
-- **Interactive Seeking:** Clicking any position seeks audio immediately, recalculating beat phase and active section.
-- **Hover Timestamp Tooltip:** Displays precise time badge upon mouse hover.
+### 5.1 Perimeter Vocal Cross-Stage Lights
+- **Location:** Mounted around the perimeter frame of the central Jumbotron screen (left tower, right tower, top truss).
+- **Beam Pattern:** Projects crossing scissor beams across the stage.
+- **Audio Modulation:** Pan and tilt sweep movements are driven directly by `features.stems.vocals`. Higher vocal presence causes wider, faster scissor sweeps.
+
+### 5.2 Dual Top-of-Screen Bass Laser Machines
+- **Mount Coordinates:** Top-left emitter at $(-8.0, 11.2, -4.3)$ and top-right emitter at $(8.0, 11.2, -4.3)$.
+- **Projection Dynamics:** Shoots high-intensity straight core laser beams directly towards the camera, surrounded by expanding volumetric fans that cover the window.
+- **Audio Modulation:** Driven by `features.stems.bass` and `features.subBass`. Deep bass hits trigger heavy volumetric expansion, beam strobe frequency acceleration, and subtle target vibration.
+
+### 5.3 Dynamic Thumbnail Color Gradient Extraction
+- **Service:** `src/services/thumbnailColorService.ts`
+- **Method:** Downloads YouTube video thumbnail (`hqdefault.jpg`), renders to offscreen canvas, samples pixels with letterbox rejection, maps RGB to HSL, and isolates the most vibrant gradient hues.
+- **Application:** Passed to `visualEngine.setCustomSpotlightColors()`, ensuring moving-head spotlights and venue ambient wash harmoniously match the music video's visual identity.
+
+### 5.4 Drop Aftermath Cryo Smoke & Haze
+- **State Machine:** In `SmokeMachinesEffect.ts`, tracks transitions from `isDrop = true` to `isDrop = false` (`wasInDrop` transition).
+- **Behavior:** Standard playback keeps the stage clean and crisp without continuous smoke blowout. When an intense drop concludes, a 5.2-second aftermath sequence fires dense CO2 cryo jets and floods the stage wings with low-lying rolling fog before cleanly dissipating.
 
 ---
 
@@ -131,13 +134,6 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 - **Apple Silicon MPS (Metal Performance Shaders):** Detects `Apple M1/M2/M3/M4` and `Apple GPU`. Automatically configures high-performance GPU profile with $2.0\times$ device pixel ratio.
 - **Dedicated Hardware GPU:** Detects NVIDIA GeForce / RTX, AMD Radeon, Intel Arc / Iris. Automatically applies high-performance GPU profile.
 - **Software / CPU Fallback:** Detects SwiftShader, llvmpipe, or software rasterizers. Defaults to 60 FPS standard mode with clamped $1.0\times$ pixel ratio to prevent CPU bottlenecking.
-- **User Selection:** Presets available in bottom transport dock:
-  - *Low (Battery Saver)*
-  - *60 FPS (CPU Standard)*
-  - *GPU / MPS (Accelerated)*
-  - *Ultra (Max GPU)*
-
----
 
 ---
 
@@ -145,29 +141,21 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 
 1. **Automated Song Identification (`shazamio` + `shazam_server.py`):**
    - Integrates [ShazamIO](https://github.com/shazamio/ShazamIO) via a lightweight local Python FastAPI microservice running in an isolated virtual environment (`.venv`) on `http://127.0.0.1:8765`.
-   - **Zero Credentials Required:** Shazam recognition operates directly through public fingerprinting endpoints without requiring any Shazam or Apple API keys.
-   - When the user clicks or drops an audio file on the center stage screen, Synwave sends the audio file to the local endpoint (`/api/recognize`) which extracts the verified song title, artist, album, and primary genre.
+   - Public fingerprinting endpoints operate with zero external API credentials needed.
 
 2. **YouTube Data API v3 Search (`youtubeService.ts`):**
-   - Uses the official Google Cloud YouTube Data API v3 (`https://www.googleapis.com/youtube/v3/search`) to search for the official music video matching `${title} ${artist}` and retrieves the top video result (`videoId`).
-   - Requires a Google Cloud **YouTube Data API v3 Key** configured via `.env` (`VITE_YOUTUBE_API_KEY`) or via the in-app key setup modal.
+   - Retrieves top music video result (`videoId`) matching `${title} ${artist}`.
 
 3. **Synchronized Video Iframe Player (`YouTubeStagePlayer.tsx`):**
    - Mounts a 16:9 YouTube video iframe positioned directly behind the 3D stadium stage screen (`z-index: 1`).
-   - **Strict Volume Muting (`volume=0`, `mute()`):** Prevents double-audio playback so the high-fidelity local audio file runs purely through Synwave's procedural Web Audio engine.
-   - **Authoritative Timestamp Synchronization:** The YouTube video's playback state and playhead are continuously locked to the local audio engine's `currentTime`. Pausing, playing, or seeking the audio file automatically seeks and re-aligns the video playhead with $<0.35\text{s}$ tolerance.
+   - Strict volume muting (`volume=0`, `mute()`) ensures audio runs through Synwave's high-fidelity procedural Web Audio engine.
+   - Authoritative timestamp synchronization locks video playback to audio `currentTime` with $<0.35\text{s}$ tolerance.
 
 4. **Optical Stacking & Transparent WebGL Compositing Architecture:**
-   - **Sent Video to Back (`z-index: 1`):** The YouTube iframe container is placed behind the Three.js canvas in the DOM stacking order (`z-index: 1`).
-   - **Transparent WebGL Canvas (`z-index: 2`):** `THREE.WebGLRenderer` is initialized with `alpha: true`, `scene.background = null`, and `renderer.setClearColor(0x000000, 0)` with `pointer-events: none`.
-   - **3D Stage Screen Pass-Through Portal:** When a video is active (`hasVideo = true`), `StageStructureEffect`'s `screenMesh` and `backWallMesh` at $Z = -4.5$ are hidden (`visible = false`), while the persistent Jumbotron outer bezel frame remains visible.
-   - **All 3D Visualization Elements Run ON TOP of the Screen:** Because all 16 moving-head volumetric light cones, 28 razor-thin lasers, flame blasters, cryo smoke, trusses, and crowd silhouettes physically reside in front of the screen ($Z > -4.5$, camera at $Z = 9.2$), rendering the canvas at `z-index: 2` directly overlays all beams, lasers, flames, and smoke across the playing video.
-   - **Exact 3D Perspective Sizing:** The video player element is styled to exactly match the 3D screen opening (`width: min(73.3vw, 130.3vh); aspect-ratio: 16 / 9; top: 48.6%; left: 50%`), aligning seamlessly with the aluminum trusses and DJ riser platform.
-
-5. **Streamlined UI & Center-Screen Interaction:**
-   - Removed folder-level playing, Track Queue (Playlist Drawer), and Signal & Visual Inspector Drawer.
-   - Removed "Open File" and "Open Folder" header buttons.
-   - Replaced with an intuitive center-screen dropzone: clicking anywhere on the stage screen opens the system audio picker, while dragging and dropping any audio file initiates instant playback, Shazam recognition, and synchronized video playback. Window-level drag-drop allows dropping files anywhere on the app.
+   - **Sent Video to Back (`z-index: 1`):** YouTube iframe container sits behind the Three.js canvas.
+   - **Transparent WebGL Canvas (`z-index: 2`):** `THREE.WebGLRenderer` initialized with `alpha: true`, `scene.background = null`, `setClearColor(0x000000, 0)`, and `pointer-events: none`.
+   - **3D Black Border Occluder Walls:** Four massive black planes ($Z = -4.46$) completely cover the area around the $21.0 \times 11.8\text{m}$ screen opening. Any part of the YouTube iframe that overflows the stage aperture is cleanly occluded by the black stage architecture.
+   - **Iframe Shake:** Camera displacement from sub-bass hits in `VisualEngine` triggers the `onStageShake` callback, updating the YouTube iframe container's CSS transform with zero React re-render overhead.
 
 ---
 
@@ -178,9 +166,6 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 | **`Space`** | Play / Pause media playback |
 | **`F`** | Toggle borderless fullscreen |
 | **`1`** | Select Stage Profile: **Festival Mainstage** |
-| **`2`** | Select Stage Profile: **Industrial Underground** |
-| **`3`** | Select Stage Profile: **Rock Arena** |
-| **`4`** | Select Stage Profile: **Cinematic Ambient** |
 | **`D`** | Toggle Telemetry & Synchronization HUD |
 | **`C`** | Toggle Audio-to-Visual Routing Console |
 | **`P`** | Toggle Pyrotechnics (Flames ON / OFF) |
@@ -191,8 +176,8 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 
 ## 9. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly in 377ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly in 367ms).
 - **Vite Development Server:** Running continuously at `http://localhost:5173/`.
 - **ShazamIO Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` using `.venv`.
 - **Git Repository:** Committed locally on branch `main` (Rule 8: awaiting explicit user push instruction).
-- **Visual Stacking:** YouTube iframe is sent to the background (`z-index: 1`), and the transparent Three.js WebGL canvas (`z-index: 2`) renders all stage lights, moving head cones, razor-thin lasers, smoke, fire plumes, and trusses directly on top of the playing video.
+- **Visual Stacking:** YouTube iframe is sent to the background (`z-index: 1`) with real-time audio shake, while the transparent Three.js WebGL canvas (`z-index: 2`) renders solid black occluder borders, moving-head spotlight beams (with thumbnail colors), vocal-reactive cross-stage perimeter lights, dual top bass lasers, drop aftermath cryo smoke, and fire plumes directly on top of the playing video.

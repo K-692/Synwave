@@ -1,9 +1,8 @@
 /**
  * Synwave Audio-to-Visual Routing Store & Stage Profiles
  * 
- * Manages user-configurable signal routing, effect sensitivities,
- * stage presets (Festival Mainstage, Industrial, Rock Arena, Cinematic Ambient),
- * and accessibility / safety overrides with localStorage persistence.
+ * Manages user-configurable signal routing, spotlight counts, effect sensitivities,
+ * and the authoritative Festival Mainstage concert experience.
  */
 
 import type { AudioVisualRoutingConfig, StageProfile } from '../../types';
@@ -30,6 +29,7 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       vocalToScreenGlow: 1.0,
       pyroThreshold: 0.45,
       laserDensity: 1.25,
+      spotlightCount: 3,
       effectDecay: 1.0,
       cameraShakeStrength: 1.2,
       reducedFlash: false,
@@ -44,91 +44,10 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       },
     },
   },
-
-  'industrial-underground': {
-    id: 'industrial-underground',
-    name: 'Industrial Underground',
-    subtitle: 'Warehouse Techno / Berlin Club',
-    description: 'Cold, raw warehouse techno with dense haze, strobing kick blinders, tight laser cages, and no pyrotechnics.',
-    accentColor: '#00ff88',
-    defaultConfig: {
-      kickSensitivity: 1.3,
-      bassToBeamIntensity: 1.4,
-      vocalToScreenGlow: 0.8,
-      pyroThreshold: 1.0,
-      laserDensity: 0.85,
-      effectDecay: 0.8,
-      cameraShakeStrength: 1.0,
-      reducedFlash: false,
-      disablePyrotechnics: true,
-      maxBrightnessLimit: 0.9,
-      enabledEffects: {
-        lights: true,
-        lasers: true,
-        flames: false,
-        smoke: true,
-        screen: true,
-      },
-    },
-  },
-
-  'rock-arena': {
-    id: 'rock-arena',
-    name: 'Rock Arena',
-    subtitle: 'Stadium Rock & Metal Tour',
-    description: 'Warm amber & gold spotlights, chorus fire bursts, heavy floor wash, and rhythmic moving head sweeps.',
-    accentColor: '#ff8800',
-    defaultConfig: {
-      kickSensitivity: 1.0,
-      bassToBeamIntensity: 1.15,
-      vocalToScreenGlow: 1.1,
-      pyroThreshold: 0.55,
-      laserDensity: 0.65,
-      effectDecay: 1.1,
-      cameraShakeStrength: 0.85,
-      reducedFlash: false,
-      disablePyrotechnics: false,
-      maxBrightnessLimit: 0.95,
-      enabledEffects: {
-        lights: true,
-        lasers: true,
-        flames: true,
-        smoke: true,
-        screen: true,
-      },
-    },
-  },
-
-  'cinematic-ambient': {
-    id: 'cinematic-ambient',
-    name: 'Cinematic Ambient',
-    subtitle: 'Planetarium & Orchestral Chill',
-    description: 'Intimate and ethereal chillout with soft cyan/violet volumetric haze, zero camera shake, delicate laser lines, and no flames.',
-    accentColor: '#00e5ff',
-    defaultConfig: {
-      kickSensitivity: 0.6,
-      bassToBeamIntensity: 0.75,
-      vocalToScreenGlow: 1.3,
-      pyroThreshold: 1.0,
-      laserDensity: 0.45,
-      effectDecay: 1.4,
-      cameraShakeStrength: 0.0,
-      reducedFlash: true,
-      disablePyrotechnics: true,
-      maxBrightnessLimit: 0.75,
-      enabledEffects: {
-        lights: true,
-        lasers: true,
-        flames: false,
-        smoke: true,
-        screen: true,
-      },
-    },
-  },
 };
 
-const STORAGE_KEY_CONFIG = 'synwave_routing_config_v2';
-const STORAGE_KEY_PROFILE = 'synwave_active_profile_v2';
+const STORAGE_KEY_CONFIG = 'synwave_routing_config_v3';
+const STORAGE_KEY_PROFILE = 'synwave_active_profile_v3';
 
 export class RoutingStore {
   private static instance: RoutingStore;
@@ -180,6 +99,10 @@ export class RoutingStore {
     };
     this.persistToStorage();
     this.notifyListeners();
+  }
+
+  public setSpotlightCount(count: number): void {
+    this.updateConfig({ spotlightCount: Math.max(1, Math.min(8, Math.round(count))) });
   }
 
   public toggleEffect(family: keyof AudioVisualRoutingConfig['enabledEffects']): void {

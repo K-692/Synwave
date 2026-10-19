@@ -55,7 +55,7 @@ export class ShowDirector {
 
     switch (this.currentSection) {
       case 'intro': {
-        this.choreographyPattern = activeProfile === 'industrial-underground' ? 'Warehouse Echo' : 'Ethereal Dawn';
+        this.choreographyPattern = 'Ethereal Dawn';
         this.intensityMultiplier = 0.65;
         // Suppress intense pyro & full lasers in intro
         allowedEffects.flames = false;
@@ -64,7 +64,7 @@ export class ShowDirector {
       }
 
       case 'verse': {
-        this.choreographyPattern = activeProfile === 'rock-arena' ? 'Rhythmic Arena Pulse' : 'Groove Synchronizer';
+        this.choreographyPattern = 'Festival Groove Synchronizer';
         this.intensityMultiplier = 0.95;
         // Moderate lasers, no pyro in standard verse
         allowedEffects.flames = false;
@@ -81,11 +81,7 @@ export class ShowDirector {
       }
 
       case 'drop': {
-        this.choreographyPattern = activeProfile === 'festival-mainstage'
-          ? 'Ultra Stadium Climax'
-          : activeProfile === 'industrial-underground'
-          ? 'Cold Strobe Cataclysm'
-          : 'Full Stage Climax';
+        this.choreographyPattern = 'Ultra Stadium Climax';
         this.intensityMultiplier = 1.5 * (1 + features.dropIntensity * 0.35);
         // All effects unleashed in the drop!
         break;
@@ -107,16 +103,6 @@ export class ShowDirector {
         allowedEffects.lasers = false;
         break;
       }
-    }
-
-    // Industrial profile overrides: no flames
-    if (activeProfile === 'industrial-underground') {
-      allowedEffects.flames = false;
-    }
-    // Cinematic profile overrides: no flames, no high-intensity strobe
-    if (activeProfile === 'cinematic-ambient') {
-      allowedEffects.flames = false;
-      this.intensityMultiplier = Math.min(1.0, this.intensityMultiplier * 0.8);
     }
 
     return {

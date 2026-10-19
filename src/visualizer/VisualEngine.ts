@@ -53,18 +53,13 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   },
   {
     id: 'pyro-drop-frenzy',
-    name: 'PYRO DROP FRENZY',
+    name: 'MAINSTAGE DROP FRENZY',
     activeEffectIds: ['stage-structure', 'fire-shooters', 'thin-lasers', 'smoke-machines', 'stage-lights', 'shockwave-rings'],
   },
   {
     id: 'laser-cathedral',
-    name: 'LASER CATHEDRAL',
+    name: 'MAINSTAGE LASER CATHEDRAL',
     activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights', 'smoke-machines'],
-  },
-  {
-    id: 'ambient-sanctuary',
-    name: 'CELESTIAL CHILL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'smoke-machines'],
   },
 ];
 
@@ -121,6 +116,7 @@ export class VisualEngine {
   // Live state callbacks
   public onCurrentSectionChange?: (section: string) => void;
   public onWindowFlash?: (opacity: number, colorHex: string) => void;
+  public onStageShake?: (shakeXPixels: number, shakeYPixels: number) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -390,9 +386,9 @@ export class VisualEngine {
     let sectionLabel = 'GROOVE';
 
     if (features.musicMode === 'calm' || this.currentMood === 'chill-ambient') {
-      sectionLabel = 'CALM SANCTUARY';
+      sectionLabel = 'MAINSTAGE ATMOSPHERE';
       this.onCurrentSectionChange?.(sectionLabel);
-      this.switchScene('ambient-sanctuary');
+      this.switchScene('stadium-mainstage');
       return;
     }
 
@@ -502,17 +498,31 @@ export class VisualEngine {
 
     // Sub-bass rumble / vibration on heavy kicks and drops (governed by routingConfig)
     let rumble = 0;
+    let shakeX = 0;
+    let shakeY = 0;
     const shakeMult = routingConfig.cameraShakeStrength;
     if (shakeMult > 0 && !routingConfig.reducedFlash) {
       if (features.isDrop) {
-        rumble = 0.14 * (1 + features.stems.bass) * shakeMult;
-      } else if (features.stems.kick > 0.45 || features.isKick) {
-        rumble = features.stems.kick * 0.10 * shakeMult;
+        rumble = 0.16 * (1 + features.stems.bass) * shakeMult;
+      } else if (features.stems.kick > 0.40 || features.isKick) {
+        rumble = (features.stems.kick * 0.12 + features.stems.bass * 0.08) * shakeMult;
+      } else if (features.stems.bass > 0.6) {
+        rumble = features.stems.bass * 0.07 * shakeMult;
       }
       if (rumble > 0) {
-        this.camera.position.x += (Math.random() - 0.5) * rumble;
-        this.camera.position.y += (Math.random() - 0.5) * rumble * 0.8;
+        shakeX = (Math.random() - 0.5) * rumble;
+        shakeY = (Math.random() - 0.5) * rumble * 0.85;
+        this.camera.position.x += shakeX;
+        this.camera.position.y += shakeY;
       }
+    }
+
+    // Audio-synchronized shake for the YouTube iframe (pixel displacement)
+    if (this.onStageShake) {
+      const pixelsPerUnit = window.innerHeight / 15.82;
+      const pxX = -shakeX * pixelsPerUnit;
+      const pxY = shakeY * pixelsPerUnit;
+      this.onStageShake(pxX, pxY);
     }
 
     // Always look directly at the center of the solid rectangular concert stage screen
@@ -600,6 +610,31 @@ export class VisualEngine {
     const stageStructure = this.effects.find((e) => e.id === 'stage-structure') as StageStructureEffect | undefined;
     if (stageStructure) {
       stageStructure.setVideoActive(active);
+    }
+  }
+
+  public setSpotlightCount(count: number): void {
+    const lights = this.effects.find((e) => e.id === 'stage-lights') as StageLightsEffect | undefined;
+    if (lights) {
+      lights.setSpotlightCount(count);
+    }
+  }
+
+  public getSpotlightCount(): number {
+    const lights = this.effects.find((e) => e.id === 'stage-lights') as StageLightsEffect | undefined;
+    return lights ? lights.getSpotlightCount() : 3;
+  }
+
+  public setCustomSpotlightColors(colors: string[] | null): void {
+    const lights = this.effects.find((e) => e.id === 'stage-lights') as StageLightsEffect | undefined;
+    if (lights) {
+      lights.setSpotlightColors(colors || []);
+    }
+    if (colors && colors.length > 0) {
+      this.targetPalette.primary = colors[0];
+      if (colors[1]) this.targetPalette.secondary = colors[1];
+      if (colors[2]) this.targetPalette.accent = colors[2];
+      this.activePalette = { ...this.targetPalette };
     }
   }
 

@@ -16,6 +16,7 @@ import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore
 import { detectHardwareProfile } from './utils/hardwareDetector';
 import { identifyAudioWithShazam } from './services/shazamService';
 import { searchYouTubeVideo } from './services/youtubeService';
+import { extractThumbnailColors } from './services/thumbnailColorService';
 import type {
   QualityPreset,
   RepeatMode,
@@ -106,17 +107,33 @@ export const App: React.FC = () => {
   const [isDraggingOverScreen, setIsDraggingOverScreen] = useState<boolean>(false);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Subscribe to RoutingStore profile changes
+  // Subscribe to RoutingStore profile and config changes
   useEffect(() => {
-    const unsub = RoutingStore.getInstance().subscribe((_, prof) => {
+    const unsub = RoutingStore.getInstance().subscribe((cfg, prof) => {
       setActiveProfile(prof);
+      if (cfg.spotlightCount) {
+        visualEngineRef.current?.setSpotlightCount(cfg.spotlightCount);
+      }
     });
     return unsub;
   }, []);
 
-  // Synchronize visual engine stage screen transparency with video state
+  // Synchronize visual engine stage screen with video state and extract thumbnail colors
   useEffect(() => {
     visualEngineRef.current?.setVideoActive(!!currentVideoId);
+    if (currentVideoId) {
+      extractThumbnailColors(currentVideoId)
+        .then((extracted) => {
+          if (extracted && extracted.spotlightColors.length > 0) {
+            visualEngineRef.current?.setCustomSpotlightColors(extracted.spotlightColors);
+          }
+        })
+        .catch((err) => {
+          console.warn('[App] Error extracting thumbnail colors:', err);
+        });
+    } else {
+      visualEngineRef.current?.setCustomSpotlightColors(null);
+    }
   }, [currentVideoId]);
 
   // Visual Settings: Default to GPU/MPS if present, otherwise 60 FPS standard
@@ -208,6 +225,22 @@ export const App: React.FC = () => {
         setWindowFlashOpacity(0);
         if (colorHex) setWindowFlashColor(colorHex);
       };
+
+      // Synchronize DOM YouTube video iframe position with 3D camera kicks & drops
+      visualEngine.onStageShake = (shakeXPixels, shakeYPixels) => {
+        const el = document.getElementById('synwave-youtube-stage-screen');
+        if (el) {
+          if (shakeXPixels !== 0 || shakeYPixels !== 0) {
+            el.style.transform = `translate(calc(-50% + ${shakeXPixels.toFixed(2)}px), calc(-50% + ${shakeYPixels.toFixed(2)}px))`;
+          } else {
+            el.style.transform = 'translate(-50%, -50%)';
+          }
+        }
+      };
+
+      // Set initial spotlight count from routing store
+      const initialSpotlightCount = RoutingStore.getInstance().getConfig().spotlightCount || 3;
+      visualEngine.setSpotlightCount(initialSpotlightCount);
 
       // Start continuous Three.js render loop with authoritative media clock
       visualEngine.start(
@@ -523,15 +556,6 @@ export const App: React.FC = () => {
       } else if (e.code === 'Digit1') {
         e.preventDefault();
         RoutingStore.getInstance().setProfile('festival-mainstage');
-      } else if (e.code === 'Digit2') {
-        e.preventDefault();
-        RoutingStore.getInstance().setProfile('industrial-underground');
-      } else if (e.code === 'Digit3') {
-        e.preventDefault();
-        RoutingStore.getInstance().setProfile('rock-arena');
-      } else if (e.code === 'Digit4') {
-        e.preventDefault();
-        RoutingStore.getInstance().setProfile('cinematic-ambient');
       } else if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         setIsDiagnosticOpen((prev) => !prev);

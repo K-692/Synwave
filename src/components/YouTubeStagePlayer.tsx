@@ -220,7 +220,10 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
   return (
     <>
       {/* YouTube Stage Screen Container */}
-      <div className={`synwave-youtube-stage-screen ${videoId ? 'active' : ''}`}>
+      <div
+        id="synwave-youtube-stage-screen"
+        className={`synwave-youtube-stage-screen ${videoId ? 'active' : ''}`}
+      >
         <div id={containerId} className="yt-iframe-target" />
 
         {/* Video Overlay Info Pill */}
