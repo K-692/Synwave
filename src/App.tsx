@@ -14,13 +14,20 @@ import { RoutingConsole } from './components/RoutingConsole';
 import { DiagnosticOverlay } from './components/DiagnosticOverlay';
 import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
 import { detectHardwareProfile } from './utils/hardwareDetector';
-import { identifyAudioWithShazam } from './services/shazamService';
-import { searchYouTubeVideo } from './services/youtubeService';
+import { identifyAudioWithShazam, getTrackFingerprint } from './services/shazamService';
+import {
+  searchYouTubeVideo,
+  getYouTubeApiKey,
+  validateYouTubeApiKey,
+} from './services/youtubeService';
+import { YouTubeApiKeyModal } from './components/YouTubeApiKeyModal';
 import { extractThumbnailColors } from './services/thumbnailColorService';
 import { StemSeparationLoader } from './components/StemSeparationLoader';
 import { separateAudioWithDemucs } from './services/demucsService';
+import { resolveTrackBpm, mapBpmToSpotlightCount } from './services/tempoService';
 import type {
   QualityPreset,
+  RecognitionStatus,
   RepeatMode,
   StageProfile,
   TrackRecord,
@@ -86,14 +93,22 @@ export const App: React.FC = () => {
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
-  // Festival Window Blinder Flash State (Gradient & Bass Color Blending)
-  const [windowFlashOpacity, setWindowFlashOpacity] = useState(0);
-  const [windowFlashBg, setWindowFlashBg] = useState('radial-gradient(circle at center, rgba(255,255,255,0.95), rgba(255,255,255,0.15))');
-
   // UI Visibility & Auto-Hide State
   const [isTopBarVisible, setIsTopBarVisible] = useState(false);
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
+
+  // Phase 9: Audio/Video Media Readiness & Playback Gate Tracking
+  const [isAudioReady, setIsAudioReady] = useState(false);
+  const [hasPlaybackStarted, setHasPlaybackStarted] = useState(false);
+
+  // Synchronous refs for event listeners and timers
+  const isAudioReadyRef = useRef(false);
+  const isVideoReadyRef = useRef(false);
+  const isVideoLoadingRef = useRef(false);
+  const isSeparatingStemsRef = useRef(false);
+  const hasPlaybackStartedRef = useRef(false);
+  const isBothMediaReadyRef = useRef(false);
 
   // Console Modal State
   const [isRoutingOpen, setIsRoutingOpen] = useState(false);
@@ -109,6 +124,76 @@ export const App: React.FC = () => {
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isSeparatingStems, setIsSeparatingStems] = useState<boolean>(false);
   const [separationStatus, setSeparationStatus] = useState<string>('');
+  const [stemLoaderPhase, setStemLoaderPhase] = useState<'recognizing' | 'extracting'>('extracting');
+  const [stemLoaderTitle, setStemLoaderTitle] = useState<string>('');
+  const [stemLoaderArtist, setStemLoaderArtist] = useState<string>('');
+
+  // Phase 13: Active Pipeline Tracker to prevent race conditions during rapid track switching
+  const activePipelineTrackIdRef = useRef<string | null>(null);
+
+  // Track when both media sources (audio and video) are fully loaded and ready
+  const isBothMediaReady = Boolean(
+    currentTrack &&
+    isAudioReady &&
+    isVideoReady &&
+    !isVideoLoading &&
+    !isSeparatingStems
+  );
+
+  // Sync refs with state values for event listeners and timers
+  useEffect(() => {
+    isAudioReadyRef.current = isAudioReady;
+    isVideoReadyRef.current = isVideoReady;
+    isVideoLoadingRef.current = isVideoLoading;
+    isSeparatingStemsRef.current = isSeparatingStems;
+    hasPlaybackStartedRef.current = hasPlaybackStarted;
+    isBothMediaReadyRef.current = isBothMediaReady;
+  }, [isAudioReady, isVideoReady, isVideoLoading, isSeparatingStems, hasPlaybackStarted, isBothMediaReady]);
+
+  // YouTube Data API v3 Startup Verification Gate State
+  const [apiGateStatus, setApiGateStatus] = useState<'checking' | 'validating' | 'gated' | 'ready'>('checking');
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [keyValidationError, setKeyValidationError] = useState<string | undefined>(undefined);
+
+  // Startup YouTube Data API Key Verification Gate
+  useEffect(() => {
+    let isCancelled = false;
+
+    const runStartupKeyGate = async () => {
+      const existingKey = getYouTubeApiKey();
+      if (!existingKey) {
+        // Missing key: block main app and require setup modal
+        if (!isCancelled) {
+          setApiGateStatus('gated');
+          setIsKeyModalOpen(true);
+        }
+        return;
+      }
+
+      // Existing key: validate with lightweight 1-unit request
+      if (!isCancelled) {
+        setApiGateStatus('validating');
+      }
+
+      const result = await validateYouTubeApiKey(existingKey);
+      if (isCancelled) return;
+
+      if (result.isValid) {
+        setApiGateStatus('ready');
+      } else {
+        // Validation failed (invalid, quota exhausted, restricted, network)
+        setApiGateStatus('gated');
+        setKeyValidationError(result.errorMessage || 'Configured YouTube API Key could not be validated.');
+        setIsKeyModalOpen(true);
+      }
+    };
+
+    runStartupKeyGate();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   // Subscribe to RoutingStore profile and config changes
   useEffect(() => {
@@ -127,14 +212,18 @@ export const App: React.FC = () => {
     if (currentVideoId) {
       extractThumbnailColors(currentVideoId)
         .then((extracted) => {
-          if (extracted && extracted.spotlightColors.length > 0) {
-            visualEngineRef.current?.setCustomSpotlightColors(extracted.spotlightColors);
+          if (extracted) {
+            visualEngineRef.current?.setSongPalette(extracted);
+            if (extracted.spotlightColors.length > 0) {
+              visualEngineRef.current?.setCustomSpotlightColors(extracted.spotlightColors);
+            }
           }
         })
         .catch((err) => {
           console.warn('[App] Error extracting thumbnail colors:', err);
         });
     } else {
+      visualEngineRef.current?.setSongPalette(null);
       visualEngineRef.current?.setCustomSpotlightColors(null);
     }
   }, [currentVideoId]);
@@ -159,6 +248,17 @@ export const App: React.FC = () => {
     ],
   });
 
+  // Phase 9: Automatically reveal bottom menu once both media sources are ready, and keep it visible until playback begins
+  useEffect(() => {
+    if (isBothMediaReady && !hasPlaybackStarted) {
+      setIsBottomBarVisible(true);
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    }
+  }, [isBothMediaReady, hasPlaybackStarted]);
+
   // 1. Mouse Hover & Auto-Hide Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -172,15 +272,28 @@ export const App: React.FC = () => {
 
       if (e.clientY <= topThreshold) {
         setIsTopBarVisible(true);
-        setIsBottomBarVisible(false);
+        // If playback has already started, hide the bottom bar when hovering top
+        if (hasPlaybackStartedRef.current) {
+          setIsBottomBarVisible(false);
+        }
       } else if (e.clientY >= bottomThreshold) {
         setIsBottomBarVisible(true);
         setIsTopBarVisible(false);
       } else {
-        // If cursor is in the middle of canvas, schedule auto-hide after 1.8 seconds
-        hideTimerRef.current = setTimeout(() => {
+        // If cursor is in the middle of canvas:
+        // Phase 9: Keep bottom menu visible if both media are ready and playback has not yet begun
+        if (!hasPlaybackStartedRef.current && isBothMediaReadyRef.current) {
           setIsTopBarVisible(false);
-          setIsBottomBarVisible(false);
+          setIsBottomBarVisible(true);
+          return;
+        }
+
+        // Normal auto-hide after playback has begun
+        hideTimerRef.current = window.setTimeout(() => {
+          setIsTopBarVisible(false);
+          if (hasPlaybackStartedRef.current) {
+            setIsBottomBarVisible(false);
+          }
         }, 1800);
       }
     };
@@ -188,9 +301,15 @@ export const App: React.FC = () => {
     const handleMouseLeave = () => {
       if (hideTimerRef.current) {
         clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
       }
       setIsTopBarVisible(false);
-      setIsBottomBarVisible(false);
+      // Phase 9: Keep bottom menu visible if both media are ready and playback has not yet begun
+      if (hasPlaybackStartedRef.current) {
+        setIsBottomBarVisible(false);
+      } else if (isBothMediaReadyRef.current) {
+        setIsBottomBarVisible(true);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -218,6 +337,20 @@ export const App: React.FC = () => {
     audioEngine.onPlayStateChange = (playing) => {
       setIsPlaying(playing);
       visualEngineRef.current?.setIsPlaying(playing);
+      if (playing) {
+        setHasPlaybackStarted(true);
+        hasPlaybackStartedRef.current = true;
+      }
+    };
+
+    audioEngine.onAudioReady = () => {
+      setIsAudioReady(true);
+      isAudioReadyRef.current = true;
+    };
+
+    audioEngine.onPlaybackStarted = () => {
+      setHasPlaybackStarted(true);
+      hasPlaybackStartedRef.current = true;
     };
 
     if (canvasRef.current) {
@@ -225,8 +358,13 @@ export const App: React.FC = () => {
       visualEngineRef.current = visualEngine;
 
       visualEngine.onWindowFlash = (opacity, bgCss) => {
-        setWindowFlashOpacity(opacity);
-        if (bgCss) setWindowFlashBg(bgCss);
+        const el = document.getElementById('festival-window-blinder');
+        if (el) {
+          el.style.opacity = opacity > 0.005 ? opacity.toFixed(3) : '0';
+          if (bgCss) {
+            el.style.background = bgCss;
+          }
+        }
       };
 
       // Synchronize DOM YouTube video iframe position with 3D camera kicks & drops
@@ -293,7 +431,26 @@ export const App: React.FC = () => {
         visualEngineRef.current?.setTrackProfile(track.seed, analysis);
         visualEngineRef.current?.setTrackInfo(track.title, track.artist, analysis.descriptors?.mood);
         visualEngineRef.current?.setTrackDuration(analysis.durationSeconds);
-        audioEngineRef.current?.setTrackBeatGrid(track.id, analysis.estimatedBpm, analysis.bpmConfidence);
+        audioEngineRef.current?.setTrackAnalysis(analysis);
+        // Only set beat grid if resolved from ShazamIO or Demucs kicks (do not overwrite with crude estimate)
+        const resolved = resolveTrackBpm(track.id, null, currentTrack.demucsStems || track.demucsStems);
+        if (resolved.source !== 'unavailable') {
+          track.bpm = resolved.bpm;
+          track.bpmSource = resolved.source;
+          track.bpmConfidence = resolved.confidence;
+          audioEngineRef.current?.setTrackBeatGrid(
+            track.id,
+            resolved.bpm ?? undefined,
+            resolved.confidence,
+            resolved.source
+          );
+          const routingCfg = RoutingStore.getInstance().getConfig();
+          if (routingCfg.autoBpmSpotlightSpawning !== false && resolved.bpm) {
+            const count = mapBpmToSpotlightCount(resolved.bpm, routingCfg.minSpotlightCount, routingCfg.maxSpotlightCount);
+            visualEngineRef.current?.setSpotlightCount(count);
+            RoutingStore.getInstance().setSpotlightCount(count);
+          }
+        }
         if (!duration && analysis.durationSeconds > 0) {
           setDuration(analysis.durationSeconds);
         }
@@ -304,13 +461,30 @@ export const App: React.FC = () => {
         prev.map((t) => (t.id === track.id ? { ...t, analysisStatus: 'partial' } : t))
       );
     }
-  }, [currentTrack?.id, duration]);
+  }, [currentTrack?.id, currentTrack?.demucsStems, duration]);
 
   // Handle Track Loading
   const loadTrack = useCallback(
     async (track: TrackRecord, autoPlay = false) => {
+      // Phase 13: Track pipeline ownership to prevent race conditions during rapid track switching
+      const pipelineTrackId = track.id;
+      activePipelineTrackIdRef.current = pipelineTrackId;
+
       setCurrentTrack(track);
       setCurrentTime(0);
+      setHasPlaybackStarted(false);
+      hasPlaybackStartedRef.current = false;
+      setIsAudioReady(false);
+      isAudioReadyRef.current = false;
+
+      if (track.youtubeVideoId) {
+        setCurrentVideoId(track.youtubeVideoId);
+        setIsVideoReady(false);
+        setIsVideoLoading(true);
+      } else {
+        setIsVideoReady(true);
+        setIsVideoLoading(false);
+      }
 
       visualEngineRef.current?.setTrackProfile(track.seed, track.analysis);
       visualEngineRef.current?.setTrackInfo(track.title, track.artist, track.analysis?.descriptors?.mood);
@@ -319,21 +493,97 @@ export const App: React.FC = () => {
       }
 
       if (audioEngineRef.current) {
-        audioEngineRef.current.setTrackBeatGrid(track.id, track.analysis?.estimatedBpm, track.analysis?.bpmConfidence);
+        audioEngineRef.current.setTrackAnalysis(track.analysis || null);
+        // Resolve BPM with priority: ShazamIO verified -> Demucs kick intervals -> unavailable
+        const resolvedBpm = resolveTrackBpm(track.id, track.shazamMatch || null, track.demucsStems);
+        track.bpm = resolvedBpm.bpm;
+        track.bpmSource = resolvedBpm.source;
+        track.bpmConfidence = resolvedBpm.confidence;
+
+        audioEngineRef.current.setTrackBeatGrid(
+          track.id,
+          resolvedBpm.bpm ?? undefined,
+          resolvedBpm.confidence,
+          resolvedBpm.source
+        );
+
+        // Update spotlight count according to resolved track BPM
+        const routingCfg = RoutingStore.getInstance().getConfig();
+        if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
+          const count = mapBpmToSpotlightCount(resolvedBpm.bpm, routingCfg.minSpotlightCount, routingCfg.maxSpotlightCount);
+          visualEngineRef.current?.setSpotlightCount(count);
+          RoutingStore.getInstance().setSpotlightCount(count);
+        }
+
         // Load Demucs neural stems (from cache or track record)
         if (track.demucsStems) {
           audioEngineRef.current.setDemucsStems(track.demucsStems);
         } else {
-          separateAudioWithDemucs(track.file || track.url)
-            .then((stems) => {
-              if (stems) {
-                track.demucsStems = stems;
-                audioEngineRef.current?.setDemucsStems(stems);
+          // Sequential pipeline: ShazamIO recognition first as a prerequisite, then Demucs
+          (async () => {
+            let match = track.shazamMatch;
+            if (!match && track.recognitionStatus !== 'recognized') {
+              match = await identifyAudioWithShazam(track.file || track.url);
+              if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+              if (match.success && match.title) {
+                track.title = match.title;
+                track.artist = match.artist || track.artist;
+                track.recognitionStatus = match.cached ? 'cached' : 'recognized';
+                track.shazamMatch = match;
+                setCurrentTrack((prev) =>
+                  prev && prev.id === pipelineTrackId
+                    ? {
+                        ...prev,
+                        title: track.title,
+                        artist: track.artist,
+                        recognitionStatus: track.recognitionStatus,
+                        shazamMatch: match,
+                      }
+                    : prev
+                );
+                visualEngineRef.current?.setTrackInfo(track.title, track.artist);
+              } else {
+                track.recognitionStatus = match.error ? 'failed' : 'unrecognized';
               }
-            })
-            .catch((err) => console.warn('[App] Demucs load error:', err));
+            }
+
+            const stems = await separateAudioWithDemucs(track.file || track.url, {
+              fingerprint: getTrackFingerprint(track.file || track.url),
+              songTitle: track.title,
+              songArtist: track.artist,
+            });
+            if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+            if (stems) {
+              track.demucsStems = stems;
+              audioEngineRef.current?.setDemucsStems(stems);
+              // Re-resolve BPM now that Demucs kick stems are available
+              const updatedBpm = resolveTrackBpm(track.id, match, stems);
+              if (updatedBpm.source !== 'unavailable') {
+                track.bpm = updatedBpm.bpm;
+                track.bpmSource = updatedBpm.source;
+                track.bpmConfidence = updatedBpm.confidence;
+                audioEngineRef.current?.setTrackBeatGrid(
+                  track.id,
+                  updatedBpm.bpm ?? undefined,
+                  updatedBpm.confidence,
+                  updatedBpm.source
+                );
+                const cfg = RoutingStore.getInstance().getConfig();
+                if (cfg.autoBpmSpotlightSpawning !== false && updatedBpm.bpm) {
+                  const count = mapBpmToSpotlightCount(updatedBpm.bpm, cfg.minSpotlightCount, cfg.maxSpotlightCount);
+                  visualEngineRef.current?.setSpotlightCount(count);
+                  RoutingStore.getInstance().setSpotlightCount(count);
+                }
+              }
+            }
+          })().catch((err) => console.warn('[App] Pipeline load error in loadTrack:', err));
         }
         await audioEngineRef.current.loadTrack(track.url, autoPlay);
+        if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+        if (audioEngineRef.current.isAudioReady()) {
+          setIsAudioReady(true);
+          isAudioReadyRef.current = true;
+        }
         visualEngineRef.current?.setIsPlaying(autoPlay);
       }
 
@@ -356,16 +606,39 @@ export const App: React.FC = () => {
     };
   }, [repeatMode, tracks, currentTrack]);
 
+  // Key configuration saved and validated
+  const handleKeySaved = useCallback((_validKey: string) => {
+    setApiGateStatus('ready');
+    setKeyValidationError(undefined);
+    setIsKeyModalOpen(false);
+
+    // If a track was already loaded without an active YouTube video, trigger search now
+    if (currentTrack && !currentVideoId) {
+      searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
+        if (res) {
+          setCurrentVideoId(res.videoId);
+          setCurrentVideoTitle(res.title);
+        }
+      });
+    }
+  }, [currentTrack, currentVideoId]);
+
   // 4. Transport Handlers
   const handlePlayPause = () => {
+    if (apiGateStatus !== 'ready') {
+      setIsKeyModalOpen(true);
+      return;
+    }
     if (!audioEngineRef.current) return;
-    if (isPlaying) {
+    const isCurrentlyPlaying = audioEngineRef.current.isPlaying() || isPlaying;
+    if (isCurrentlyPlaying) {
       audioEngineRef.current.pause();
       visualEngineRef.current?.setIsPlaying(false);
+      setIsPlaying(false);
     } else {
-      // User cannot play the music if the video is still loading
-      if (isVideoLoading || (!isVideoReady && currentTrack)) {
-        console.warn('[App] Playback gated: Stage video is currently loading. Wait until loaded.');
+      // User cannot play the music if stage media (audio or video) is still loading
+      if (isVideoLoading || (!isVideoReady && currentTrack) || (!isAudioReady && currentTrack)) {
+        console.warn('[App] Playback gated: Stage media is currently loading. Wait until loaded.');
         return;
       }
       if (!currentTrack && tracks.length > 0) {
@@ -373,7 +646,6 @@ export const App: React.FC = () => {
         return;
       }
       audioEngineRef.current.play();
-      visualEngineRef.current?.setIsPlaying(true);
     }
   };
 
@@ -430,6 +702,11 @@ export const App: React.FC = () => {
 
   // Ingest Selected Audio File from Header or Window Drag-and-Drop
   const handleFilesSelected = async (fileList: FileList | File[]) => {
+    if (apiGateStatus !== 'ready') {
+      setIsKeyModalOpen(true);
+      return;
+    }
+
     const filesArray = Array.from(fileList);
     const audioFile = filesArray.find(
       (f) => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i)
@@ -448,8 +725,22 @@ export const App: React.FC = () => {
     const initialArtist = parts.length > 1 ? parts[0].trim() : 'Local Audio';
     const initialTitle = parts.length > 1 ? parts.slice(1).join(' - ').trim() : baseName;
 
+    // =========================================================================
+    // Phase 13: 5-Step Sequential Pipeline
+    // 1. Load selected audio track & initialize safe fallback state
+    // 2. Run ShazamIO recognition (as a prerequisite before Demucs)
+    // 3. Resolve title and artist (update state & loader banner)
+    // 4. Extract Stage STEMs using Demucs (status: Extracting Stage STEMs — Track Title)
+    // 5. Complete analysis and unlock playback
+    // =========================================================================
+
+    // Step 1: Load selected audio track
+    const trackId = `local-${audioFile.name}-${audioFile.size}-${audioFile.lastModified}`;
+    const pipelineTrackId = trackId;
+    activePipelineTrackIdRef.current = pipelineTrackId;
+
     const track: TrackRecord = {
-      id: `local-${audioFile.name}-${audioFile.size}-${audioFile.lastModified}`,
+      id: trackId,
       name: audioFile.name,
       title: initialTitle,
       artist: initialArtist,
@@ -459,55 +750,163 @@ export const App: React.FC = () => {
       sizeBytes: audioFile.size,
       file: audioFile,
       analysisStatus: 'unscanned',
+      recognitionStatus: 'recognizing',
       seed: Math.abs(hash),
     };
 
     setTracks([track]);
+    setCurrentTrack(track);
     setCurrentVideoId(null);
     setCurrentVideoTitle('');
     setIsVideoReady(false);
     setIsVideoLoading(true);
+    setIsAudioReady(false);
+    isAudioReadyRef.current = false;
+    setHasPlaybackStarted(false);
+    hasPlaybackStartedRef.current = false;
+    setIsBottomBarVisible(false);
 
-    // Stop current playback
+    // Stop current playback while new track is prepared
     audioEngineRef.current?.pause();
     visualEngineRef.current?.setIsPlaying(false);
+    setIsPlaying(false);
 
-    // Trigger Demucs 4-stem neural extraction with loading overlay
+    // Step 2: Run ShazamIO recognition as a prerequisite for Demucs
     setIsSeparatingStems(true);
-    setSeparationStatus('Pre-processing audio spectrum and extracting 4 neural stems...');
+    setStemLoaderPhase('recognizing');
+    setStemLoaderTitle(initialTitle);
+    setStemLoaderArtist(initialArtist);
+    setSeparationStatus('Recognizing track with ShazamIO...');
+
+    const fingerprint = getTrackFingerprint(audioFile);
+    let match = null;
+    try {
+      match = await identifyAudioWithShazam(audioFile, { customFingerprint: fingerprint });
+    } catch (err) {
+      console.warn('[App] Shazam recognition error fallback:', err);
+      match = { success: false, error: (err as Error).message };
+    }
+
+    // Guard against race conditions when users rapidly switch tracks
+    if (activePipelineTrackIdRef.current !== pipelineTrackId) {
+      console.info(`[App] Stale recognition discarded for ${pipelineTrackId}`);
+      return;
+    }
+
+    // Step 3: Resolve title and artist
+    const isRecognized = Boolean(match && match.success && match.title);
+    const resolvedTitle = isRecognized ? (match!.title as string) : initialTitle;
+    const resolvedArtist = isRecognized ? (match!.artist || 'Unknown Artist') : initialArtist;
+    const recognitionStatus: RecognitionStatus = isRecognized
+      ? (match!.cached ? 'cached' : 'recognized')
+      : (match?.error ? 'failed' : 'unrecognized');
+
+    track.title = resolvedTitle;
+    track.artist = resolvedArtist;
+    track.recognitionStatus = recognitionStatus;
+    track.shazamMatch = match || undefined;
+    if (match?.album) {
+      track.album = match.album;
+    }
+
+    // Save matched song title, artist, track identifier, and recognition status in current track state
+    setCurrentTrack((prev) =>
+      prev && prev.id === pipelineTrackId
+        ? {
+            ...prev,
+            title: resolvedTitle,
+            artist: resolvedArtist,
+            album: track.album,
+            recognitionStatus,
+            shazamMatch: track.shazamMatch,
+          }
+        : prev
+    );
+    setTracks((prev) =>
+      prev.map((t) =>
+        t.id === pipelineTrackId
+          ? {
+              ...t,
+              title: resolvedTitle,
+              artist: resolvedArtist,
+              album: track.album,
+              recognitionStatus,
+              shazamMatch: track.shazamMatch,
+            }
+          : t
+      )
+    );
+    visualEngineRef.current?.setTrackInfo(resolvedTitle, resolvedArtist);
+
+    // Step 4: Extract Stage STEMs using Demucs with recognized track title in extraction status
+    setStemLoaderPhase('extracting');
+    setStemLoaderTitle(resolvedTitle);
+    setStemLoaderArtist(resolvedArtist);
+    setSeparationStatus(`Extracting Stage STEMs — ${resolvedTitle}`);
 
     let demucsStems = null;
     try {
-      demucsStems = await separateAudioWithDemucs(audioFile, (status) => setSeparationStatus(status));
+      demucsStems = await separateAudioWithDemucs(audioFile, {
+        fingerprint,
+        songTitle: resolvedTitle,
+        songArtist: resolvedArtist,
+        onProgress: (status) => {
+          if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+          setSeparationStatus(`Extracting Stage STEMs — ${resolvedTitle}${status ? ` (${status})` : ''}`);
+        },
+      });
+      if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
       if (demucsStems) {
         track.demucsStems = demucsStems;
         audioEngineRef.current?.setDemucsStems(demucsStems);
       }
     } catch (err) {
-      console.warn('Demucs separation error:', err);
+      console.warn('[Demucs] Stem separation error:', err);
     } finally {
-      setIsSeparatingStems(false);
+      if (activePipelineTrackIdRef.current === pipelineTrackId) {
+        setIsSeparatingStems(false);
+      }
     }
 
-    // Load track into audio engine without autoplay (playback is unlocked once video is ready)
+    if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+
+    // Step 5: Complete analysis and unlock playback
+    // Resolve BPM with verified ShazamIO priority, falling back to Demucs kick intervals
+    const resolvedBpm = resolveTrackBpm(track.id, match, track.demucsStems || demucsStems);
+    track.bpm = resolvedBpm.bpm;
+    track.bpmSource = resolvedBpm.source;
+    track.bpmConfidence = resolvedBpm.confidence;
+    if (audioEngineRef.current) {
+      audioEngineRef.current.setTrackBeatGrid(
+        track.id,
+        resolvedBpm.bpm ?? undefined,
+        resolvedBpm.confidence,
+        resolvedBpm.source
+      );
+    }
+    const routingCfg = RoutingStore.getInstance().getConfig();
+    if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
+      const count = mapBpmToSpotlightCount(resolvedBpm.bpm, routingCfg.minSpotlightCount, routingCfg.maxSpotlightCount);
+      visualEngineRef.current?.setSpotlightCount(count);
+      RoutingStore.getInstance().setSpotlightCount(count);
+    }
+
+    // Load track into audio engine without autoplay (playback unlocks once media is ready)
     await loadTrack(track, false);
+    if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
 
-    // Identify audio and fetch official YouTube API metadata (Music Name, Artist, Producer, Release Date)
+    // Query official YouTube video and metadata
     try {
-      const match = await identifyAudioWithShazam(audioFile);
-      const recognizedTitle = (match.success && match.title) ? match.title : initialTitle;
-      const recognizedArtist = (match.success && match.artist) ? match.artist : initialArtist;
-
-      const searchQuery = match.query || `${recognizedTitle} ${recognizedArtist}`;
+      const searchQuery = (match && match.query) || `${resolvedTitle} ${resolvedArtist}`;
       const ytResult = await searchYouTubeVideo(searchQuery);
+      if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
 
       if (ytResult) {
         setCurrentVideoId(ytResult.videoId);
         setCurrentVideoTitle(ytResult.title);
 
-        // Populate track record strictly with official YouTube API metadata
         setCurrentTrack((prev) =>
-          prev
+          prev && prev.id === pipelineTrackId
             ? {
                 ...prev,
                 title: ytResult.title,
@@ -517,29 +916,27 @@ export const App: React.FC = () => {
                 description: ytResult.description || '',
                 youtubeVideoId: ytResult.videoId,
               }
-            : null
+            : prev
         );
 
         visualEngineRef.current?.setTrackInfo(ytResult.title, ytResult.channelTitle);
 
-        // Safety watchdog: ensure play button cleanly appears unlocked even if iframe network is slow
         setTimeout(() => {
-          setIsVideoLoading(false);
-          setIsVideoReady(true);
+          if (activePipelineTrackIdRef.current === pipelineTrackId) {
+            setIsVideoLoading(false);
+            setIsVideoReady(true);
+          }
         }, 5000);
       } else {
-        // Fallback if no video found
-        setCurrentTrack((prev) =>
-          prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
-        );
-        visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
         setIsVideoReady(true);
         setIsVideoLoading(false);
       }
     } catch (err) {
-      console.warn('Shazam / YouTube pipeline error:', err);
-      setIsVideoReady(true);
-      setIsVideoLoading(false);
+      console.warn('YouTube search fallback error:', err);
+      if (activePipelineTrackIdRef.current === pipelineTrackId) {
+        setIsVideoReady(true);
+        setIsVideoLoading(false);
+      }
     }
   };
 
@@ -598,23 +995,58 @@ export const App: React.FC = () => {
     }
   };
 
-  // 4. Keyboard Show Controls
+  // 4. Stable references for keyboard listeners to prevent listener churn and stale closures
+  const isPlayingRef = useRef(isPlaying);
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  const apiGateStatusRef = useRef(apiGateStatus);
+  const isKeyModalOpenRef = useRef(isKeyModalOpen);
+  const handlePlayPauseRef = useRef(handlePlayPause);
+  const handleToggleFullscreenRef = useRef(handleToggleFullscreen);
+  const handleSeekRef = useRef(handleSeek);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    currentTimeRef.current = currentTime;
+    durationRef.current = duration;
+    apiGateStatusRef.current = apiGateStatus;
+    isKeyModalOpenRef.current = isKeyModalOpen;
+    handlePlayPauseRef.current = handlePlayPause;
+    handleToggleFullscreenRef.current = handleToggleFullscreen;
+    handleSeekRef.current = handleSeek;
+  });
+
+  // 5. Global Keyboard Show Controls (Permanent registration on window with capture)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target as HTMLElement)?.isContentEditable
-      ) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // 1. Never hijack keys when user is typing in form inputs, textareas, or contenteditable elements
+      const tagName = target.tagName ? target.tagName.toUpperCase() : '';
+      const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+      const isEditable = target.isContentEditable || target.getAttribute?.('contenteditable') === 'true';
+
+      if (isInput || isEditable) {
+        return;
+      }
+
+      if (apiGateStatusRef.current !== 'ready' || isKeyModalOpenRef.current) {
         return;
       }
 
       if (e.code === 'Space' || e.key === ' ') {
+        // Ignore Space key events originating from buttons or controls that already implement
+        // their own Space-bar activation, preventing duplicate toggles or state conflicts
+        if (target.closest('button, [role="button"]')) {
+          return;
+        }
+
         e.preventDefault();
-        handlePlayPause();
+        handlePlayPauseRef.current();
       } else if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
         e.preventDefault();
-        handleToggleFullscreen();
+        handleToggleFullscreenRef.current();
       } else if (e.code === 'Digit1') {
         e.preventDefault();
         RoutingStore.getInstance().setProfile('festival-mainstage');
@@ -632,18 +1064,32 @@ export const App: React.FC = () => {
         });
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        const seekTarget = Math.max(0, currentTime - 5);
-        handleSeek(seekTarget);
+        const seekTarget = Math.max(0, currentTimeRef.current - 5);
+        handleSeekRef.current(seekTarget);
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        const seekTarget = Math.min(duration || 9999, currentTime + 5);
-        handleSeek(seekTarget);
+        const seekTarget = Math.min(durationRef.current || 9999, currentTimeRef.current + 5);
+        handleSeekRef.current(seekTarget);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, currentTime, duration]);
+    // Reclaim window focus when user interacts back with the visualizer after iframe focus
+    const handleReclaimFocus = () => {
+      if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
+        window.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('pointerdown', handleReclaimFocus, { passive: true });
+    window.addEventListener('mousemove', handleReclaimFocus, { passive: true });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('pointerdown', handleReclaimFocus);
+      window.removeEventListener('mousemove', handleReclaimFocus);
+    };
+  }, []);
 
   return (
     <div
@@ -660,23 +1106,13 @@ export const App: React.FC = () => {
       {/* Synchronized YouTube Iframe Stage Screen Player (Sent back behind 3D canvas) */}
       <YouTubeStagePlayer
         videoId={currentVideoId}
-        videoTitle={currentVideoTitle}
         currentTime={currentTime}
         isPlaying={isPlaying}
+        getAudioCurrentTime={() => audioEngineRef.current?.getCurrentTime() ?? currentTime}
         onPlayerReady={(ready) => {
           setIsVideoReady(ready);
           if (ready) {
             setIsVideoLoading(false);
-          }
-        }}
-        onKeySaved={() => {
-          if (currentTrack) {
-            searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
-              if (res) {
-                setCurrentVideoId(res.videoId);
-                setCurrentVideoTitle(res.title);
-              }
-            });
           }
         }}
       />
@@ -690,11 +1126,8 @@ export const App: React.FC = () => {
 
       {/* Festival Window Blinder Strobe Flash */}
       <div
+        id="festival-window-blinder"
         className="festival-window-blinder"
-        style={{
-          opacity: windowFlashOpacity,
-          background: windowFlashBg,
-        }}
       />
 
       {/* Top Header Bar (Attached flush to window top, auto-hides) */}
@@ -708,6 +1141,8 @@ export const App: React.FC = () => {
         onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
         onMouseEnter={() => setIsTopBarVisible(true)}
         onFilesSelected={handleFilesSelected}
+        onOpenKeySettings={() => setIsKeyModalOpen(true)}
+        isKeyModalOpen={isKeyModalOpen}
       />
 
       {/* Audio-to-Visual Routing Console Modal */}
@@ -745,6 +1180,8 @@ export const App: React.FC = () => {
               vocals: 0,
             },
             estimatedBpm: 128,
+            bpmSource: 'unavailable',
+            bpmConfidence: 0.0,
             beatIndex: 0,
             barIndex: 1,
             beatPhase: 0,
@@ -761,15 +1198,47 @@ export const App: React.FC = () => {
       {/* Demucs Neural Stem Separation Pre-Processing Loader */}
       <StemSeparationLoader
         isVisible={isSeparatingStems}
-        songTitle={currentTrack?.title}
-        songArtist={currentTrack?.artist}
+        songTitle={stemLoaderTitle || currentTrack?.title}
+        songArtist={stemLoaderArtist || currentTrack?.artist}
         statusText={separationStatus}
+        phase={stemLoaderPhase}
       />
+
+      {/* YouTube Data API Key Mandatory Startup Gate & Settings Modal */}
+      <YouTubeApiKeyModal
+        isOpen={isKeyModalOpen || apiGateStatus === 'gated'}
+        isMandatoryGate={apiGateStatus !== 'ready'}
+        initialError={keyValidationError}
+        onKeySaved={handleKeySaved}
+        onClose={() => {
+          if (apiGateStatus === 'ready') {
+            setIsKeyModalOpen(false);
+          }
+        }}
+      />
+
+      {/* Startup Credential Verification Splash */}
+      {apiGateStatus === 'validating' && (
+        <div className="synwave-startup-gate-overlay">
+          <div className="startup-gate-content">
+            <div className="startup-gate-logo">
+              <img src="/icon.png" alt="Synwave App Icon" className="startup-gate-logo-img" />
+              <div className="startup-gate-pulse" />
+            </div>
+            <h2 className="startup-gate-title">VERIFYING STAGE CREDENTIALS</h2>
+            <p className="startup-gate-subtitle">
+              Validating YouTube Data API key with Google Cloud...
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}
       <PlayerControls
         currentTrack={currentTrack}
+        videoTitle={currentVideoTitle}
         isPlaying={isPlaying}
+        isAudioReady={isAudioReady}
         isVideoReady={isVideoReady}
         isVideoLoading={isVideoLoading}
         currentTime={currentTime}

@@ -133,6 +133,85 @@ export class AudioAnalyzer {
         mood = 'deep-hypnotic';
       }
 
+      // Extract time-indexed amplitude envelope and detect above-average segments
+      const amplitudeEnvelope = frames.map(f => f.rms);
+      const aboveAverageSections: Array<{ startTime: number; endTime: number }> = [];
+      let inSection = false;
+      let sectionStart = 0;
+
+      for (let i = 0; i < frames.length; i++) {
+        const frameTime = frames[i].timeSeconds;
+        const isAbove = frames[i].rms >= avgRms;
+
+        if (isAbove && !inSection) {
+          inSection = true;
+          sectionStart = frameTime;
+        } else if (!isAbove && inSection) {
+          if (frameTime - sectionStart >= 0.4) {
+            aboveAverageSections.push({
+              startTime: sectionStart,
+              endTime: frameTime,
+            });
+          }
+          inSection = false;
+        }
+      }
+      if (inSection) {
+        aboveAverageSections.push({
+          startTime: sectionStart,
+          endTime: duration,
+        });
+      }
+
+      // Pre-compute Tri-STEM drop segments where Kick, Bass, and Mid-Instruments
+      // all exceed their song-wide average values in the highest-amplitude drop segments
+      const avgKick = frames.reduce((acc, f) => acc + f.onsetStrength, 0) / Math.max(1, frames.length);
+      const avgBassEnergy = frames.reduce((acc, f) => acc + f.bass, 0) / Math.max(1, frames.length);
+      const avgInst = frames.reduce((acc, f) => acc + (f.lowMid + f.highMid) / 2, 0) / Math.max(1, frames.length);
+
+      const triScores: number[] = [];
+      const triDropMask: boolean[] = [];
+      for (const f of frames) {
+        const instVal = (f.lowMid + f.highMid) / 2;
+        const isAllAbove = f.onsetStrength > avgKick && f.bass > avgBassEnergy && instVal > avgInst;
+        const score = (f.onsetStrength + f.bass + instVal) / 3;
+        triDropMask.push(isAllAbove);
+        if (isAllAbove) {
+          triScores.push(score);
+        }
+      }
+
+      const triStemDropSections: Array<{ startTime: number; endTime: number }> = [];
+      if (triScores.length > 0) {
+        triScores.sort((a, b) => a - b);
+        const dropThresh = triScores[Math.floor(triScores.length * 0.45)] || 0;
+        let inDrop = false;
+        let dropStart = 0;
+        for (let i = 0; i < frames.length; i++) {
+          const f = frames[i];
+          const score = (f.onsetStrength + f.bass + (f.lowMid + f.highMid) / 2) / 3;
+          const isDrop = triDropMask[i] && score >= dropThresh;
+          if (isDrop && !inDrop) {
+            inDrop = true;
+            dropStart = f.timeSeconds;
+          } else if (!isDrop && inDrop) {
+            if (f.timeSeconds - dropStart >= 0.4) {
+              triStemDropSections.push({
+                startTime: dropStart,
+                endTime: f.timeSeconds,
+              });
+            }
+            inDrop = false;
+          }
+        }
+        if (inDrop) {
+          triStemDropSections.push({
+            startTime: dropStart,
+            endTime: duration,
+          });
+        }
+      }
+
       const analysis: TrackAnalysis = {
         schemaVersion: 1,
         trackId,
@@ -142,6 +221,11 @@ export class AudioAnalyzer {
         frames,
         events: onsets,
         sections,
+        averageAmplitude: avgRms,
+        amplitudeEnvelope,
+        envelopeFps: 20,
+        aboveAverageSections,
+        triStemDropSections,
         descriptors: {
           energy: avgRms > 0.45 ? 'high' : avgRms > 0.22 ? 'medium' : 'low',
           brightness: avgCentroid > 0.6 ? 'bright' : avgCentroid > 0.35 ? 'balanced' : 'dark',
@@ -271,6 +355,12 @@ export class AudioAnalyzer {
         { startTime: 60, endTime: 120, type: 'drop', label: 'DROP', energyLevel: 0.9 },
         { startTime: 120, endTime: 150, type: 'breakdown', label: 'BREAKDOWN', energyLevel: 0.4 },
         { startTime: 150, endTime: 180, type: 'outro', label: 'OUTRO', energyLevel: 0.3 },
+      ],
+      averageAmplitude: 0.35,
+      amplitudeEnvelope: [],
+      envelopeFps: 20,
+      aboveAverageSections: [
+        { startTime: 30, endTime: 120 },
       ],
       descriptors: {
         energy: 'medium',

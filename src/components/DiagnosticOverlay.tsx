@@ -87,12 +87,22 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
         <div className="diagnostic-panel">
           <div className="panel-title">BEAT GRID & TEMPO</div>
           <div className="metric-row">
-            <span className="metric-name">ESTIMATED BPM</span>
-            <span className="metric-value highlight">{features.estimatedBpm.toFixed(1)}</span>
+            <span className="metric-name">RESOLVED BPM</span>
+            <span className="metric-value highlight">
+              {features.bpmSource === 'unavailable' ? 'UNAVAILABLE' : `${features.estimatedBpm.toFixed(1)} BPM`}
+            </span>
           </div>
           <div className="metric-row">
-            <span className="metric-name">BEAT CONFIDENCE</span>
-            <span className="metric-value">{Math.round((features.beatConfidence || 0) * 100)}%</span>
+            <span className="metric-name">BPM PROVENANCE</span>
+            <span className="metric-value">
+              {features.bpmSource === 'shazamio' && <span style={{ color: '#34d399', fontWeight: 700 }}>SHAZAMIO [VERIFIED]</span>}
+              {features.bpmSource === 'demucs' && <span style={{ color: '#22d3ee', fontWeight: 700 }}>DEMUCS [KICKS]</span>}
+              {(!features.bpmSource || features.bpmSource === 'unavailable') && <span style={{ color: '#fbbf24' }}>UNAVAILABLE</span>}
+            </span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-name">TEMPO CONFIDENCE</span>
+            <span className="metric-value">{Math.round((features.bpmConfidence ?? features.beatConfidence ?? 0) * 100)}%</span>
           </div>
           <div className="metric-row">
             <span className="metric-name">BEAT INDEX</span>
@@ -140,6 +150,24 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
             <span className="metric-name">ENERGY INTENSITY</span>
             <span className="metric-value highlight">
               {directorState?.intensityMultiplier.toFixed(2)}x
+            </span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-name">ACTIVE SPOTLIGHTS</span>
+            <span className="metric-value highlight">
+              {RoutingStore.getInstance().getConfig().spotlightCount ?? 3} Fixtures (Symmetrical BPM-Mapped)
+            </span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-name">LASER ACTIVATION</span>
+            <span className="metric-value highlight" style={{ color: (features.isTriStemDropActive || features.isAboveAverageAmplitude) ? '#00f0ff' : '#64748b' }}>
+              {(features.isTriStemDropActive || features.isAboveAverageAmplitude) ? 'ACTIVE (TRI-STEM DROP PEAK)' : 'STANDBY (FADED)'}
+            </span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-name">TRACK AVG AMPLITUDE</span>
+            <span className="metric-value">
+              {features.trackAverageAmplitude !== undefined ? `${features.trackAverageAmplitude.toFixed(3)} Ref` : '0.300 Ref'}
             </span>
           </div>
 

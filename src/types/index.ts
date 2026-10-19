@@ -29,6 +29,8 @@ export interface ColorPalette {
   glow: string;          // Emissive glow color
   laserColor: string;    // Laser beam color
   ambientColor: string;  // Scene ambient lighting
+  spotlightColors?: string[]; // Per-spotlight fixture assignments
+  rawSwatches?: string[];     // Authentic unmapped song swatches for laser palette derivation
 }
 
 export type MusicMood =
@@ -67,7 +69,9 @@ export interface AudioFeatures {
   stems: AudioStems;         // 4-stem separated real-time signals: Kick, Bass, Instruments, Vocals
   instrumentalActivity?: number; // Pre-processed instrumental activity & transient speed (0.0 to 1.0)
   globalIntensity?: number;      // Pre-processed overall track acoustic energy (0.0 to 1.0)
-  estimatedBpm: number;      // Current estimated tempo / BPM
+  estimatedBpm: number;      // Current tempo / BPM (or fallback)
+  bpmSource?: 'shazamio' | 'demucs' | 'unavailable'; // Strict provenance of tempo value
+  bpmConfidence?: number;    // 0.0 to 1.0 confidence in tempo value
   beatIndex: number;         // Monotonic beat counter
   barIndex: number;          // Bar index (1 to 4/8 in current phrase)
   beatPhase: number;         // 0.0 to 1.0 within active beat
@@ -75,6 +79,15 @@ export interface AudioFeatures {
   isPhrase: boolean;         // True on phrase boundary (every 8/16 beats)
   frequencyData: Uint8Array; // Raw FFT bins (0-255)
   timeDomainData: Uint8Array;// Raw PCM waveform samples (0-255)
+  isAboveAverageAmplitude?: boolean; // True when current playback amplitude exceeds full-track average
+  isTriStemDropActive?: boolean;     // True when kick, bass, and instruments simultaneously exceed their track-wide averages in peak drop segments
+  trackAverageAmplitude?: number;    // Pre-calculated full-track average reference
+  currentAmplitude?: number;         // Current playback RMS amplitude
+  lowFreqDistribution?: number;      // Ratio of sub-bass vs upper bass energy (0.0 to 1.0)
+  midRangeEnergy?: number;           // 0.0 to 1.0 (250 Hz to 4 kHz mid-range instrumental energy)
+  midSpectralCentroid?: number;      // 0.0 to 1.0 (mid-range spectral brightness/center)
+  midSpectralFlux?: number;          // 0.0 to 1.0 (mid-range spectral flux / note attack rate)
+  midEnergyDistribution?: number;    // 0.0 to 1.0 (ratio of upper-mid vs lower-mid energy)
 }
 
 export type ShowSection = 'intro' | 'verse' | 'buildup' | 'drop' | 'breakdown' | 'outro';
@@ -87,7 +100,8 @@ export interface EnabledEffectsConfig {
 
 export interface AudioVisualRoutingConfig {
   kickSensitivity: number;              // 0.2 to 2.0 (default 1.0)
-  screenShakeIntensity: number;         // 0.0 to 2.0 (default 1.0, applies only to YouTube screen)
+  spotlightShakeIntensity?: number;     // Optional alias
+  screenShakeIntensity: number;         // 0.0 to 2.5 (YouTube screen kick displacement)
   screenFlashIntensity: number;         // 0.0 to 2.0 (default 1.0)
   screenFlashColorSaturation: number;   // 0.0 to 2.0 (default 1.0, blends thumbnail colors on bass)
   bassToBeamIntensity: number;          // 0.2 to 2.0 (default 1.0)
@@ -95,7 +109,10 @@ export interface AudioVisualRoutingConfig {
   instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, arena cathedral laser fan speed)
   vocalToScreenGlow: number;            // 0.2 to 2.0 (default 1.0)
   laserDensity: number;                 // 0.2 to 2.0 (default 1.0)
-  spotlightCount: number;               // 1 to 8 (default 3)
+  spotlightCount: number;               // 1 to 8 (active/target count, default 3)
+  minSpotlightCount?: number;           // 1 to 4 (default 1 at BPM <= 70)
+  maxSpotlightCount?: number;           // 4 to 8 (default 7 at BPM >= 160)
+  autoBpmSpotlightSpawning?: boolean;   // Automatically map track BPM to spotlight count (default true)
   spotlightIntensity: number;           // 0.5 to 2.5 (default 1.3)
   effectDecay: number;                  // 0.5 to 2.0 (default 1.0)
   cameraShakeStrength: number;          // Legacy alias
@@ -106,6 +123,7 @@ export interface AudioVisualRoutingConfig {
 
 export interface BeatGridState {
   bpm: number;
+  bpmSource?: 'shazamio' | 'demucs' | 'unavailable';
   beatIndex: number;
   barIndex: number;
   beatPhase: number;
@@ -123,6 +141,7 @@ export interface ShowDirectorState {
   allowedEffects: EnabledEffectsConfig;
   intensityMultiplier: number;
   beatGrid: BeatGridState;
+  spotlightCount?: number;
 }
 
 export interface KieStemSeparationRequest {
@@ -192,6 +211,18 @@ export interface DemucsStemData {
   kickOnsets: number[];
   instrumentalActivity?: number[];
   globalIntensity?: number[];
+  demucsBpm?: {
+    bpm?: number | null;
+    candidateBpm?: number | null;
+    confidence?: number;
+    source?: string;
+  };
+  averageAmplitude?: number;
+  aboveAverageSections?: Array<{ startTime: number; endTime: number }>;
+  triStemDropSections?: Array<{ startTime: number; endTime: number }>;
+  drumsAverageAmplitude?: number;
+  bassAverageAmplitude?: number;
+  instAverageAmplitude?: number;
 }
 
 export interface TrackAnalysis {
@@ -204,6 +235,11 @@ export interface TrackAnalysis {
   events: TimedEvent[];
   sections: SectionEvent[];
   demucsStems?: DemucsStemData;
+  averageAmplitude?: number;
+  amplitudeEnvelope?: number[];
+  envelopeFps?: number;
+  aboveAverageSections?: Array<{ startTime: number; endTime: number }>;
+  triStemDropSections?: Array<{ startTime: number; endTime: number }>;
   descriptors: {
     energy: 'low' | 'medium' | 'high';
     brightness: 'dark' | 'balanced' | 'bright';
@@ -211,6 +247,30 @@ export interface TrackAnalysis {
     rhythmicRegularity: 'steady' | 'variable' | 'uncertain';
     mood: MusicMood;
   };
+}
+
+export type RecognitionStatus =
+  | 'unscanned'
+  | 'recognizing'
+  | 'recognized'
+  | 'unrecognized'
+  | 'failed'
+  | 'cached';
+
+export interface ShazamMatchMetadata {
+  success: boolean;
+  title?: string;
+  artist?: string;
+  album?: string;
+  genre?: string;
+  coverArt?: string;
+  query?: string;
+  shazamKey?: string;
+  bpm?: number | null;
+  bpmSource?: 'shazamio' | null;
+  bpmConfidence?: number | null;
+  cached?: boolean;
+  error?: string;
 }
 
 export interface TrackRecord {
@@ -226,11 +286,16 @@ export interface TrackRecord {
   analysisStatus: AnalysisStatus;
   analysis?: TrackAnalysis;
   demucsStems?: DemucsStemData;
+  bpm?: number | null;
+  bpmSource?: 'shazamio' | 'demucs' | 'unavailable';
+  bpmConfidence?: number;
   producer?: string;
   releaseDate?: string;
   description?: string;
   youtubeVideoId?: string;
   seed: number; // Deterministic random seed for this track
+  recognitionStatus?: RecognitionStatus;
+  shazamMatch?: ShazamMatchMetadata;
 }
 
 export interface VisualEffectContext {

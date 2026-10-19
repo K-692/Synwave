@@ -1,0 +1,18 @@
+# Synwave Python Microservice Dependencies
+# High-performance local audio intelligence & neural source separation
+
+# Core Web Microservice
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.12
+aiofiles>=23.2.0
+
+# Neural Stem Source Separation (Meta Demucs v4)
+# Leverages Apple Silicon MPS (Metal Performance Shaders) or CUDA/CPU
+demucs>=4.0.1
+torch>=2.2.0
+numpy>=1.26.0
+
+# Song Acoustic Fingerprinting & Recognition
+shazamio>=0.8.0
+certifi>=2024.0.0

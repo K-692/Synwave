@@ -1,9 +1,9 @@
 # Synwave: Procedural 3D Concert-Stage Simulator & Musical Choreography Engine
 
-> **Project Name:** Synwave  
-> **Repository:** Synwave ([https://github.com/K-692/Synwave.git](https://github.com/K-692/Synwave.git))  
-> **Platform Target:** High-Performance Web & Cross-Platform Desktop (React 19 + TypeScript + Three.js r186 + Web Audio API + Vite + PyTorch MPS Microservice)  
-> **Hardware Acceleration:** Native Apple Silicon MPS (Metal Performance Shaders) / GPU Acceleration  
+> **Project Name:** Synwave
+> **Repository:** Synwave ([https://github.com/K-692/Synwave.git](https://github.com/K-692/Synwave.git))
+> **Platform Target:** High-Performance Web & Cross-Platform Desktop (React 19 + TypeScript + Three.js r186 + Web Audio API + Vite + PyTorch MPS Microservice)
+> **Hardware Acceleration:** Native Apple Silicon MPS (Metal Performance Shaders) / GPU Acceleration
 > **Architecture Principle:** 100% Procedural Generation & Neural Multi-STEM Source Separation Synchronization
 
 ---
@@ -13,6 +13,7 @@
 **Synwave** is a real-time, genre-adaptive **3D procedural concert-stage simulator** and desktop music visualizer. Rather than simply scaling visual effects with instantaneous frame loudness or wandering aimlessly with unanchored particles, Synwave acts as an **autonomous concert lighting designer and show director**. It establishes an authoritative beat grid, pre-processes the entire audio track using **Meta's Demucs v4 (Hybrid Transformer HTDemucs)** on Apple Silicon MPS hardware to extract 4 neural stems and acoustic intensity trajectories, detects transient onsets and section boundaries, and coordinates physical concert fixtures into synchronized, cinematic choreographies.
 
 ### Key Architectural Pillars:
+
 1. **Full Track Pre-Processing & Acoustic Spectrum Analysis (Zero Real-Time Guesswork):**
    - The entire audio file is pre-processed up-front with Demucs v4 on Apple Silicon MPS hardware (`device="mps"`).
    - Extracts 4 neural stems: `drums`, `bass`, `instruments` (`other`), and `vocals`.
@@ -87,49 +88,846 @@ Audio Input (File or Path) ──► [DemucsService] ──► Cache Check (.syn
 ## 3. Visual Rig Engineering & Spatial Physics
 
 ### 3.1 360° Downward Instrument Lasers (`ThinLasersEffect.ts`)
+
 - **Mount Configuration:** Top screen truss stations at Left ($X=-5.5, Y=11.1, Z=-4.0$), Center ($X=0.0, Y=11.4, Z=-4.0$), and Right ($X=+5.5, Y=11.1, Z=-4.0$).
 - **Nozzle Dot:** Micro-sphere geometry ($r = 0.04\text{m}$) replacing legacy white sphere flares.
 - **Direction & Sweep:** Targeted downward towards stage floor and audience ($Y_{\text{target}} \in [-1.0, 2.5], Z_{\text{target}} \in [12.0, 24.0]$).
 - **Kinematic Formulation:**
-  $$\psi_{\text{beam}}(t) = \psi_{\text{sweep}}(t) + \delta_s + \frac{2\pi b}{N_{\text{beams}}}$$
-  $$X_{\text{target}} = X_{\text{base}} + \sin(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 14.0$$
-  $$Y_{\text{target}} = Y_{\text{base}} + \cos(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 7.0$$
+
+  $$
+  \psi_{\text{beam}}(t) = \psi_{\text{sweep}}(t) + \delta_s + \frac{2\pi b}{N_{\text{beams}}}
+  $$
+
+  $$
+  X_{\text{target}} = X_{\text{base}} + \sin(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 14.0
+  $$
+
+  $$
+  Y_{\text{target}} = Y_{\text{base}} + \cos(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 7.0
+  $$
 - **High-Intensity Activation Gating:**
-  $$\alpha_{\text{laser}} = \begin{cases} 1.0 & \text{if } I_{\text{global}} > 0.44 \text{ or } \text{isDrop} = \text{true} \\ 0.0 & \text{otherwise} \end{cases}$$
+
+  $$
+  \alpha_{\text{laser}} = \begin{cases} 1.0 & \text{if } I_{\text{global}} > 0.44 \text{ or } \text{isDrop} = \text{true} \\ 0.0 & \text{otherwise} \end{cases}
+  $$
 - **Color Complementarity:**
-  $$\text{Hue}_{\text{laser}} = (\text{Hue}_{\text{palette}} + 0.5) \pmod{1.0}$$
+
+  $$
+  \text{Hue}_{\text{laser}} = (\text{Hue}_{\text{palette}} + 0.5) \pmod{1.0}
+  $$
 
 ### 3.2 360° Rotatable Perimeter Bass Rig (`StageLightsEffect.ts`)
+
 - **Mount Configuration:** 12 fixtures framing the YouTube screen ($X = \pm 12.0$ on towers, $Y = 11.4$ on top truss, $Y = 0.8$ on stage deck).
 - **Dynamic Active Fixture Scaling:**
-  $$N_{\text{active}} = \text{clamp}\left(\text{round}\left(\text{lerp}(2, 12, A_{\text{inst}} \cdot 0.65 + \text{onsetStrength} \cdot 0.35)\right), 2, 12\right)$$
+  $$
+  N_{\text{active}} = \text{clamp}\left(\text{round}\left(\text{lerp}(2, 12, A_{\text{inst}} \cdot 0.65 + \text{onsetStrength} \cdot 0.35)\right), 2, 12\right)
+  $$
 - **360° Circular Sweep Equations:**
-  $$\psi(t) = \psi_0 + \int (1.4 + 5.5 \cdot \text{stems.bass}^{1.3}) \, dt$$
+  $$
+  \psi(t) = \psi_0 + \int (1.4 + 5.5 \cdot \text{stems.bass}^{1.3}) \, dt
+  $$
 
 ---
 
 ## 4. Audio-to-Visual Routing Console Specification
 
-| Parameter | Section | Range | Default | Functional Description |
-|---|---|---|---|---|
-| **`screenShakeIntensity`** | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Bounded pixel displacement strictly applied to the YouTube stage screen on heavy kicks. |
-| **`screenFlashIntensity`** | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Full-window blinder strobe flash intensity triggered by drum kick onsets. |
-| **`kickSensitivity`** | Drums & Kicks | $0.2\times - 2.0\times$ | $1.0\times$ | Threshold scaling for drum kick detection. |
-| **`perimeterBassRotationSpeed`**| Bass Spectrum | $0.2\times - 3.0\times$ | $1.0\times$ | Continuous 360° orbital rotation speed of perimeter screen lights driven by bass frequency. |
-| **`bassToBeamIntensity`** | Bass Spectrum | $0.2\times - 2.5\times$ | $1.0\times$ | Modulates moving-head beam thickness, floor wash radiance, and perimeter radiance. |
-| **`screenFlashColorSaturation`**| Bass Spectrum | $0.0\times - 2.0\times$ | $1.0\times$ | Blends video thumbnail gradient colors into screen flash on high bass hits (white at low bass). |
-| **`effectDecay`** | Bass Spectrum | $0.5\times - 2.5\times$ | $1.0\times$ | Attack and release envelope decay speed for flashes and bass pulses. |
-| **`instrumentalMovementSpeed`** | Lasers | $0.2\times - 3.0\times$ | $1.0\times$ | 360° conical rotation rate towards the stage floor driven by instrumental high frequency. |
-| **`laserDensity`** | Lasers | $0.2\times - 2.0\times$ | $1.0\times$ | Active razor beam count from the 3 top laser stations. |
-| **`spotlightCount`** | Spotlights | $1 - 8$ | $3$ | Base active colour-tinted spotlights sweeping the stage (scaled dynamically by instrumental intensity). |
-| **`maxBrightnessLimit`** | Spotlights | $30\% - 100\%$ | $100\%$ | Global concert lumen ceiling preventing venue overexposure. |
-| **`reducedFlash`** | Safety | Boolean | `false` | Photosensitive mode: tones down high-contrast blinder strobing. |
+| Parameter                                | Section       | Range                     | Default       | Functional Description                                                                                  |
+| ---------------------------------------- | ------------- | ------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| **`screenShakeIntensity`**       | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Bounded pixel displacement strictly applied to the YouTube stage screen on heavy kicks.                 |
+| **`screenFlashIntensity`**       | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Full-window blinder strobe flash intensity triggered by drum kick onsets.                               |
+| **`kickSensitivity`**            | Drums & Kicks | $0.2\times - 2.0\times$ | $1.0\times$ | Threshold scaling for drum kick detection.                                                              |
+| **`perimeterBassRotationSpeed`** | Bass Spectrum | $0.2\times - 3.0\times$ | $1.0\times$ | Continuous 360° orbital rotation speed of perimeter screen lights driven by bass frequency.            |
+| **`bassToBeamIntensity`**        | Bass Spectrum | $0.2\times - 2.5\times$ | $1.0\times$ | Modulates moving-head beam thickness, floor wash radiance, and perimeter radiance.                      |
+| **`screenFlashColorSaturation`** | Bass Spectrum | $0.0\times - 2.0\times$ | $1.0\times$ | Blends video thumbnail gradient colors into screen flash on high bass hits (white at low bass).         |
+| **`effectDecay`**                | Bass Spectrum | $0.5\times - 2.5\times$ | $1.0\times$ | Attack and release envelope decay speed for flashes and bass pulses.                                    |
+| **`instrumentalMovementSpeed`**  | Lasers        | $0.2\times - 3.0\times$ | $1.0\times$ | 360° conical rotation rate towards the stage floor driven by instrumental high frequency.              |
+| **`laserDensity`**               | Lasers        | $0.2\times - 2.0\times$ | $1.0\times$ | Active razor beam count from the 3 top laser stations.                                                  |
+| **`spotlightCount`**             | Spotlights    | $1 - 8$                 | $3$         | Base active colour-tinted spotlights sweeping the stage (scaled dynamically by instrumental intensity). |
+| **`maxBrightnessLimit`**         | Spotlights    | $30\% - 100\%$          | $100\%$     | Global concert lumen ceiling preventing venue overexposure.                                             |
+| **`reducedFlash`**               | Safety        | Boolean                   | `false`     | Photosensitive mode: tones down high-contrast blinder strobing.                                         |
+
+13. **Phase 1 — YouTube Data API v3 Startup Gate & Credential Lifecycle:**
+    - **Startup Verification Gate:** The main stage experience and audio processing cannot be entered without an active, verified YouTube Data API v3 key.
+    - **Lightweight 1-Unit Validation:** API keys are validated using the 1-quota-unit `videoCategories.list?part=snippet&regionCode=US` endpoint (avoiding 100-quota-unit search calls, preserving 99.99% of free daily quota).
+    - **Strict Error Diagnostics:** Differentiates between invalid keys (HTTP 400), quota exhaustion (HTTP 403 `quotaExceeded`), API not enabled (`accessNotConfigured`), domain/IP forbidden (`forbidden`), and network connectivity drops.
+    - **Desktop Security:** Key stored with obfuscated prefix encoding (`enc:base64`) in local storage (`synwave_yt_api_key_v3`), eliminating raw plaintext storage. Plain API keys are masked in the UI (`AIzaSy••••••••••••Ww`) and excluded from runtime console logs.
+    - **Zero-Restart Key Replacement:** Users can view, verify, and update their key at any time without restarting the app via the dedicated `Key` button in the top-right header toggles.
 
 ---
 
-## 5. Current Implementation State & Quality Verification
+## 2. YouTube Data API v3 Startup Gate Specification (`youtubeService.ts` & `YouTubeApiKeyModal.tsx`)
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled in 593ms).
+```
+App Launch ──► [Startup Gate Check]
+                     │
+         ┌───────────┴───────────┐
+    (Key Missing)           (Key Found)
+         │                       │
+         ▼                       ▼
+[Mandatory Gate Modal]   [Lightweight 1-Unit Probe]
+(Blocks Stage App)     (videoCategories?regionCode=US)
+         │                       │
+         │             ┌─────────┴─────────┐
+         │         (Valid HTTP 200)   (Error 400/403/Net)
+         │             │                   │
+         │             ▼                   ▼
+         │       [Stage Ready]    [Mandatory Gate Modal]
+         │       (Unlock Stage)   (Display Classified Error)
+         │                                 │
+         └─────────────► Enter Key ◄───────┘
+                               │
+                      [Lightweight Probe]
+                               │
+                       ┌───────┴───────┐
+                    (Valid)        (Invalid)
+                       │               │
+                       ▼               ▼
+                 Store Key &      Show Error Alert
+                 Unlock Stage     & Retain Focus
+```
+
+### Diagnostic Error Matrix:
+| Error Category | HTTP Code | API Reason / Condition | User Diagnostic Card |
+|---|---|---|---|
+| **`invalid_key`** | 400 | `API_KEY_INVALID` / Key expired | "The API key entered is not valid or has been deleted. Check Google Cloud Console." |
+| **`quota_exhausted`** | 403 | `quotaExceeded` / `RESOURCE_EXHAUSTED` | "Your daily YouTube Data API quota is exhausted (10,000 units/day limit reached). Resets at midnight PST." |
+| **`api_not_enabled`** | 403 | `accessNotConfigured` | "YouTube Data API v3 is not enabled in your Google Cloud project. Enable it under APIs & Services." |
+| **`forbidden`** | 403 | `forbidden` / IP/Referrer restriction | "API key access forbidden. Check application, HTTP referrer, or IP restrictions." |
+| **`network_error`** | Fetch fail | Timeout / DNS resolution failure | "Unable to reach Google Cloud servers. Check your internet connection or proxy." |
+
+---
+
+## 3. Demucs Offline Pre-Processing Architecture (`demucs_service.py` & `demucsService.ts`)
+
+```
+Audio Input (File or Path) ──► [DemucsService] ──► Cache Check (.synwave_cache/stems/{hash}.json)
+                                     │
+                    ┌────────────────┴────────────────┐
+             (Cache Miss)                       (Cache Hit)
+                    │                                 │
+     Demucs v4 (htdemucs on MPS)                      │
+     Separates: drums, bass, other, vocals            │
+                    │                                 │
+     Extract 25 FPS RMS Envelopes                     │
+     Detect Kick Onsets & Amplitudes (kickEvents)     │
+     Compute instrumentalActivity Trajectory          │
+     Compute globalIntensity Spectrum Profile         │
+     Write to .synwave_cache/stems/                   │
+                    │                                 │
+                    └────────────────┬────────────────┘
+                                     ▼
+                      JSON Envelope Response (<10ms cached)
+                                     ▼
+                    [AudioEngine.setDemucsStems()]
+                                     ▼
+             Live features sampled at currentTime in AudioEngine
+```
+
+---
+
+## 4. Visual Rig Engineering & Spatial Physics
+
+### 4.1 360° Downward Instrument Lasers (`ThinLasersEffect.ts`)
+
+- **Mount Configuration:** Top screen truss stations at Left ($X=-5.5, Y=11.1, Z=-4.0$), Center ($X=0.0, Y=11.4, Z=-4.0$), and Right ($X=+5.5, Y=11.1, Z=-4.0$).
+- **Nozzle Dot:** Micro-sphere geometry ($r = 0.04\text{m}$) replacing legacy white sphere flares.
+- **Direction & Sweep:** Targeted downward towards stage floor and audience ($Y_{\text{target}} \in [-1.0, 2.5], Z_{\text{target}} \in [12.0, 24.0]$).
+- **Kinematic Formulation:**
+
+  $$
+  \psi_{\text{beam}}(t) = \psi_{\text{sweep}}(t) + \delta_s + \frac{2\pi b}{N_{\text{beams}}}
+  $$
+
+  $$
+  X_{\text{target}} = X_{\text{base}} + \sin(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 14.0
+  $$
+
+  $$
+  Y_{\text{target}} = Y_{\text{base}} + \cos(\psi_{\text{beam}}) \cdot S_{\text{cone}} \cdot 7.0
+  $$
+- **High-Intensity Activation Gating:**
+
+  $$
+  \alpha_{\text{laser}} = \begin{cases} 1.0 & \text{if } I_{\text{global}} > 0.44 \text{ or } \text{isDrop} = \text{true} \\ 0.0 & \text{otherwise} \end{cases}
+  $$
+- **Color Complementarity:**
+
+  $$
+  \text{Hue}_{\text{laser}} = (\text{Hue}_{\text{palette}} + 0.5) \pmod{1.0}
+  $$
+
+### 4.2 360° Rotatable Perimeter Bass Rig (`StageLightsEffect.ts`)
+
+- **Mount Configuration:** 12 fixtures framing the YouTube screen ($X = \pm 12.0$ on towers, $Y = 11.4$ on top truss, $Y = 0.8$ on stage deck).
+- **Dynamic Active Fixture Scaling:**
+  $$
+  N_{\text{active}} = \text{clamp}\left(\text{round}\left(\text{lerp}(2, 12, A_{\text{inst}} \cdot 0.65 + \text{onsetStrength} \cdot 0.35)\right), 2, 12\right)
+  $$
+- **360° Circular Sweep Equations:**
+  $$
+  \psi(t) = \psi_0 + \int (1.4 + 5.5 \cdot \text{stems.bass}^{1.3}) \, dt
+  $$
+
+---
+
+## 5. Audio-to-Visual Routing Console Specification
+
+| Parameter                                | Section       | Range                     | Default       | Functional Description                                                                                  |
+| ---------------------------------------- | ------------- | ------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| **`screenShakeIntensity`**       | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Bounded pixel displacement strictly applied to the YouTube stage screen on heavy kicks.                 |
+| **`screenFlashIntensity`**       | Drums & Kicks | $0.0\times - 2.5\times$ | $1.0\times$ | Full-window blinder strobe flash intensity triggered by drum kick onsets.                               |
+| **`kickSensitivity`**            | Drums & Kicks | $0.2\times - 2.0\times$ | $1.0\times$ | Threshold scaling for drum kick detection.                                                              |
+| **`perimeterBassRotationSpeed`** | Bass Spectrum | $0.2\times - 3.0\times$ | $1.0\times$ | Continuous 360° orbital rotation speed of perimeter screen lights driven by bass frequency.            |
+| **`bassToBeamIntensity`**        | Bass Spectrum | $0.2\times - 2.5\times$ | $1.0\times$ | Modulates moving-head beam thickness, floor wash radiance, and perimeter radiance.                      |
+| **`screenFlashColorSaturation`** | Bass Spectrum | $0.0\times - 2.0\times$ | $1.0\times$ | Blends video thumbnail gradient colors into screen flash on high bass hits (white at low bass).         |
+| **`effectDecay`**                | Bass Spectrum | $0.5\times - 2.5\times$ | $1.0\times$ | Attack and release envelope decay speed for flashes and bass pulses.                                    |
+| **`instrumentalMovementSpeed`**  | Lasers        | $0.2\times - 3.0\times$ | $1.0\times$ | 360° conical rotation rate towards the stage floor driven by instrumental high frequency.              |
+| **`laserDensity`**               | Lasers        | $0.2\times - 2.0\times$ | $1.0\times$ | Active razor beam count from the 3 top laser stations.                                                  |
+| **`spotlightCount`**             | Spotlights    | $1 - 8$                 | $3$         | Base active colour-tinted spotlights sweeping the stage (scaled dynamically by instrumental intensity). |
+| **`maxBrightnessLimit`**         | Spotlights    | $30\% - 100\%$          | $100\%$     | Global concert lumen ceiling preventing venue overexposure.                                             |
+| **`reducedFlash`**               | Safety        | Boolean                   | `false`     | Photosensitive mode: tones down high-contrast blinder strobing.                                         |
+
+---
+
+14. **Phase 2 — Repository Credits, Contributor Architecture & Dependency Attribution:**
+    - **Contributor-Friendly README:** High-fidelity documentation featuring architecture diagrams, features overview, controls table, troubleshooting, known bugs roadmap, and an open-source contributor invitation.
+    - **Verified Dependency Matrix:** Full auditing and attribution of all active production libraries (React 19, Three.js r186, Meta Demucs v4, PyTorch MPS, ShazamIO, FastAPI, Uvicorn, Lucide, TypeScript, Vite) with author attributions, official repository links, and verified SPDX licenses.
+    - **Automated Python Environment Specification (`requirements.txt`):** Reproducible virtual environment dependencies pinned for Apple Silicon MPS and CUDA/CPU.
+    - **Sanitized Environment Template (`.env.example`):** Clear template for YouTube Data API credentials without exposing private keys.
+    - **Open Source Guidelines (`CONTRIBUTING.md`):** Complete workflow for issue triage, branch conventions, WebGL resource hygiene, and pull request submissions.
+
+15. **Phase 3 — Verified ShazamIO BPM Integration & Demucs Multi-Interval Comb Filter Fallback Engine:**
+    - **Authoritative Tempo Hierarchy:** Completely eliminates legacy crude BPM estimation. Replaces it with a two-tier verified system with explicit provenance tagging:
+      1. **Primary Source — ShazamIO Verified BPM (`source = 'shazamio'`):** The audio stream is matched via ShazamIO. The actual response payload (`track.attributes.bpm`, `track.sections[].metadata`, or top-level keys) is inspected for an explicit numeric BPM within $[50, 240]$. If found, it is accepted with $1.0$ confidence. If absent (standard for many Shazam catalog entries), the engine gracefully falls back without assuming or fabricating a value.
+      2. **Secondary Fallback — Demucs Multi-Interval Comb Filter (`source = 'demucs'`):** If ShazamIO does not return a usable BPM, the engine reuses the exact kick-event timestamps already extracted by Meta's HTDemucs neural separation pipeline:
+         - **Kick Interval Spectrum:** Gathers kick onsets $\{t_i\}_{i=1}^N$ in chronological order. Computes pairwise intervals $\Delta t_{ij} = t_j - t_i$ across consecutive and multi-kick skip spans $1 \le (j - i) \le 4$ within the plausible musical interval window $[0.22\text{s}, 3.2\text{s}]$, weighted by $w_{ij} = 1 / (j - i)$.
+         - **Gaussian Comb Filtering:** Evaluates candidate tempos $B \in [65.0, 190.0]\text{ BPM}$ in $0.5\text{ BPM}$ increments with a Gaussian proximity kernel ($\sigma = 38\text{ms}$):
+           $$
+           S(B) = \sum_{(i,j)} w_{ij} \exp\left(-\frac{(\Delta t_{ij} - k \cdot T_B)^2}{2\sigma^2}\right), \quad k = \left\lfloor \frac{\Delta t_{ij}}{T_B} + 0.5 \right\rfloor, \; 1 \le k \le 4
+           $$
+         - **Rhythmic Ambiguity Disambiguation:** Resolves syncopation, half-time, and double-time ambiguities (e.g. melodic dubstep kicks landing on beats 1 and 2-and/3 producing $75\text{ BPM}$ fundamental intervals are tested against $2B = 150\text{ BPM}$; if the harmonic retention score $S(2B) \ge 0.70 \cdot S(B)$, the double-time tempo is selected).
+         - **Global Phase Grid Alignment:** Tests 100 phase shifts $\phi \in [0, T_B)$ across all kicks to measure the fraction of onsets aligning within $\pm 60\text{ms}$ of the grid:
+           $$
+           f_{\text{align}} = \frac{1}{N} \max_{\phi} \sum_{n=1}^N \mathbf{1}_{\{|\Delta_{\text{grid}}(t_n, \phi, T_B)| < 0.060\text{s}\}}
+           $$
+         - **Confidence Scoring:** Combines grid alignment and spectral peak-to-average contrast:
+           $$
+           C = \min\left(1.0, 0.60 \cdot f_{\text{align}} + 0.40 \cdot \min\left(1.0, \frac{S(B^*)}{\bar{S} + \epsilon} \cdot \frac{1}{3.5}\right)\right)
+           $$
+         - **Reliability Acceptance:** Accepted as `source = 'demucs'` only if $C \ge 0.35$ and at least 6 kicks align to the grid.
+      3. **Explicit Unavailable State (`source = 'unavailable'`):** If neither ShazamIO nor Demucs yields a reliable BPM (e.g. ambient tracks with $< 8$ kicks or low confidence), the visualizer receives an explicit `null` BPM and `unavailable` source. No tempo is ever guessed or assumed.
+    - **Dual-Layer Per-Track Caching:**
+      - **Client-Side:** Caches recognized metadata, BPM value, source, and confidence in `localStorage` under `synwave_track_bpm_cache_v1_{trackId}`.
+      - **Microservice-Side:** Stores calculated `demucsBpm` directly in `.synwave_cache/stems/{hash}.json` along with stem envelopes.
+      - Avoids duplicate Shazam network requests and redundant comb filter calculations.
+    - **Spotlight Rig Adaptive Behavior (`StageLightsEffect.ts`):**
+      - The spotlight controller reads `features.bpmSource` and `features.bpmConfidence`.
+      - When verified (`shazamio` or `demucs`), periodic beat pulses and rotational pan/tilt sweeps lock tightly to the true tempo.
+      - When `unavailable`, the beat pulse drops smoothly to zero; moving heads disengage rigid beat snapping and fluidly sweep the stage driven by live RMS and instrument stem activity without artificial pulsing.
+    - **HUD Telemetry Provenance Display (`DiagnosticOverlay.tsx`):**
+      - Displays live `RESOLVED BPM`, color-coded `BPM PROVENANCE` (`SHAZAMIO [VERIFIED]` in green, `DEMUCS [KICKS]` in cyan, or `UNAVAILABLE` in amber), and `TEMPO CONFIDENCE` percentage.
+
+16. **Phase 4 — BPM-Driven Symmetrical Spotlight Spawning Engine:**
+    - **Monotonic Clamped Linear Interpolation:**
+      - Maps resolved track BPM across the calibrated interval $[70.0, 160.0]\text{ BPM}$ to a configurable count range $[\text{minCount}, \text{maxCount}]$ (default $[1, 7]$, expandable to $8$):
+        $$
+        t = \text{clamp}\left(\frac{\text{BPM} - 70.0}{160.0 - 70.0}, 0.0, 1.0\right)
+        $$
+        $$
+        N_{\text{spotlights}} = \text{clamp}\left(\text{round}(\text{minCount} + t \cdot (\text{maxCount} - \text{minCount})), \text{minCount}, \text{maxCount}\right)
+        $$
+      - Empirical monotonic evaluation across reference tempos:
+        - $\le 70\text{ BPM} \to 1$ fixture
+        - $85\text{ BPM} \to 2$ fixtures
+        - $100\text{ BPM} \to 3$ fixtures
+        - $115\text{ BPM} \to 4$ fixtures
+        - $130\text{ BPM} \to 5$ fixtures
+        - $145\text{ BPM} \to 6$ fixtures
+        - $\ge 160\text{ BPM} \to 7$ fixtures
+    - **Bilateral Symmetrical Layout Around YouTube Player (Top, Left, Right):**
+      - The aperture of the YouTube player is centered at $(0.0, 4.6, -4.5)$ with dimensions $21.0\text{m} \times 11.8\text{m}$.
+      - Spotlights are placed along the structural framing (Top Overhead Truss at $Y = 12.2, Z = -4.0$; Left Tower at $X = -12.4, Z = -4.0$; Right Tower at $X = +12.4, Z = -4.0$):
+        - **$N = 1$:** Top Center ($X = 0, Y = 12.2$).
+        - **$N = 2$:** Left ($X = -12.4, Y = 5.5$), Right ($X = +12.4, Y = 5.5$).
+        - **$N = 3$:** Top Center ($0, 12.2$), Left ($-12.4, 5.5$), Right ($+12.4, 5.5$).
+        - **$N = 4$:** Top Pair ($-4.8, 12.2$ and $+4.8, 12.2$), Left ($-12.4, 5.5$), Right ($+12.4, 5.5$).
+        - **$N = 5$:** Top Trio ($0, 12.2$ and $\pm 5.8, 12.2$), Left ($-12.4, 5.5$), Right ($+12.4, 5.5$).
+        - **$N = 6$:** Top Pair ($\pm 4.8, 12.2$), Left Pair ($-12.4$, $Y \in \{4.0, 8.0\}$), Right Pair ($+12.4$, $Y \in \{4.0, 8.0\}$).
+        - **$N = 7$:** Top Trio ($0$ and $\pm 5.8, 12.2$), Left Pair ($-12.4$, $Y \in \{4.0, 8.0\}$), Right Pair ($+12.4$, $Y \in \{4.0, 8.0\}$).
+        - **$N = 8$:** Top Quad ($\pm 2.8$ and $\pm 7.5, 12.2$), Left Pair ($-12.4$, $Y \in \{4.0, 8.0\}$), Right Pair ($+12.4$, $Y \in \{4.0, 8.0\}$).
+      - Every active layout configuration exhibits 100% bilateral mirror symmetry across the $Y$-$Z$ plane.
+    - **Smooth Track Transitions Without Visual Jumps:**
+      - **Continuous Activation Envelope:** Each moving head maintains a continuous activation factor $a_i(t) \in [0.0, 1.0]$. Newly activated fixtures fade up over $\sim 0.3\text{s}$ ($\frac{da_i}{dt} = 3.5$), while deactivated fixtures fade out smoothly to zero ($\frac{da_i}{dt} = -3.0$).
+      - **Mount Position Gliding:** When slot positions shift between counts, the fixture chassis and lens groups smoothly glide to their new slot coordinates via `group.position.lerp(targetSlotPos, deltaSeconds * 4.5)`.
+      - **Mirrored Side Sweeps:** Left and Right tower fixtures cross their volumetric cones inward symmetrically across the stage floor, while Top fixtures sweep downward into the audience.
+    - **Configurable Console & HUD Telemetry:**
+      - `RoutingConsole.tsx` provides dedicated sliders for active count, minimum count ($1-4$ at $\le 70\text{ BPM}$), and maximum count ($4-8$ at $\ge 160\text{ BPM}$).
+      - Telemetry overlay HUD shows real-time `ACTIVE SPOTLIGHTS` count and BPM-mapped scaling status.
+
+17. **Phase 5 — Continuous SYNWAVE Logo Visibility and Menu Decoupling:**
+    - **Architectural Separation of Brand Identity from Menu Auto-Hide:**
+      - Decoupled the top-left `.header-brand.floating-pill` from the auto-hide translation logic of `.synwave-header`.
+      - Previously, the entire top header container translated off-screen via `translateY(-100%)` when `isTopBarVisible` transitioned to false, unmounting/hiding the brand logo alongside the functional navigation pills.
+      - Refactored `.synwave-header` to act as a permanently positioned, transparent spatial flex container (`pointer-events: none; background: transparent; border: none; top: 14px; left: 20px; right: 20px;`) with zero translation or container opacity toggling.
+    - **Subtle Ambient Watermark State (`dimmed`):**
+      - When upper menus auto-hide after inactivity (cursor motionless for $>1.8\text{s}$ or exiting the top viewport threshold), the SYNWAVE logo transitions smoothly to a subdued ambient watermark state:
+        ```css
+        .header-brand.floating-pill.dimmed {
+          opacity: 0.45;
+        }
+        ```
+      - This maintains continuous brand presence against the 3D procedural concert stage without distracting from the visualizer or YouTube performance.
+    - **Instant Restoration & Interactive Hover Response:**
+      - When menus reappear (cursor entering the top viewport zone $Y \le 65\text{px}$ or drawers opening), the logo restores to full opacity:
+        ```css
+        .header-brand.floating-pill.full-opacity,
+        .header-brand.floating-pill:hover {
+          opacity: 1.0 !important;
+        }
+        ```
+      - Direct user interaction is fully preserved via `pointer-events: auto !important; cursor: pointer;`. Hovering over or clicking the dimmed logo immediately illuminates it to 100% opacity with smooth neon glow transitions.
+    - **Position Stability & Zero Visual Shifting:**
+      - The logo remains completely stationary at its fixed coordinates `(20px, 14px)` with zero DOM unmounting, re-rendering shifts, or spatial jitter.
+      - Opacity transition utilizes hardware-accelerated timing (`transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease`).
+      - Upper menu controls (Center Load Audio File pill and Top Right Console Toggles) retain smooth upward translate animations (`translateY(-120%)`) and fade to `opacity: 0` during auto-hide.
+
+18. **Phase 6 — Complementary Chromatic Laser Engine & Outline Elimination:**
+    - **180° HSL Complementary Palette Rotation:**
+      - Extracts the active track palette colors (derived either from the YouTube video thumbnail or the real-time mood engine).
+      - Converts primary and secondary palette RGB colors to HSL and executes exact $180^\circ$ hue rotations:
+        $$
+        h_{\text{comp, primary}} = (h_{\text{primary}} + 0.5) \pmod{1.0}
+        $$
+        $$
+        h_{\text{comp, secondary}} = (h_{\text{secondary}} + 0.5) \pmod{1.0}
+        $$
+      - If $h_{\text{comp, secondary}}$ is chromatically too close to primary ($|\Delta h| < 0.10$), an automated harmonic offset $(h_{\text{comp, primary}} + 0.14) \pmod{1.0}$ is applied to create the rich, dual-tone alternating laser beams seen in high-end festival stage productions (e.g. alternating neon cyan and electric magenta).
+    - **Complete Elimination of White Borders, Cores, and Stroke Lines:**
+      - Removed the desaturated white core material (`color: 0xffffff`, $s=0.35, l=0.95$) that previously produced a chalky white center stroke across the entire beam width.
+      - Increased cylinder radial tessellation from 8 facets to 24 smooth radial segments (`CylinderGeometry(..., 24, 1, true)`), completely eliminating faceted polygonal silhouette creases and geometric border strokes.
+      - Eliminated unshaded line primitives and open-cylinder edge artifacts.
+    - **Tri-Layer Volumetric Optical Architecture:**
+      - **1. Neon Core Filament ($r \in [0.005, 0.012]\text{m}$):**
+        - Color: `new THREE.Color().setHSL(beamHue, 1.0, 0.60)`.
+        - 100% saturation and 0.60 luminance deliver an intensely glowing neon filament that preserves 100% of its pure complementary pigment without burning out to white.
+        - Opacity: $0.80 - 1.0$, `THREE.AdditiveBlending`.
+      - **2. Volumetric Glow Sheath ($r \in [0.018, 0.040]\text{m}$):**
+        - Color: `new THREE.Color().setHSL(beamHue, 1.0, 0.50)`.
+        - Provides a dense, chromatic beam envelope.
+        - Opacity: $0.32 - 0.62$, `THREE.AdditiveBlending`.
+      - **3. Atmospheric Halo Dispersion ($r \in [0.040, 0.085]\text{m}$):**
+        - Color: `new THREE.Color().setHSL(beamHue, 1.0, 0.45)`.
+        - Delivers soft Gaussian-like feathering into dark stage space, ensuring beams have clean, radiant borders without harsh silhouette boundaries.
+        - Opacity: $0.12 - 0.30$, `THREE.AdditiveBlending`.
+    - **Diode Emitter Nozzle Synchronization:**
+      - Origin diode dot nozzle meshes (`dotGeo`, $r = 0.04\text{m}$) are dynamically mapped to `compPrimaryHue` ($s=1.0, l=0.60$), ensuring coherent optical emission from the top frame of the YouTube player without large white circle artifacts.
+
+19. **Phase 7 — Audio-Aware Laser Activation & Directionally Synchronized Kick/Bass Movement:**
+    - **Offline Track-Wide Average Amplitude Reference ($A_{\text{avg}}$):**
+      - During initial pre-processing (via Web Audio offline decoding in `AudioAnalyzer.ts` and neural stem extraction in `demucs_service.py`), the entire audio signal is analyzed from beginning to end before playback commences:
+        $$
+        A_{\text{avg}} = \frac{1}{N} \sum_{i=0}^{N-1} \text{RMS}[i]
+        $$
+      - **Critical Guarantee:** $A_{\text{avg}}$ is a deterministic, static scalar reference for the track. It is NEVER replaced with a moving average during playback, preserving the true definition of "above the average amplitude level of the entire music."
+      - Segment detection groups contiguous frames exceeding $A_{\text{avg}}$ with a $0.4\text{s}$ hysteresis window into `aboveAverageSections: Array<{ startTime: number; endTime: number }>`.
+    - **Frequency-Band Kick vs. Bass Discrimination:**
+      - Percussive kick transients ($40 - 100\text{ Hz}$) are cleanly decoupled from sustained harmonic bassline ($50 - 250\text{ Hz}$) using Demucs drum stem first-order difference ($\Delta \text{drums}$) and a $160\text{ms}$ refractory lockout, preventing sustained sub-bass rumbles from triggering false kicks.
+      - Low-frequency spectral distribution is continuously evaluated:
+        $$
+        \text{Distribution}_{\text{low}} = \frac{E_{\text{sub-bass}}}{E_{\text{sub-bass}} + E_{\text{mid-bass}}}
+        $$
+    - **Audio-Aware Activation Gate with Smooth Fading:**
+      - Lasers activate **strictly** within eligible segments where current playback amplitude exceeds the track-wide reference ($A(t) \ge A_{\text{avg}}$).
+      - Smooth exponential fading eliminates abrupt visual cuts:
+        - Fade-in rate: $\sim 0.35\text{s}$ ($\frac{da}{dt} = 3.5$)
+        - Fade-out rate: $\sim 0.60\text{s}$ ($\frac{da}{dt} = 1.8$)
+      - When outside eligible sections, all laser meshes smoothly fade to zero opacity and sleep with zero draw overhead.
+    - **Coherent Directional Swarm Synchronization:**
+      - Replaced independent station pinwheel rotations with a unified master rig direction vector $(\Phi_{\text{master}}, \Theta_{\text{master}})$.
+      - All 3 top stations and their 24 beams maintain coherent directional lockstep across the arena, while varying beam spacing (fan divergence) and speed proportionally to bass energy and kick impulses.
+    - **Four Kick/Bass-Driven Choreography Patterns:**
+      - **Pattern 0 (`CONCERT_HORIZON_SWEEP`):** Synchronized horizontal pendulum sweeping across stage and crowd; bass opens beam divergence.
+      - **Pattern 1 (`CATHEDRAL_SCISSOR_CANOPY`):** Symmetrical intersecting diagonal laser canopy modulating downward depth.
+      - **Pattern 2 (`STADIUM_PULSE_FAN`):** Symmetrical downward stadium fan breathing with sustained bass and snapping open on drum kicks.
+      - **Pattern 3 (`AUDIENCE_SCAN_WAVE`):** Synchronized undulating crowd wave scanning along the audience plane, modulated by low-frequency spectral distribution.
+    - **Musical Pattern Switching Trigger:**
+      - Enforces a minimum $3.5\text{s}$ dwell time to preserve musical phrase stability (prohibits random per-frame shifts).
+      - Shifts to a new pattern only when a meaningful kick/bass event occurs:
+        1. A heavy kick hit on a musical bar downbeat or phrase boundary (`isKick && (isBar || isPhrase)`).
+        2. A significant low-frequency spectral distribution shift ($|\Delta \text{Distribution}_{\text{low}}| > 0.30$).
+        3. Maximum pattern timeout ($> 12\text{s}$) arriving on a kick.
+    - **Robust Clock Handling:**
+      - **Pauses:** When `deltaSeconds \le 0`, laser motion freezes in place with full visual stability.
+      - **Seeking:** User timeline scrubbing immediately queries the pre-computed section map at the new timestamp without transient spikes.
+      - **Track Changes:** Resets pattern timers and loads the new track-wide reference cleanly.
+
+20. **Phase 9 — Pre-Playback Menu Visibility & Dual Media Readiness Gate:**
+    - **Dual Media Readiness Synchronization:**
+      - **Audio Source Readiness (`isAudioReady`):** In `AudioEngine.ts`, media readiness is signaled via `canplay` and `loadeddata` events (`audioElement.readyState >= 2`), as well as immediately during `loadTrack` if data is cached. The track is marked ready once neural stem extraction is also complete (`!isSeparatingStems`).
+      - **Stage Video Readiness (`isVideoReady`):** In `YouTubeStagePlayer.tsx`, video readiness is signaled via the iframe `onReady` event. If the video fails to load, is removed, or embedding is disallowed by the author, an `onError` event automatically signals readiness so the user is never stuck behind an unplayable gate. When a track has no YouTube video, it immediately signals ready (`!isVideoLoading && isVideoReady`).
+      - **Dual-Readiness Gate:** Both media streams must be ready before playback is unlocked:
+        $$
+        \text{isBothMediaReady} = \text{currentTrack} \land \text{isAudioReady} \land \text{isVideoReady} \land \neg\text{isVideoLoading} \land \neg\text{isSeparatingStems}
+        $$
+    - **Automatic Bottom Menu Reveal:**
+      - As soon as $\text{isBothMediaReady}$ transitions to `true`, the bottom player dock automatically reveals itself (`setIsBottomBarVisible(true)`), smoothly sliding up to display the track title, artist, seekbar, and the glowing neon `ready-pulse` play button.
+      - Any active auto-hide timers are cleared immediately.
+    - **Persistent Visibility Before First Playback:**
+      - Tracks whether the current track has actually begun playing via `hasPlaybackStarted` (and synchronous `hasPlaybackStartedRef`).
+      - While $\neg\text{hasPlaybackStarted} \land \text{isBothMediaReady}$:
+        - Auto-hide is completely disabled.
+        - Moving the mouse across the 3D canvas or center screen does **not** hide the bottom bar.
+        - Moving the cursor out of the browser window (`mouseleave`) preserves bottom bar visibility.
+        - Hovering over the top bar displays the top header while keeping the bottom player dock visible and interactive.
+    - **Playback Initiation & Autoplay Restriction Safeguard:**
+      - The `onPlaybackStarted` callback in `AudioEngine` is tied directly to the HTML5 `playing` event (which only fires when audio actually begins producing sound output, not on speculative method calls).
+      - If browser autoplay restrictions reject `audioElement.play()`, or if network buffering delays the audio stream, `hasPlaybackStarted` remains `false`, keeping the menu visible so the user can easily click the play button.
+      - Pausing, seeking, or adjusting volume prior to initial playback does not trigger premature auto-hiding.
+    - **Preservation of Standard Auto-Hide After Playback Begins:**
+      - Once playback is confirmed active (`hasPlaybackStarted = true`), standard auto-hiding behavior seamlessly resumes:
+        - Hovering over the bottom threshold ($Y \ge \text{innerHeight} - 75$) shows the dock.
+        - Hovering over the top threshold shows the header and conceals the dock.
+        - Cursor inactivity in the central stage area triggers a smooth 1.8s fade-out.
+        - Hovering directly over the dock (`onMouseEnter`) locks visibility.
+    - **Track Switching & Queue Resets:**
+      - Whenever a new track is loaded (via local file ingestion or queue navigation), `hasPlaybackStarted` and media readiness flags are reset, guaranteeing that every track displays its controls upon loading until played.
+
+### 5.8 Phase 10 — Fullscreen Scaling & Relative Spotlight Positioning Architecture
+- **Problem Statement & Root Causes:**
+  - Previous fullscreen scaling caused the YouTube stage player to become disproportionately enlarged (occupying up to $74.6\%$ of viewport height), leaving negligible headroom and side margins ($< 144\text{px}$), resulting in collision with header/dock fixtures and severe visual distortion.
+  - 3D lighting fixtures, truss structures, and laser stations relied on hard-coded static 3D world coordinates (e.g. $Y = 12.2\text{m}$, $X = \pm 12.4\text{m}$), causing them to drift outside viewport bounds on non-16:9 displays (such as 16:10 MacBook screens or 21:9 ultrawide monitors) and during fullscreen transitions where Three.js `PerspectiveCamera` horizontal FOV expanded.
+- **Unified Geometric Projection Architecture (`stageDimensions.ts`):**
+  - Designed `calculateStageDimensions(viewportWidth, viewportHeight)` as the authoritative geometric engine bridging DOM CSS rules and 3D WebGL camera frustum coordinates:
+    $$\text{maxWByVw} = W \times 0.68, \quad \text{maxWByVh} = H \times 0.62 \times \frac{16}{9}$$
+    $$\text{domPlayerWidth} = \min(\text{maxWByVw}, \text{maxWByVh}), \quad \text{domPlayerHeight} = \frac{\text{domPlayerWidth}}{16/9}$$
+    $$f_h = \frac{\text{domPlayerHeight}}{H}$$
+  - In 3D space at screen plane $Z = -4.5\text{m}$ with camera at $(0, 1.8, 9.2)\text{m}$ ($\Delta Z = 13.7\text{m}$) and vertical $\text{FOV} = 60^\circ$:
+    $$H_{\text{frustum}} = 2 \times 13.7 \times \tan(30^\circ) \approx 15.8194\text{m}, \quad W_{\text{frustum}} = H_{\text{frustum}} \times \text{aspect}$$
+    $$S_h = f_h \times H_{\text{frustum}}, \quad S_w = S_h \times \frac{16}{9}$$
+    $$S_y = 4.4 + (0.50 - 0.48) \times H_{\text{frustum}} \approx 4.716\text{m}$$
+    $$Y_{\text{top}} = S_y + \frac{S_h}{2}, \quad X_{\text{left}} = -\frac{S_w}{2}, \quad X_{\text{right}} = \frac{S_w}{2}$$
+  - Guarantees $\ge 17\% H$ top headroom, $\ge 21\% H$ bottom clearance, and $\ge 16\% W$ side margins across all standard and ultrawide resolutions.
+- **Responsive Symmetrical Spotlight Spawning (`StageLightsEffect.ts`):**
+  - Parameterized `getSymmetricalSpotlightLayout(count, dims)` relative to active player dimensions:
+    - **Top Spotlights:** Mounted at $Y = Y_{\text{top}} + 1.25\text{m}$ ($\approx 10.88\text{m}$, safely below frustum ceiling $12.31\text{m}$); $X$ distributed symmetrically across $[-W_{\text{half}}, +W_{\text{half}}]$.
+    - **Left Flanking Spotlights:** Mounted at $X = X_{\text{left}} - 1.55\text{m}$ ($\approx -10.27\text{m}$, over $3.7\text{m}$ inside the $14.06\text{m}$ viewport edge); vertical positions distributed symmetrically around $S_y$.
+    - **Right Flanking Spotlights:** Mounted at $X = X_{\text{right}} + 1.55\text{m}$ with identical $Y$ coordinates, ensuring bilateral balance.
+  - Implemented `resize(width, height)` to dynamically recalculate active spotlight target slots, 12 perimeter bass lights, and stage wash point lights instantly on window resize, fullscreen entry, and fullscreen exit.
+- **Dynamic Concert Stage Structural Sizing (`StageStructureEffect.ts`):**
+  - Updated 3D Jumbotron screen mesh, backing wall, four-sided black masking walls, industrial aluminum bezels, inner glowing LED trim, and aluminum box-truss roof rigs to scale and align proportionally to $(S_w, S_h, S_y)$ on resize, ensuring zero light leaks or clipping around the YouTube video player.
+- **Top Downward Laser Nozzle Tracking (`ThinLasersEffect.ts`):**
+  - Repositioned the 3 top laser stations dynamically relative to $Y_{\text{top}}$ and $W_{\text{half}}$: Station 0 at $(-0.63 \times W_{\text{half}}, Y_{\text{top}} + 0.25\text{m})$, Station 1 at $(0, Y_{\text{top}} + 0.55\text{m})$, Station 2 at $(+0.63 \times W_{\text{half}}, Y_{\text{top}} + 0.25\text{m})$, maintaining downward laser fan alignment across all viewports.
+- **Multi-Event Resize Dispatching (`VisualEngine.ts`):**
+  - Configured listeners for `resize`, `fullscreenchange`, `webkitfullscreenchange`, `mozfullscreenchange`, `MSFullscreenChange`, and `orientationchange` with immediate and multi-stage debounced execution ($0\text{ms}, 60\text{ms}, 180\text{ms}, 350\text{ms}, 600\text{ms}$) to guarantee smooth transitions during browser fullscreen animation easing curves.
+
+### 5.9 Phase 11 — Dynamic Song-Palette-Complementary Laser Pipeline Architecture
+- **Problem Statement & Root Causes:**
+  - Previous implementations locked laser beams to fixed cyan (`#00f0ff`) or deep space indigo/violet (`#4361ee`/`#7209b7`) presets.
+  - Four critical bottlenecks were uncovered during pipeline tracing:
+    1. *Per-frame Palette Overwrite:* In `VisualEngine.evaluateMusicMoodPalette()`, `targetPalette` was unconditionally assigned to `COLOR_PALETTES[targetIndex]`, where preset indices 0 and 3 were hardcoded cyan and cobalt/violet, wiping out any extracted song or thumbnail palette within a single animation frame (16ms).
+    2. *Initialization Hardcoding:* In `ThinLasersEffect.initialize()`, `dotMat`, `coreMat`, `sheathMat`, and `haloMat` materials were instantiated with literal `0x00f0ff` colors.
+    3. *Early-Return Caching in Update Loop:* In `ThinLasersEffect.update()`, early returns for paused playback (`deltaSeconds <= 0`) and faded-out beams (`currentBeamOpacity < 0.005`) returned before color derivation logic executed, causing lasers to retain stale colors across track changes or thumbnail extraction while paused.
+    4. *Incomplete Palette Forwarding:* `App.tsx` only forwarded `spotlightColors` to `setCustomSpotlightColors()`, dropping the dominant `primary`, `secondary`, and `accent` swatches.
+- **Dynamic Color Derivation Architecture (`ThinLasersEffect.ts`):**
+  - **180° Color Wheel Rotation:**
+    $$h_{\text{comp}} = (h_{\text{prim}} + 0.50) \pmod{1.0}, \quad h_{\text{comp2}} = (h_{\text{sec}} + 0.50) \pmod{1.0}$$
+  - **Achromatic Safeguard:** If saturation $s < 0.15$ (near-black, white, or greyscale), a deliberate warm amber fallback ($h = 0.08$) is substituted, yielding high-energy electric azure/cyan complementary beams ($h = 0.58$) rather than collapsing to achromatic greys.
+  - **Harmonic Separation:** Guaranteed minimal chromatic divergence $|h_{\text{comp}} - h_{\text{comp2}}| \ge 0.15$ to generate dual-tone festival laser fans across alternating rays.
+  - **Tri-Layer Volumetric Pigmentation:**
+    - *Luminous Core:* `HSL(h, 1.0, 0.65)` — razor-sharp, high-lightness neon core with punchy contrast against the dark concert background.
+    - *Volumetric Sheath:* `HSL(h, 1.0, 0.50)` — pure spectral saturation forming a rich, glowing beam envelope.
+    - *Atmospheric Halo:* `HSL(h, 0.95, 0.42)` — soft Gaussian-like feathering that eliminates hard silhouette outlines and unwanted stroke borders.
+    - *Diode Emitter Dot:* `HSL(h, 1.0, 0.60)` — vivid pin-point nozzle diode.
+- **Song Palette Persistence & Procedural Track Signature Fallback (`VisualEngine.ts`):**
+  - **Song Palette Persistence:** Stored `customSongPalette: ColorPalette | null` in `VisualEngine`. When active, `evaluateMusicMoodPalette()` preserves the song's palette and smoothly interpolates stage key/fill lights without overwriting the palette from presets.
+  - **Procedural Track Signature Fallback:** When tracks lack video thumbnails (e.g. local audio files), a deterministic signature palette is procedurally derived from the track's seed using the golden ratio hue distribution:
+    $$\text{baseHue} = (|\text{seed} \times 0.618033988749895|) \pmod{1.0}$$
+    Distributes colors evenly across the entire 360° color wheel, ensuring every audio file receives a distinctive, vivid visual identity instead of being locked into static blue or violet.
+  - **Immediate Multi-State Dispatching:**
+    - `ThinLasersEffect.updatePaletteColors()` is invoked unconditionally at the start of `update()`, before pause or opacity gates.
+    - `setSongPalette()`, `setCustomSpotlightColors()`, and `setTrackProfile()` immediately update laser material colors on the GPU, guaranteeing instant visual updates during pauses and track transitions.
+
+### 5.10 Phase 12 — Song-Palette Flash-Screen with Compulsory White Blinder Architecture
+- **Problem Statement & Root Causes:**
+  - Previous flash-screen implementations suffered from static color distribution: when bass was below threshold, flashes defaulted to an invariant white radial gradient; when bass was above threshold, flashes combined all palette colors into an identical composite blob (`rgba(255,255,255,0.9) 10%, prim 40%, sec 75%, acc 100%`).
+  - Individual song palette colors (`primary`, `secondary`, `accent`, `laserColor`) were never distributed across kick sequences.
+  - No sequence tracking existed to guarantee musical rhythm alignment (e.g. phrase downbeat strobe vs intermediate beat pulses).
+  - Idle frames repeatedly dispatched zero-opacity callbacks to React state at 60 FPS.
+- **Musical Flash Sequence Architecture (`VisualEngine.ts`):**
+  - **Kick Onset Transient Edge Detection:**
+    $$\text{isNewKick} = \text{features.isKick} \land \neg \text{wasKickLastFrame}$$
+    Guarantees that a single multi-frame kick transient only triggers a single flash and advances the sequence step once.
+  - **Phrase Boundary & Silence Auto-Reset:**
+    $$\Delta t = t_{\text{track}} - t_{\text{lastKick}}$$
+    If $\Delta t > 0.65\text{s}$ (musical pause, breakdown, or silence) or $\text{features.isBar}$ (measure downbeat), the flash sequence resets to $\text{step} = 0$, guaranteeing that every new burst, drop, or phrase begins with the compulsory white blinder.
+  - **4-Step Rhythmic Sequence Distribution:**
+    - **Step 0 — Compulsory Pure White (`#FFFFFF`) Blinder:**
+      $$\text{radial-gradient}(\text{circle at center}, \text{rgba}(255,255,255,1.0) \ 0\%, \text{rgba}(255,255,255,0.92) \ 35\%, \text{rgba}(255,255,255,0.65) \ 65\%, \text{rgba}(255,255,255,0.15) \ 100\%)$$
+      Provides brilliant, high-energy stadium blinder illumination at the start of every sequence.
+    - **Step 1 — Song Primary Color (`palette.primary`):**
+      Features a white-hot filament center ($0\% - 16\%$), radiating into the saturated song primary hue ($50\% - 100\%$).
+    - **Step 2 — Song Secondary Color (`palette.secondary`):**
+      White-hot center radiating into the saturated song secondary hue.
+    - **Step 3 — Song Accent / Laser Color (`palette.accent` or `palette.laserColor`):**
+      White-hot center radiating into the song accent / complementary laser hue.
+  - **Screen Blend Mode Physics (`index.css`):**
+    - The overlay uses `mix-blend-mode: screen`. Pure white highlights deliver maximum intensity without washing out the concert geometry, while colored outer halos tint the entire stage atmosphere with the song's active palette.
+  - **Snappy Decay & Configurable Duration:**
+    $$\text{decayRate} = 14.0 \times \text{routingConfig.effectDecay}$$
+    Flash decays to 0 within $\approx 50-80\text{ms}$, preventing lingering brightness.
+### 5.11 Phase 13 — Shazam-First Recognition & Correctly Named Stage STEM Extraction Pipeline
+- **Problem Statement & Workflow Bottleneck:**
+  - Previous track-loading implementations triggered Demucs neural stem extraction FIRST (`/api/separate-stems`), which consumed ~40-55 seconds of MPS neural compute.
+  - ShazamIO recognition (`/api/recognize`) was executed only AFTER Demucs had finished, leaving the extraction loader displaying generic messages (`"Separating neural stems with Demucs HTDemucs..."`) or stale metadata from a previous track.
+  - No stable fingerprint cache existed for Shazam recognition results, forcing redundant network calls and risking cross-track metadata contamination.
+  - Recognition calls lacked strict timeouts, creating potential indefinite loading hangs on network disruptions or slow cloud queries.
+  - Rapid track switching lacked race condition guards, allowing late-arriving recognition or Demucs responses to overwrite the metadata of a newer track.
+- **5-Step Sequential Pipeline Architecture (`src/App.tsx`, `shazamService.ts`):**
+  1. **Step 1: Load Selected Audio Track & Safe Fallback State**
+     - Track initialization sets initial safe metadata (`initialTitle`, `initialArtist = 'Local Audio'`) derived from clean filename parsing without inventing artificial titles.
+     - Unique pipeline token: `pipelineTrackId = track.id; activePipelineTrackIdRef.current = pipelineTrackId;`
+     - Transport pauses, media gates reset (`isAudioReady = false`, `isVideoReady = false`, `isVideoLoading = true`), bottom bar hides.
+     - Demucs loader modal mounts in `'recognizing'` phase with status `'Recognizing track with ShazamIO...'`.
+  2. **Step 2: Run ShazamIO Recognition as a Strict Prerequisite**
+     - Stable audio fingerprint generated via `getTrackFingerprint`:
+       - `file:${name}:${size}:${lastModified}` for files.
+       - `path:${normalized_path}` for file paths.
+     - Checks in-memory and persistent `localStorage` cache (`synwave_shazam_cache_v2`). Cache hits resolve in <1ms without network calls.
+     - For uncached tracks, sends request to `http://127.0.0.1:8765/api/recognize` protected by an `AbortController` timeout (default 9000ms).
+     - Network errors, timeouts, or unidentified tracks produce a structured handled failure (`{ success: false, error: ... }`) rather than throwing an unhandled rejection, guaranteeing processing never hangs indefinitely.
+  3. **Step 3: Resolve Title & Artist Metadata**
+     - Race condition token validation: `if (activePipelineTrackIdRef.current !== pipelineTrackId) return;`
+     - Successful recognition sets `resolvedTitle = match.title`, `resolvedArtist = match.artist`, `track.recognitionStatus = 'recognized' | 'cached'`.
+     - Handled failure cleanly preserves the local filename fallback: `resolvedTitle = initialTitle`, `resolvedArtist = initialArtist`, `track.recognitionStatus = 'unrecognized' | 'failed'`.
+     - Immediately updates React state (`setCurrentTrack`, `setTracks`), loader header, and visual engine track info.
+  4. **Step 4: Extract Stage STEMs Using Demucs with Recognized Metadata**
+     - Loader transitions to `'extracting'` phase.
+     - Extraction header and status explicitly display the recognized song name:
+       - Header: `EXTRACTING STAGE STEMS — ${resolvedTitle.toUpperCase()}...`
+       - Status row: `Extracting Stage STEMs — ${resolvedTitle} (HTDemucs...)`
+     - Eliminates raw filenames and prevents stale metadata from previous tracks.
+     - On completion, stems stored in `track.demucsStems` and loader dismissed (`setIsSeparatingStems(false)`).
+     - Cache directory creation bug fixed in `demucs_service.py` (`CACHE_DIR.mkdir(parents=True, exist_ok=True)`).
+  5. **Step 5: Complete Analysis & Unlock Playback**
+     - Verified BPM resolution via `resolveTrackBpm(track.id, match, track.demucsStems)` (ShazamIO verified priority -> Demucs kick intervals -> unavailable).
+     - Spotlight count updated to match resolved BPM.
+     - Official YouTube video queried using `${resolvedTitle} ${resolvedArtist}`.
+     - Audio engine loads track; playback automatically unlocks once both media sources are ready (`isBothMediaReady` becomes true, revealing the bottom transport bar).
+- **StemSeparationLoader Enhancements (`src/components/StemSeparationLoader.tsx`):**
+  - Added support for `phase: 'recognizing' | 'extracting'`, `songTitle`, and `songArtist`.
+  - During recognition: displays pulsed radio icon with badge `SHAZAMIO • ACOUSTIC FINGERPRINT RECOGNITION` and header `IDENTIFYING TRACK WITH SHAZAMIO...`.
+  - During Demucs extraction: displays badge `DEMUCS v4 • NEURAL STEM SEPARATION`, header `EXTRACTING STAGE STEMS — ${songTitle.toUpperCase()}...`, and dynamic progress status `Extracting Stage STEMs — ${songTitle} (...)`.
+
+### 5.12 Phase 14 — 22-Pattern Concert Laser Choreography Engine & Mid-Range Spectral Feature Selection
+- **Problem Statement & Limitations of Prior Logic:**
+  - Prior implementation was restricted to 4 basic hardcoded movement patterns (*Parallel Spread, Dual-Station Fan, Center Crossed Canopy, Alternating Zig-Zag*), leading to repetitive, predictable visual motion during prolonged high-energy track segments.
+  - Choreography selection and switching were coupled to bass frequencies (`features.bass`, `lowFreqDistribution`), causing laser movements to redundantly shadow sub-bass pulses rather than reflecting harmonic structure, vocal phrasing, or lead synthesizer progression.
+  - Absence of professional festival concert choreographies: lacked audience plane scan waves, vertical sky rakes, counter-rotating multi-station fans, double-helix spirals, cathedral scissor canopies, staircase chases, tunnel perspectives, etc.
+  - Abrupt snap transitions between pattern orientations created visual harshness and polygonal jerks.
+- **Architectural & Mathematical Innovations:**
+  1. **Strict Anti-Bass Policy & Mid-Range Spectral Feature Extraction (`src/audio/AudioEngine.ts`):**
+     - Bass is completely excluded as a pattern-selection driver.
+     - Real-time mid-range spectral analysis implemented over a tuned $250\text{ Hz} - 4\text{ kHz}$ frequency band (FFT bins $k = 12$ to $k = 186$ at $44.1\text{ kHz}$, $\Delta f \approx 21.53\text{ Hz}$):
+       - **Mid-Range Energy ($E_{\text{mid}}$):** Normalized RMS energy within $[250\text{ Hz}, 4\text{ kHz}]$.
+       - **Mid-Range Spectral Centroid ($C_{\text{mid}}$):** Center of spectral mass in mid-band:
+         $$C_{\text{mid}} = \frac{\sum_{k=12}^{186} k \cdot |X[k]|}{\sum_{k=12}^{186} |X[k]|}$$
+         Normalized to $[0.0, 1.0]$, measuring harmonic brightness and vocal presence.
+       - **Mid-Range Spectral Flux ($F_{\text{mid}}$):** Half-wave rectified frame-to-frame mid-band spectral difference, quantifying note attacks, arpeggios, and chord changes:
+         $$F_{\text{mid}} = \sum_{k=12}^{186} \max(0, |X_t[k]| - |X_{t-1}[k]|)$$
+       - **Mid-Range Energy Distribution ($D_{\text{mid}}$):** Ratio of upper-mid energy ($1\text{ kHz} - 4\text{ kHz}$) to lower-mid energy ($250\text{ Hz} - 1\text{ kHz}$), capturing timbre brightness shifts:
+         $$D_{\text{mid}} = \frac{\sum_{k=46}^{186} |X[k]|}{\sum_{k=12}^{186} |X[k]| + \epsilon}$$
+     - **Demucs Instrumental STEM Fusion:** In active Demucs playback, $E_{\text{mid}}$ integrates the ground-truth instrumental stem (`stems.instruments`):
+       $$E_{\text{mid, fused}} = 0.65 \times \text{stems.instruments} + 0.35 \times E_{\text{mid, smoothed}}$$
+  2. **Demucs Drum Stem Kick Event Anchoring & Musical Boundary Switching (`src/visualizer/effects/ThinLasersEffect.ts`):**
+     - Reuses precise Demucs drum stem kick events (`features.isKick`, `kickIntensity`).
+     - **Minimum Dwell Time ($3.5\text{s}$):** Enforces a baseline dwell time of $3.5\text{ seconds}$ to preserve musical phrasing and prevent chaotic rapid-fire pattern switches.
+     - **Musical Trigger Condition:**
+       A pattern transition is triggered when:
+       $$(\text{patternTimer} \ge 3.5\text{s}) \land \Big(\big((\Delta C_{\text{mid}} > 0.20 \lor \Delta D_{\text{mid}} > 0.22 \lor \Delta F_{\text{mid}} > 0.25 \lor F_{\text{mid}} > 0.35) \land \text{isKick}\big) \lor (\text{isKick} \land (\text{isBar} \lor \text{isPhrase} \lor \text{kickIntensity} > 0.60)) \lor (\text{patternTimer} > 12.0\text{s} \land \text{isKick})\Big)$$
+  3. **Complete 22-Choreography Library (`src/visualizer/effects/laserChoreography.ts`):**
+     Each pattern implements an independent mathematical trajectory function $\mathcal{T}_i(\text{params}) \to (\text{azimuth}, \text{elevation})$:
+     | No. | Pattern Name | Movement Behavior | Mathematical Trajectory Formula |
+     | :--- | :--- | :--- | :--- |
+     | 1 | **Concert Horizon Sweep** | Coordinated horizontal sweep across stage | $\alpha = \sin(\theta)\cdot 1.10 + c \cdot (0.32 + 0.30 E_{\text{mid}} + 0.18 I_{\text{kick}}) + 0.22(s-1)$<br>$\beta = -0.34 + 0.08\cos(0.5\theta)$ |
+     | 2 | **Cathedral Scissor** | Diagonal beams intersect into scissor canopy | $\alpha = 0.40\sin(0.8\theta) + \text{tilt}_s(0.85 + 0.35 E_{\text{mid}}) + c\cdot 0.45\cos(1.2\theta)$<br>$\beta = -0.38 + 0.12\sin(1.4\theta)$ |
+     | 3 | **Stadium Fan** | Beams open and close in broad fan | $\alpha = 0.25\sin(0.4\theta) + c\cdot(0.45 + 0.50 E_{\text{mid}} + 0.35 I_{\text{kick}}) + 0.30(s-1)$<br>$\beta = -0.32 - 0.16\sin(\pi u) + 0.08 I_{\text{kick}}$ |
+     | 4 | **Audience Scan Wave** | Progressive sweep travels across audience plane | $\alpha = 0.35(s-1) + c\cdot 0.28 + 0.55\sin(\theta - c\cdot 2.5)$<br>$\beta = -0.22 - 0.22\sin(1.2\theta - u\cdot\pi)$ |
+     | 5 | **Crossed X Canopy** | Mirrored beams form and release an X | $\alpha = (c < 0 ? -0.42 : 0.42)\cdot\cos(0.9\theta) + c\cdot 0.18 + 0.25(s-1)$<br>$\beta = -0.40 + 0.14\sin(1.1\theta)$ |
+     | 6 | **Center-Out Burst** | Beams expand from central station | $\alpha = c\cdot(0.20 + 0.85|\sin(1.3\theta)|) + (s-1)\cdot 0.45$<br>$\beta = -0.35 + 0.15\cos(1.3\theta)$ |
+     | 7 | **Edge-In Convergence** | Beams converge from outer stations | $\alpha = (1.0 - |\cos(\theta)|)\cdot c\cdot 0.40 + (s-1)\cdot 0.60\cos(\theta)$<br>$\beta = -0.36 + 0.10\sin(2\theta)$ |
+     | 8 | **Pendulum Arc** | Smooth oscillations around central pivot | $\phi = \sin(0.75\theta)\cdot 0.95 + (s-1)\cdot 0.25$<br>$\alpha = \phi + c\cdot 0.35,\ \beta = -0.42 + 0.15\cos(\phi)$ |
+     | 9 | **Vertical Sky Rake** | Beams sweep through distinct vertical angles | $\alpha = (s-1)\cdot 0.38 + c\cdot 0.45 + 0.20\sin(0.5\theta)$<br>$\beta = -0.15 - 0.35|\sin(\theta + u\cdot 1.8)|$ |
+     | 10 | **Counter-Rotating Fans** | Station groups rotate in opposite directions | $\text{dir} = (s === 0 ? 1 : s === 2 ? -1 : (b \% 2 === 0 ? 1 : -1))$<br>$\alpha = (s-1)\cdot 0.35 + \sin(\theta\cdot \text{dir} + u\cdot\pi)\cdot 0.55$<br>$\beta = -0.35 + \cos(\theta\cdot \text{dir} + u\cdot\pi)\cdot 0.15$ |
+     | 11 | **Zigzag Ladder** | Alternating diagonal positions | $\text{step} = (b \% 2 === 0 ? 1 : -1)$<br>$\alpha = \text{step}\cdot(0.35 + 0.35\sin(\theta)) + (s-1)\cdot 0.30$<br>$\beta = -0.22 - u\cdot 0.26$ |
+     | 12 | **Left-Right Chase** | Sequential chase across stage sides | $\text{delay} = s\cdot 0.65 + u\cdot 0.45$<br>$\alpha = \sin(1.4\theta - \text{delay})\cdot 0.90$<br>$\beta = -0.35 + 0.08\cos(1.4\theta - \text{delay})$ |
+     | 13 | **Three-Station Call-and-Response** | Left, center, and right respond in sequence | $\text{active} = \lfloor(\theta\cdot 0.65)\rfloor \pmod 3$<br>$\alpha = (s-1)\cdot 0.35 + c\cdot(s === \text{active} ? 0.85 : 0.22)$<br>$\beta = (s === \text{active} ? -0.28 + 0.12\sin(2\theta) : -0.42)$ |
+     | 14 | **Rotating Pinwheel** | Beam directions orbit around central axis | $\phi = \theta\cdot 1.25 + (s-1)\cdot 0.85 + u\cdot 2\pi$<br>$\alpha = (s-1)\cdot 0.32 + 0.48\cos(\phi)$<br>$\beta = -0.34 + 0.18\sin(\phi)$ |
+     | 15 | **Double-Helix Spiral** | Interwoven spiral paths | $\phi = 1.5\theta + 0.8(s-1) + 2.2u + (b\%2 === 0 ? 0 : \pi)$<br>$\alpha = 0.55\sin(\phi) + 0.30(s-1)$<br>$\beta = -0.35 + 0.14\cos(\phi)$ |
+     | 16 | **Tunnel Perspective** | Depth-oriented converging lines | $r = 0.18 + 0.58u,\ \phi = 2\pi u + 0.65\theta$<br>$\alpha = 0.35(s-1) + r\cos(\phi),\ \beta = -0.36 + 0.35 r\sin(\phi)$ |
+     | 17 | **Split and Rejoin** | Formation separates symmetrically & reconverges | $\text{sep} = 0.95|\sin(0.8\theta)|,\ \text{sign} = c < 0 ? -1 : 1$<br>$\alpha = \text{sign}\cdot\text{sep} + 0.25c + 0.20(s-1)(1 - \text{sep})$<br>$\beta = -0.34 - 0.12(1 - |\sin(0.8\theta)|)$ |
+     | 18 | **Staircase Chase** | Stepped angular progression | $k = (b + \lfloor 2.8\theta\rfloor) \pmod N,\ u_k = k / (N-1)$<br>$\alpha = (u_k - 0.5)\cdot 1.15 + 0.32(s-1)$<br>$\beta = -0.20 - 0.28 u_k$ |
+     | 19 | **Sweeping Light Curtain** | Coordinated curtain sweeps across stage | $\alpha = 0.85c + 0.42(s-1)$<br>$\beta = -0.35 + 0.22\sin(1.1\theta) + 0.06\sin(\pi c)$ |
+     | 20 | **Grid and Diagonal Scan** | Distinct crossing directions | Center sweeps horizontally ($\alpha = 0.82\sin(0.95\theta) + 0.45c$), Left tilts upward ($\Delta\beta = 0.18\sin(0.95\theta)$), Right tilts downward ($\Delta\beta = -0.18\sin(0.95\theta)$) |
+     | 21 | **Mirrored V Sweep** | Symmetrical V expands and contracts | $\text{aperture} = 0.32 + 0.48\sin(0.85\theta),\ \text{sign} = u < 0.5 ? -1 : 1$<br>$\alpha = \text{sign}\cdot|u - 0.5|\cdot\text{aperture} + 0.32(s-1)$<br>$\beta = -0.45 + 0.30|u - 0.5|$ |
+     | 22 | **Fan Pulse Chase** | Timed pulse sequences open fan sections | $\phi = (2.4\theta + 1.4s + 2.0u) \pmod{2\pi}$<br>$\text{spread} = 0.24 + (\sin\phi > 0 ? 0.65\sin\phi : 0)$<br>$\alpha = 0.40(s-1) + c\cdot\text{spread},\ \beta = -0.32 - 0.15\sin\phi$ |
+  4. **Continuous Hermite Cubic Smoothstep Blending:**
+     - Transitions between radical patterns (e.g. *Cathedral Scissor* to *Rotating Pinwheel*) interpolate trajectories over $\tau_{\text{blend}} = 0.50\text{s}$ using cubic smoothstep:
+       $$S(t) = 3t^2 - 2t^3, \quad t \in [0, 1]$$
+       $$\alpha(t) = (1 - S(t))\cdot \alpha_{\text{prev}} + S(t)\cdot \alpha_{\text{active}}$$
+       $$\beta(t) = (1 - S(t))\cdot \beta_{\text{prev}} + S(t)\cdot \beta_{\text{active}}$$
+     - Guarantees $C^1$ velocity continuity and eliminates discontinuous jumping.
+  5. **Controlled Track-Seeded Variety (`selectNextLaserPattern`):**
+      - Pseudo-random hashing based on track seed, mid-range energy, and spectral centroid guarantees deterministic variety across different tracks and phrases while strictly barring consecutive repetitions ($P_{\text{next}} \ne P_{\text{current}}$).
+  6. **Foundation Preservation:**
+      - Pre-calculated static full-track average amplitude gate ($A_{\text{avg}}$) preserved.
+      - Smooth fade in ($0.35\text{s}$) / fade out ($0.60\text{s}$) preserved.
+      - Pause-freeze behavior (freezes in place without resetting or disappearing) preserved.
+      - Phase 11 dynamic complementary color palette derivation preserved.
+
+### 5.13 Multi-Tiered Persistent Stem Caching Architecture for Instantaneous Song Reloading
+- **Problem Statement & Workflow Bottlenecks:**
+  - Neural stem extraction via Demucs HTDemucs is computationally intensive, requiring $40\text{s} - 75\text{s}$ of MPS neural inference per audio file.
+  - Previous background daemon implementations encountered filesystem path resolution issues (`[Errno 2] No such file or directory: '.synwave_cache/stems/...'`) due to relative working directory resolution, which prevented stem envelope JSON files from persisting to disk.
+  - The frontend client lacked persistent client-side storage (neither in-memory caching nor IndexedDB), forcing the browser to re-upload full audio files ($10\text{MB} - 50\text{MB}$) and re-run complete neural separation whenever a song was loaded, switched, or reloaded after browser restart.
+- **3-Tiered Caching Hierarchy & Multi-Key Indexing:**
+  1. **Tier 1: Client In-Memory Cache ($0\text{ms}$ Latency):**
+     - Module-level `Map<string, DemucsStemData>` holding decoded stem envelopes within active browser sessions.
+     - Lookups and hits resolve synchronously with zero serialization overhead.
+  2. **Tier 2: Browser IndexedDB Persistence ($<5\text{ms}$ Latency):**
+     - Structured storage using native browser `IDBDatabase` (`synwave_stems_db`, object store `stems_v1`).
+     - Stores complete stem datasets (`drums`, `bass`, `instruments`, `vocals`, `kickEvents`, `kickOnsets`, `instrumentalActivity`, `globalIntensity`, `demucsBpm`, `averageAmplitude`, `aboveAverageSections`).
+     - Survives browser reloads, cache clears, and restarts without memory footprint limits (bypassing localStorage 5MB quota).
+  3. **Tier 3: Local Python Server Cache & Ultra-Fast Verification ($<15\text{ms}$ Latency):**
+     - Absolute filesystem cache directory: `BASE_DIR / ".synwave_cache" / "stems"`.
+     - Explicit directory creation guarantees: `cache_file.parent.mkdir(parents=True, exist_ok=True)`.
+     - Dedicated lightweight pre-flight endpoint `POST /api/check-stems-cache` takes `{ fileHash, fingerprint, songTitle, songArtist }` and returns pre-computed envelopes directly, avoiding unnecessary multi-megabyte audio file transfers over the network.
+- **Unique Song Identification & Multi-Key Aliasing:**
+  - Stems are indexed and cross-referenced under:
+    - **Acoustic / File Fingerprint:** `file:${name}:${size}:${lastModified}` or `path:${normalized_path}`.
+    - **SHA256 File Content Hash:** Full byte digest computed on the server.
+    - **Recognized Song Identity Key:** `song:${hashlib.sha256(f"{title}:::{artist}".lower().encode()).hexdigest()}`.
+  - Cross-key aliasing guarantees that whether a track is queried by its exact file path, acoustic fingerprint, or recognized metadata from Shazam, pre-computed stems are resolved instantly.
+- **Observed Performance Impact:**
+  - First-time track load: runs Demucs separation once ($40\text{s} - 55\text{s}$ on Apple Silicon MPS) and persists to Tier 1, Tier 2, and Tier 3.
+  - Subsequent loads / playlist switches / browser refreshes: resolves from local cache in **$<10\text{ms}$** with status `Extracting Stage STEMs — Song Title (Loaded from local cache)`, completely eliminating redundant neural compute.
+
+### 5.14 Phase 15 — Clean Video Aperture, Text Overlay Removal, and Robust Caption Management
+- **Video Aperture Inspection & Overlay Elimination:**
+  - Audited `YouTubeStagePlayer.tsx` and all DOM layers positioned over the concert stage video screen container (`#synwave-youtube-stage-screen`).
+  - Identified `.yt-stage-pill` (which previously rendered video title, status badges like `MUTED • SYNCED`, and video icons at `bottom: 10px; right: 12px;` with `z-index: 6` over the iframe).
+  - Completely purged `.yt-stage-pill` and all text elements, badges, titles, and metadata overlays from the video aperture. The `#synwave-youtube-stage-screen` container now renders purely the clean `#synwave-yt-iframe-player` iframe target without any covering visual elements or text overlays.
+- **Relocation of Metadata to Floating Interface Regions Outside Video Aperture:**
+  - In accordance with Phase 15 specifications, song and video information was relocated to interface regions outside the video aperture:
+    - **Floating Transport Player Dock (`PlayerControls.tsx`):** Integrated `.track-video-indicator` inside the floating `dock-left` pill, displaying the synchronized YouTube video title and icon alongside track artist and title outside the video frame.
+    - **YouTube Music Metadata Modal (`showInfoModal`):** Added a dedicated `STAGE VIDEO MATCH` field with cyan neon styling (`highlight-cyan`) to the floating metadata modal accessible via the info (`'i'`) button.
+  - **Stage STEM Extraction Status:** Maintained in the central modal dialog (`StemSeparationLoader.tsx`) positioned outside the video aperture in the global backdrop layer (`z-index: 100`), preserving the correct track name display required by Phase 13 (`EXTRACTING STAGE STEMS — ${songTitle.toUpperCase()}`).
+- **Strongest Supported YouTube Player Caption Configuration:**
+  - Configured `playerVars`:
+    - `cc_load_policy: 0`: Google's embed documentation specifies that `cc_load_policy=1` forces closed captions on by default even if user turned captions off. Setting `cc_load_policy: 0` ensures the embed default does not force captions on.
+    - Omitted caption-language settings (`cc_lang_pref`, `hl`) that might enable caption tracks.
+    - `controls: 0`: Operates without native YouTube player controls, removing the visible CC button and native player control chrome.
+    - `disablekb: 1`: Disables keyboard shortcuts so viewer keystrokes (such as pressing 'c') do not toggle native player captions.
+    - `iv_load_policy: 3`: Suppresses video annotations.
+    - Application code strictly never invokes caption activation methods.
+  - **Documented Captions API Inspection:**
+    - In `onReady`, where exposed by the YouTube IFrame API instance, safely invokes `unloadModule('captions')` and clears active caption tracks via `setOption('captions', 'track', {})` wrapped in try-catch.
+    - Strictly avoids unsupported commands or direct DOM manipulation of YouTube's cross-origin iframe (which would be blocked by Same-Origin Policy and create fragile workarounds).
+### 5.15 Dual-Layer Audio-Visual Impact: Sub-Bass Stage Layer FOV Punch & Kick YouTube Screen Shake
+- **Sub-Bass 3D Stage Layer Punch (`VisualEngine.ts`):**
+  - Isolates deep sub-bass energy ($20-100\text{Hz}$) to eliminate harmonic contamination from mid-range frequencies and general percussion:
+    $$E_{\text{sub}} = \text{features.subBass}$$
+    $$\text{gate}_{\text{sub}} = \frac{\max(0, E_{\text{sub}} - 0.28)}{0.72}$$
+    $$\text{punch}_{\text{sub}} = (\text{gate}_{\text{sub}})^{1.8} \cdot 3.5$$
+  - When drop or high sub-bass transients hit, the 3D camera FOV dynamically punches from $60^\circ$ up to $63.5^\circ$:
+    $$\text{targetFov} = \begin{cases} 60 & \text{if reducedFlash or not playing} \\ 63.5 & \text{if isDrop} \\ 60 + \text{punch}_{\text{sub}} & \text{otherwise} \end{cases}$$
+    $$\text{FOV}(t) \leftarrow \text{FOV}(t) + (\text{targetFov} - \text{FOV}(t)) \cdot (\Delta t \cdot 14.0)$$
+  - This FOV modulation physically zooms and compresses the entire Three.js stage layer (trusses, screen bezels, deck, stage crowd, and spotlights) in perfect sync with low-frequency sub-bass hits.
+- **Audio-Synchronized YouTube IFrame Kick Shake (`VisualEngine.ts` & `App.tsx`):**
+  - Percussive drum kicks drive a distinct 2D screen shake strictly isolated to the YouTube stage video iframe element (`#synwave-youtube-stage-screen`):
+    $$\text{kickPower} = \max(\text{stems.kick}, \text{isKick} ? \text{kickIntensity} : 0)$$
+    $$\text{shakePx} = (\text{kickPower})^{1.4} \cdot 16.0 \cdot \text{screenShakeIntensity} \quad (\text{for } \text{kickPower} > 0.22)$$
+    $$\Delta x = (\text{rand}() - 0.5) \cdot 2 \cdot \text{shakePx}, \quad \Delta y = (\text{rand}() - 0.5) \cdot 2 \cdot \text{shakePx}$$
+  - Dispatched via `visualEngine.onStageShake(kickShakeX, kickShakeY)`:
+    `el.style.transform = "translate(calc(-50% + " + shakeXPixels.toFixed(2) + "px), calc(-50% + " + shakeYPixels.toFixed(2) + "px))"`
+  - Smoothly resets to `translate(-50%, -50%)` when kicks decay, leaving the outer browser window and transport chrome completely stable.
+- **Concert Spotlight Tracking Rig Hygiene (`StageLightsEffect.ts`):**
+  - Moving-head colouring spotlights and 360° perimeter lights operate without artificial per-fixture spring jitter or micro-angular noise, ensuring crisp, professional concert stage sweeps and bilateral symmetry around the screen.
+
+### 5.16 Phase 17 — Conditional Laser Colours, Full-Screen Light Paths & Reliable Playback Controls
+
+- **Authoritative Laser Palette Pipeline (`laserColorUtils.ts`, `VisualEngine.ts`, `ThinLasersEffect.ts`):**
+  - **Single Source of Truth:** Established `resolveLaserPaletteColors()` as the sole mathematical decision-maker for laser color assignment, eliminating ad-hoc color mutations and divergent logic across rendering layers.
+  - **Normalization & Perceptual Deduplication:**
+    - Incoming swatches are normalized and parsed into HSL and linear RGB color spaces.
+    - Achromatic and near-white swatches are filtered out of the chromatic count ($L \ge 0.88$, $L \ge 0.78 \land S \le 0.12$, $L \le 0.08$, $S \le 0.12$).
+    - Visually near-identical colors are deduplicated using a perceptual color distance metric ($\Delta E < 0.14$ or hue distance $< 0.08$ with $\Delta L < 0.15$), rather than simple string equality.
+    - Original palette order is preserved for predictable swatch prioritization.
+  - **Conditional Laser Color Selection:**
+    - **Case A (Exactly one distinct non-white color):**
+      The original chromatic palette color is applied directly to all laser components. Hue rotation is strictly disabled, preventing single-color palettes from turning into blue/violet or an arbitrary complementary hue. Depth is created purely via lightness, saturation, and luminous opacity modulation ($L_{\text{core}} = \min(0.85, L + 0.15), S_{\text{core}} = \min(1.0, S + 0.15)$; $L_{\text{sheath}} = L$; $L_{\text{halo}} = \max(0.20, L - 0.10)$; $L_{\text{emitter}} = \min(0.90, L + 0.20)$). All 4 layers (core, glow sheath, halo, and emitter diode) remain 100% hue-consistent.
+    - **Case B (Multiple distinct non-white colors):**
+      Derives complementary hues using 180° HSL rotation: $h_{\text{comp}} = (h + 0.5) \bmod 1.0$. Tone 1 derives from the primary chromatic swatch, and Tone 2 derives from the secondary chromatic swatch, maintaining vibrant dual-color festival fans.
+    - **Case C (Entirely white or achromatic palette):**
+      Achromatic palettes explicitly bypass complementary hue derivation from white/grey. Instead, a documented deterministic fallback derived from the track's seed ($h_1 = (\text{seed} \cdot 0.618033988749895 + 0.10) \bmod 1.0$, $h_2 = (h_1 + 0.33) \bmod 1.0$) supplies stable chromatic hues, preventing frame-to-frame flicker and silently hardcoded blue/violet defaults.
+  - **Immediate Palette Propagation:**
+    - Active laser palette updates synchronously as soon as a new track or palette is selected (`updatePaletteColors(this.activePalette, this.trackSeed)`), without waiting for audio playback, Demucs extraction, or thumbnail callbacks.
+    - Caches are invalidated immediately upon track load, ensuring prior track colors never linger.
+
+- **Full-Screen Laser Light-Path Movement & Downward Stage Projection (`laserChoreography.ts`, `ThinLasersEffect.ts`):**
+  - **Root-Cause Analysis:**
+    - Previously, laser trajectories targeted a distant audience plane ($Z \approx +16.0$), causing camera perspective projection ($Z_{\text{cam}} = 9.2$) to compress the beams upward into the top 20% of the screen.
+  - **Full-Screen 3D Target Vector Architecture:**
+    - All 22 concert choreographies were re-engineered to emit explicit 3D world target coordinates:
+      $$X_{\text{target}} \in [-16.0, 16.0], \quad Y_{\text{target}} \in [-3.5, 11.5], \quad Z_{\text{target}} \in [-3.8, 1.0]$$
+    - Target points at $Y \approx -3.5$ project downward across the stage deck and through the bottom boundary of the visualizer viewport.
+    - Target depth $Z \approx -3.6$ places the beams directly in front of the YouTube screen plane ($Z = -4.5$).
+    - Length is calculated dynamically via Euclidean 3D distance ($L = \|\mathbf{P}_{\text{target}} - \mathbf{P}_{\text{origin}}\|$), and cylinder orientation is derived via look-at rotation matrices.
+  - **Downward Projection Over YouTube Iframe:**
+    - Three.js transparent WebGL canvas operates at `z-index: 2` directly overlaying the YouTube screen container (`#synwave-youtube-stage-screen`, `z-index: 1`).
+    - Downward-projecting laser beams slice directly across the YouTube video aperture with additive volumetric blending (`THREE.AdditiveBlending`), with zero border lines or rectangular clipping frames.
+    - Pointer interaction on the YouTube iframe is maintained (`pointer-events: auto` on iframe container, `pointer-events: none` on 3D canvas), allowing normal video playback control while lasers render seamlessly above it.
+    - All laser mesh components have `frustumCulled = false`, eliminating premature viewport clipping during responsive window resizing or fullscreen transitions.
+
+- **Reliable Application-Level Space-Bar Playback Controls (`App.tsx`, `AudioEngine.ts`):**
+  - **Root-Cause Analysis:**
+    - The previous keydown listener included `currentTime` in its `useEffect` dependency array, tearing down and re-registering the listener 30–60 times per second and causing dropped keystrokes during rapid transitions.
+    - Furthermore, when a user clicked a UI button (e.g. Play/Pause in `PlayerControls.tsx`), the button retained DOM focus. When Space was pressed, the browser fired the keydown shortcut (toggling play/pause) AND subsequently fired native button activation (toggling it back immediately), cancelling out the action.
+  - **Permanent Global Handler & Capture Phase:**
+    - Mutable references (`isPlayingRef`, `currentTimeRef`, `durationRef`, `apiGateStatusRef`, `isKeyModalOpenRef`, `handlePlayPauseRef`) are synchronized on render inside a non-blocking `useEffect`.
+    - Global keydown listener is registered once on `window` with `{ capture: true }`, eliminating listener churn and stale closure bugs.
+    - Protects user input: Key events are ignored when focus is inside `<input>`, `<textarea>`, `<select>`, or `contenteditable` elements.
+    - Prevents duplicate toggles: If `target.closest('button, [role="button"]')` has focus, the global handler yields to the button's native keyboard activation without invoking a secondary toggle.
+    - Browser scrolling prevention: `e.preventDefault()` prevents window scrolling when Space is pressed.
+    - Audio engine state verification: `handlePlayPause` checks both React state and actual HTMLAudioElement state (`audioEngine.isPlaying()`), preventing state desynchronization.
+    - Cross-Origin Iframe Focus Reclaiming: Pointer and mouse movement listeners (`pointerdown`, `mousemove`) on `window` automatically detect if focus was transferred to a cross-origin iframe (`document.activeElement.tagName === 'IFRAME'`) and restore focus back to `window`, ensuring the Space bar remains responsive immediately after hovering back over the Synwave stage.
+
+### 5.17 Phase 18 — Fix Screen Flash & Synchronize with Active Song Colour Palette
+
+- **Root-Cause Analysis of Flash Invisibility:**
+  - **React Scheduler Batching vs. High-Frequency Decay:**
+    Previously, `onWindowFlash` invoked React's `setWindowFlashOpacity(opacity)`. In `VisualEngine.ts`, `decayRate = 14.0` caused peak opacity to decay back to 0 in only 1–2 animation frames (~16–30ms). React 18/19's asynchronous state scheduler batched these rapid state transitions, causing the component commit to skip non-zero values entirely or paint only after the opacity had returned to 0.
+  - **CSS Transition Conflict:**
+    In CSS, `.festival-window-blinder` had `transition: opacity 0.05s ease-out;`. The 50ms browser easing curve fought against the frame-by-frame decay calculated in JavaScript, flattening transient spikes before they could register visually.
+  - **Demucs Kick State Locking:**
+    In `AudioEngine.ts`, `if (sampled.isKickOnset || sampled.kick > 0.45)` held `isKick = true` continuously during loud sections where drum energy exceeded 0.45. This prevented the onset condition `features.isKick && !this.wasKickLastFrame` from ever dropping back to false, locking out flash triggers for entire songs.
+  - **Mix-Blend-Mode Compositor Glitches:**
+    `mix-blend-mode: screen` on fixed overlays over hardware-accelerated WebGL canvases and cross-origin YouTube video iframes triggered known Blink/WebKit compositor surface isolation bugs on macOS, occasionally clipping or failing to render the blinder layer.
+
+- **Direct DOM Manipulation & Frame-Accurate Synchronization:**
+  - **Eliminated React Re-Render Overhead:**
+    Refactored `visualEngine.onWindowFlash` in `App.tsx` to directly mutate `document.getElementById('festival-window-blinder').style.opacity` and `.style.background`. This eliminates all React component re-renders during 60 FPS flash animations, preventing frame drops and ensuring vertical-sync accuracy.
+  - **Tuned Musical Blinder Decay Curve:**
+    Adjusted decay rate to $6.0 \cdot \text{routingConfig.effectDecay}$, providing an attack peak on kick transients and a smooth ~120ms–180ms visible bloom with white-hot filament center and vibrant chromatic halo before cleanly returning to 0.
+  - **Clean Alpha Compositing:**
+    Removed `mix-blend-mode: screen` and CSS `transition` from `.festival-window-blinder`, utilizing direct RGBA radial gradients (`rgba(255,255,255,0.96)` to `rgba(r,g,b,0.12)`) at `z-index: 15`. This guarantees flawless visual overlay above the YouTube video and Three.js stage without obscuring the floating transport player or header (`z-index: 25`), with `pointer-events: none` preserving full click interactivity.
+
+- **Dynamic Song-Palette Synchronization & Mandatory Pure White:**
+  - **Authoritative Flash Palette Engine (`laserColorUtils.ts`):**
+    Implemented `resolveFlashPaletteColors()`:
+    - Guaranteed inclusion: Pure white (`#FFFFFF`) is mandatory at Index 0 of every flash sequence.
+    - Song-derived chromatic swatches: Subsequent indices cycle through normalized, deduplicated chromatic colors extracted from `this.activePalette` (`rawSwatches`, `spotlightColors`, `primary`, `secondary`, `accent`).
+    - Downbeat synchronization: Sequence step automatically resets to 0 (compulsory pure white) on musical bar/phrase boundaries and after pauses (> 0.65s).
+    - Alternating kicks cycle through the song's chromatic colors with white-hot filament cores.
+    - Case C deterministic fallback: If a song's palette is entirely white/achromatic, golden-ratio seed calculation supplies deterministic chromatic hues without arbitrary blue/violet substitutions.
+  - **State Hygiene & Track Invalidation:**
+    Palette cache `cachedFlashColors` and animation accumulators (`currentFlashOpacity`, `flashSequenceStep`, `wasKickLastFrame`, `lastKickTimestamp`) are immediately reset upon track load, pause, and palette update, ensuring stale colors never bleed across track boundaries.
+  - **Photosensitivity & Safety Controls:**
+    Fully honors `routingConfig.reducedFlash` (instantly zeroing blinder opacity) and `screenFlashIntensity` slider (0.0 to 2.5x).
+
+---
+
+### 5.18 Phase 19 — Multi-Colour Laser Palette, 360° 3D End-to-End Rays, Full-Window Screen Flash, Audio-Video Lock & Tri-STEM Drop Pinpointing
+
+#### 1. Architectural Motivation & Problem Diagnosis
+During concert visualizer testing across varied music video styles, five visual and auditory synchronization constraints were identified:
+1. **Opposite Colour Inversion vs Multi-Colour Songs:** When a song thumbnail contained multiple rich chromatic hues (e.g. Red and Gold, or Orange and Violet), deriving laser colours via 180° HSL opposite rotation (`+0.50`) caused lasers to take on unwanted complementary hues (Teal/Cyan) rather than displaying the song's actual palette colours. The user required that whenever more than one non-white colour is present, the lasers must use those exact colours directly without computing opposite hues.
+2. **Downward-Only Beam Angle Limitation:** Laser choreographies were previously constrained to downward targets ($Y \in [-3.5, 4.0]$, $Z \approx -3.6$), failing to utilise the upper ceiling, festival sky, or full 3D auditorium volume, and never projecting forward towards the camera.
+3. **Truncated Ray Lengths:** Laser cylinder meshes scaled strictly to the distance between nozzle and stage target ($L = \|\mathbf{T} - \mathbf{O}\|$), causing beams to terminate abruptly on the stage floor instead of cutting end-to-end across the full browser window.
+4. **Flash Aperture & Perceived Center Localization:** Screen flash utilized a steep radial falloff (`0.06` opacity at edges), causing the flash to appear confined to the central YouTube iframe aperture with insufficient peripheral brightness.
+5. **Startup Audio-Video Drift:** Video buffering lag delayed YouTube playback by 200–500ms relative to the instant Web Audio clock, causing singer lip-sync and percussive hits to drift visibly out of phase.
+6. **Individual STEM vs Pinpointed Tri-STEM Drop Gating:** Previous activation checks tested overall RMS amplitude, allowing lasers to activate during vocal buildups or bass-only intros. The user specified that lasers must only activate during the drop part of a song—defined specifically as the smaller segment where Kick (drums), Bass, and Instruments **all simultaneously exceed their song-wide average amplitudes** at peak joint intensity.
+
+#### 2. Multi-Colour Direct Song Palette Mapping (`laserColorUtils.ts` & `VisualEngine.ts`)
+- **Case B Direct Chromatic Mapping:** In `resolveLaserPaletteColors`, the 180° HSL hue shift was replaced with direct palette indexing:
+  $$\text{Tone 1} = \text{Color}_1 \quad (h_1, s_1, l_1), \quad \text{Tone 2} = \text{Color}_2 \quad (h_2, s_2, l_2)$$
+  The diode nozzle and Tone 1 beam filament use the primary chromatic colour directly; Tone 2 alternating beams use the secondary chromatic colour directly. No complementary inversion is applied.
+- **Dynamic Palette Mutation Purge:** In `VisualEngine.updateDynamicPalette`, removed the frame-by-frame 180° hue overwrite on `this.activePalette.laserColor`, ensuring `laserColor` adheres strictly to the authentic song palette and preserves extracted `spotlightColors`.
+- **Expanded Palette Signature Invalidation:** Updated `ThinLasersEffect.updatePaletteColors` signature check to include `spotlightColors` and `laserColor`, guaranteeing instant material updates on the GPU when thumbnails or custom palettes load.
+
+#### 3. 360° 3D End-to-End Laser Geometry (`laserChoreography.ts` & `ThinLasersEffect.ts`)
+- **360° Spherical Trajectories Across 3 Dimensions:** Overhauled all 22 choreographies in `laserChoreography.ts` to generate full 3D direction vectors:
+  - **Ceiling & Sky Zenith:** Upward elevation $\phi > 0$ targeting $Y \in [14, 26]$.
+  - **Stage Floor & Pit:** Downward elevation $\phi < 0$ targeting $Y \in [-10, 0]$.
+  - **Wide Horizontal Span:** Azimuth covering the full peripheral width ($X \in [-35, +35]$).
+  - **Audience & Camera Projections:** Forward depth $Z \in [0, 25]$, targeting and flying past the camera position at $(0, 1.8, 9.2)$.
+- **End-to-End Ray Length:** In `ThinLasersEffect.update`, normalized the 3D direction vector $\mathbf{D} = \frac{\mathbf{T} - \mathbf{O}}{\|\mathbf{T} - \mathbf{O}\|}$ and scaled cylinder length to `FULL_WINDOW_BEAM_LENGTH = 85.0`:
+  $$\mathbf{P}_{\text{end}} = \mathbf{O} + \mathbf{D} \cdot 85.0$$
+  This guarantees every beam pierces completely from its nozzle origin through and beyond the browser window boundaries, covering the entire width and height from edge to edge.
+
+#### 4. Full-Window Blinder Wash & Increased Brightness (`VisualEngine.ts` & `index.css`)
+- **Expansive Elliptical Gradients:** Updated `#festival-window-blinder` background styles to maintain intense illumination across all 4 corners and window edges:
+  - White Blinder: `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.96) 35%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0.72) 100%)`
+  - Song Palette Blinder: `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.92) 25%, rgba(r,g,b,0.90) 60%, rgba(r,g,b,0.75) 100%)`
+- **Noticeable Brightness Ceiling:** Increased peak blinder opacity from `0.80` to `0.96`, with baseline transient kick response scaled to `(0.50 + kickVal * 0.48) * maxBri`.
+- **Fixed Inset Pinning:** Updated CSS `.festival-window-blinder` to `position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 15; pointer-events: none;`.
+
+#### 5. High-Precision Audio & Video Synchronization (`YouTubeStagePlayer.tsx`)
+- **Master Audio Clock Integration:** Connected `getAudioCurrentTime={() => audioEngine.getCurrentTime()}` directly into `YouTubeStagePlayer`.
+- **Startup Buffer Snap:** In `onStateChange`, when YouTube video state transitions to `PLAYING` (state 1), measured drift against the master audio clock and snapped with `seekTo(masterTime, true)` if drift $> 0.08\text{s}$, completely eliminating initial buffering latency.
+- **Continuous 100ms Drift Loop:** Dedicated high-frequency monitor checking drift every 100ms during playback; applies micro-seek adjustments whenever drift exceeds $140\text{ms}$ with a $200\text{ms}$ debounce lockout to prevent seek fluttering.
+
+#### 6. Pinpointed Tri-STEM Peak Drop Activation Engine (`AudioEngine.ts` & `demucs_service.py`)
+- **Full-Track Static Stem Baselines:** Extracted song-wide static average amplitudes across the entire audio timeline:
+  $$\bar{A}_{\text{drums}} = \frac{1}{N}\sum D[i], \quad \bar{A}_{\text{bass}} = \frac{1}{N}\sum B[i], \quad \bar{A}_{\text{inst}} = \frac{1}{N}\sum I[i]$$
+- **Joint Drop Qualification:** Identified frames satisfying the simultaneous tri-STEM requirement:
+  $$\text{isTriDropFrame}[i] = (D[i] > \bar{A}_{\text{drums}}) \land (B[i] > \bar{A}_{\text{bass}}) \land (I[i] > \bar{A}_{\text{inst}})$$
+- **Peak Segment Pinpointing:** Evaluated joint intensity $J[i] = \frac{D[i] + B[i] + I[i]}{3}$ for all qualifying frames, setting the drop threshold at the 45th–50th percentile of qualifying frames to isolate the concentrated climax segment (the drop).
+- **Temporal Clustering & Hysteresis:** Grouped contiguous qualifying frames into `triStemDropSections: Array<{ startTime: number; endTime: number }>` ($t_{\text{min}} \ge 0.4\text{s}$, merging gaps $< 0.5\text{s}$).
+- **Strict Laser Gating:** In `ThinLasersEffect.ts`:
+  $$\text{targetActivation} = (\text{isLasersEnabled} \land \text{isTriStemDropActive}) \;?\; 1.0 : 0.0$$
+  Outside the pinpointed drop segments, lasers fade out smoothly and are completely hidden (`visible = false`), igniting exclusively during the song's climactic drops.
+
+---
+
+## 6. Current Implementation State & Quality Verification
+
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
+- **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all 48 files.
 - **Vite Development Server:** Running continuously at `http://localhost:5173/` (`task-1627`).
-- **Audio Intelligence Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` (`task-2474`), handling Demucs neural stem extraction on Apple Silicon MPS hardware (`device: "mps"`).
-- **Git Repository:** Committed and pushed cleanly to branch `main`.
+- **Audio Intelligence Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` (`task-4600`), handling Demucs neural stem extraction, kick comb filtering, ShazamIO recognition, and ultra-fast stem cache checks (`/api/check-stems-cache`) on Apple Silicon MPS hardware (`device: "mps"`).
+- **Phase 1 Startup Gate:** Implemented and active; blocks unauthorized app entry until a YouTube Data API v3 key is validated via Google Cloud.
+- **Phase 2 Repository Documentation:** Fully comprehensive, verified dependencies, licenses credited, contributor guides in place.
+- **Phase 3 BPM Provenance Engine:** Fully implemented, verified against real tracks, cached per track, and active in the visualizer and telemetry HUD.
+- **Phase 4 Symmetrical Spotlight Spawning:** Monotonically mapped across $[70, 160]\text{ BPM}$, symmetrically framing Top, Left, and Right of the YouTube player, with smooth transitions and zero visual jumps.
+- **Phase 5 Logo Visibility & Decoupling:** SYNWAVE logo permanently remains visible at `(20px, 14px)`, smoothly dims to `0.45` opacity during upper menu auto-hide, returns to `1.0` on menu reveal or hover, with full click interactivity and zero positional shifting.
+- **Phase 6 Laser Colors & Border Elimination:** Tri-layer volumetric additive architecture (Core + Sheath + Halo) for glowing, clean-edged festival laser fans.
+- **Phase 7 Audio-Aware Laser Activation:** Full-track static average amplitude reference pre-computed before playback; smooth $0.35\text{s}/0.60\text{s}$ fading; directionally synchronized master movement driven by kick transients.
+- **Phase 9 Pre-Playback Menu Visibility & Media Readiness Gate:** Bottom transport menu automatically appears once audio and video are loaded; remains persistently visible throughout paused and pre-playback states; auto-hide seamlessly activates only after confirmed playback begins.
+- **Phase 10 Fullscreen Scaling & Spotlight Positioning:** Player dimensions constrained to `width: min(68vw, calc(62vh * (16 / 9))); top: 48%;`; spotlight positions and perimeter lights dynamically calculated relative to player container bounds; full compatibility across window resize and fullscreen toggles.
+- **Phase 11 Dynamic Song-Palette Colors:** Immediate palette propagation on track load, pause, and thumbnail arrival.
+- **Phase 12 Dynamic Song-Palette Flash-Screen with Compulsory White:** Flash-screen effect synchronized with kick onsets; pure white (`#FFFFFF`) on downbeats and phrase starts while distributing primary, secondary, and accent/laser song palette colors.
+- **Phase 13 Shazam-First Recognition & Correctly Named Stage STEM Extraction:** 5-step sequential pipeline introduced; ShazamIO runs before Demucs starts; recognition metadata saved in track state (`recognitionStatus`, `shazamMatch`); extraction status and loader display `Extracting Stage STEMs — ${songTitle}`; stable audio fingerprint caching (`getTrackFingerprint`) eliminates redundant queries.
+- **Phase 14 22-Pattern Concert Laser Choreography Engine:** 22 distinct concert laser movement choreographies implemented in `laserChoreography.ts`; real-time mid-range spectral analysis ($250\text{ Hz} - 4\text{ kHz}$) and Demucs instrumental stem extraction driving choreography transitions; Demucs drum kick events providing musical timing anchors; bass strictly purged from pattern selection; minimum dwell time of $3.5\text{s}$ enforced; Hermite cubic smoothstep transition blending ($0.50\text{s}$) eliminating visual pops.
+- **STEM Caching Architecture:** In-memory client cache ($0\text{ms}$), browser IndexedDB store ($<5\text{ms}$), and Python server disk cache ($<15\text{ms}$) with `/api/check-stems-cache` pre-flight check implemented; stems indexed by file fingerprint, SHA256 content hash, and unique song identity (`title:::artist`).
+- **Phase 15 Clean Video Aperture & Caption Management:** Synwave-generated overlays completely eliminated from the YouTube video screen container; video metadata and status relocated outside the video aperture; YouTube player configured with `cc_load_policy: 0`, `controls: 0`, and `disablekb: 1`; caption options safely inspected with `unloadModule('captions')`.
+- **Dual-Layer Audio Impact Architecture (Restored):** 3D stage layer zooms and punches dynamically with sub-bass hits ($20-100\text{Hz}$) through camera FOV zoom punch; YouTube stage video iframe element shakes in 2D space on drum kicks through `onStageShake`; concert moving heads and perimeter lights track cleanly with high visual fidelity and bilateral symmetry.
+- **Phase 17 Conditional Laser Colours, Full-Screen Light Paths & Reliable Space Controls:** Normalized and deduplicated palette processing in `laserColorUtils.ts`; permanent ref-backed keyboard listener on `window` with capture phase eliminates listener churn, prevents page scrolling, guards against duplicate button toggles, protects text inputs, and automatically reclaims focus from cross-origin iframes.
+- **Phase 18 Fix Screen Flash & Synchronize with Active Song Colour Palette:** Vertical-sync direct DOM mutation on `#festival-window-blinder`, eliminating React re-render lag and asynchronous state batch cancellation; fixed kick onset detection in `AudioEngine.ts` to prevent drum energy level-locking.
+- **Phase 19 Multi-Colour Lasers, 360° 3D End-to-End Rays, Full-Window Blinder, Audio-Video Lock & Tri-STEM Drop Pinpointing:**
+  - Multi-colour songs directly map authentic chromatic palette colours (Tone 1 = Color 1, Tone 2 = Color 2) without 180° opposite hue inversion.
+  - 360° 3D beam trajectories deployed across all 22 choreographies: sweeping upward to ceiling zenith ($Y \in [14, 26]$), downward to stage floor ($Y \in [-10, 0]$), wide horizontal sweeps ($X \in [-35, +35]$), and forward auditorium projections ($Z \in [0, 25]$) aimed directly at and past the camera at $(0, 1.8, 9.2)$.
+  - 85m cylinder beam length extends end-to-end completely covering browser window width and height.
+  - Full-window blinder wash with elliptical radial gradients and increased peak brightness ($0.96$) pinned to `inset: 0` covering entire viewport (`100vw` by `100vh`).
+  - Master audio hardware clock drift monitoring loop ($100\text{ms}$) with instant snap on `PLAYING` transitions to ensure perfect audio-video lip-sync.
+  - Pinpointed Tri-STEM drop activation engine: computes track-wide baselines $\bar{A}_{\text{drums}}, \bar{A}_{\text{bass}}, \bar{A}_{\text{inst}}$, isolating the smaller peak drop segments where all 3 stems simultaneously exceed their averages, gating lasers to only activate during climactic drop sections.
+- **Git Repository:** Follows Rule 8 (do not push to GitHub repo until instructed). All code maintained cleanly locally.
+
+
+
+
+
+
+
+
+

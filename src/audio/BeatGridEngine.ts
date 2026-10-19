@@ -11,9 +11,12 @@
 
 import type { BeatGridState } from '../types';
 
+export type BpmSource = 'shazamio' | 'demucs' | 'unavailable';
+
 export class BeatGridEngine {
-  private bpm = 128.0;
-  private confidence = 0.5;
+  private bpm = 120.0;
+  private bpmSource: BpmSource = 'unavailable';
+  private confidence = 0.0;
   private isUserCalibrated = false;
 
   // Recent onset timestamps for Inter-Onset Interval (IOI) calculation
@@ -22,19 +25,20 @@ export class BeatGridEngine {
 
   // Cached state
   private currentState: BeatGridState = {
-    bpm: 128,
+    bpm: 120,
+    bpmSource: 'unavailable',
     beatIndex: 0,
     barIndex: 1,
     beatPhase: 0,
     isBeat: false,
     isBar: false,
     isPhrase: false,
-    confidence: 0.5,
+    confidence: 0.0,
   };
 
   private currentTrackId = '';
 
-  constructor(initialBpm = 128) {
+  constructor(initialBpm = 120) {
     this.bpm = initialBpm;
     this.updateCurrentState(0, false, 0);
   }
@@ -42,7 +46,12 @@ export class BeatGridEngine {
   /**
    * Initializes or loads cached beat grid parameters for a specific track.
    */
-  public setTrack(trackId: string, preAnalyzedBpm?: number, confidence?: number): void {
+  public setTrack(
+    trackId: string,
+    preAnalyzedBpm?: number | null,
+    confidence?: number,
+    source?: BpmSource
+  ): void {
     this.currentTrackId = trackId;
     this.onsetHistory = [];
     this.lastOnsetAudioTime = -1;
@@ -52,9 +61,10 @@ export class BeatGridEngine {
       const cached = localStorage.getItem(`synwave_beatgrid_${trackId}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed.bpm && parsed.bpm >= 60 && parsed.bpm <= 220) {
+        if (parsed.bpm && parsed.bpm >= 50 && parsed.bpm <= 240) {
           this.bpm = parsed.bpm;
-          this.confidence = parsed.confidence ?? 0.85;
+          this.bpmSource = parsed.bpmSource || 'demucs';
+          this.confidence = parsed.confidence ?? (this.bpmSource === 'shazamio' ? 1.0 : 0.65);
           this.isUserCalibrated = !!parsed.isUserCalibrated;
           return;
         }
@@ -63,13 +73,15 @@ export class BeatGridEngine {
       console.warn('Could not read beatgrid cache:', e);
     }
 
-    if (preAnalyzedBpm && preAnalyzedBpm >= 60 && preAnalyzedBpm <= 220) {
+    if (preAnalyzedBpm && preAnalyzedBpm >= 50 && preAnalyzedBpm <= 240 && source !== 'unavailable') {
       this.bpm = preAnalyzedBpm;
-      this.confidence = confidence ?? 0.8;
-      this.isUserCalibrated = false;
+      this.bpmSource = source || 'demucs';
+      this.confidence = confidence ?? (this.bpmSource === 'shazamio' ? 1.0 : 0.65);
+      this.isUserCalibrated = this.bpmSource === 'shazamio';
     } else {
-      this.bpm = 128;
-      this.confidence = 0.4;
+      this.bpm = preAnalyzedBpm || 120;
+      this.bpmSource = 'unavailable';
+      this.confidence = 0.0;
       this.isUserCalibrated = false;
     }
   }
@@ -120,6 +132,7 @@ export class BeatGridEngine {
 
     this.currentState = {
       bpm: Math.round(this.bpm * 10) / 10,
+      bpmSource: this.bpmSource,
       beatIndex,
       barIndex,
       beatPhase: Math.max(0, Math.min(1, beatPhase)),
@@ -149,6 +162,9 @@ export class BeatGridEngine {
     const alpha = 0.08;
     this.bpm = this.bpm * (1 - alpha) + candidateBpm * alpha;
     this.confidence = Math.min(0.92, this.confidence + 0.02);
+    if (this.bpmSource === 'unavailable') {
+      this.bpmSource = 'demucs';
+    }
 
     this.persistCache();
   }
@@ -156,11 +172,14 @@ export class BeatGridEngine {
   /**
    * Sets or overrides the BPM manually (e.g. from UI tempo tapper or manual input).
    */
-  public setBpm(bpm: number, isUser = true): void {
+  public setBpm(bpm: number, sourceOrUser: BpmSource | boolean = 'demucs', isUser = true): void {
+    const source: BpmSource = typeof sourceOrUser === 'string' ? sourceOrUser : 'demucs';
+    const userCalibrated: boolean = typeof sourceOrUser === 'boolean' ? sourceOrUser : isUser;
     if (bpm >= 40 && bpm <= 240) {
       this.bpm = bpm;
-      this.confidence = 1.0;
-      this.isUserCalibrated = isUser;
+      this.bpmSource = source;
+      this.confidence = userCalibrated ? 1.0 : this.confidence;
+      this.isUserCalibrated = userCalibrated;
       this.persistCache();
     }
   }
@@ -171,6 +190,10 @@ export class BeatGridEngine {
 
   public getBpm(): number {
     return this.bpm;
+  }
+
+  public getBpmSource(): BpmSource {
+    return this.bpmSource;
   }
 
   public getConfidence(): number {
@@ -188,6 +211,7 @@ export class BeatGridEngine {
         `synwave_beatgrid_${this.currentTrackId}`,
         JSON.stringify({
           bpm: Math.round(this.bpm * 10) / 10,
+          bpmSource: this.bpmSource,
           confidence: this.confidence,
           isUserCalibrated: this.isUserCalibrated,
         })

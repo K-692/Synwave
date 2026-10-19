@@ -87,17 +87,15 @@ html, body, #root {
   pointer-events: none;
 }
 
-/* Festival Window Blinder Flash Overlay */
+/* Festival Window Blinder Flash Overlay (Phase 18) */
 .festival-window-blinder {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  z-index: 10;
-  mix-blend-mode: screen;
-  transition: opacity 0.05s ease-out;
+  z-index: 15;
+  opacity: 0;
 }
 
 /* Fullscreen Edge-to-Edge Guarantee */
@@ -133,7 +131,7 @@ html, body, #root {
 }
 
 /* -------------------------------------------------------------
- * Top Header (Attached to window edge with zero gap, auto-hides)
+ * Top Header (Attached to window edge with zero gap, auto-hides upper menus)
  * ------------------------------------------------------------- */
 .synwave-header {
   position: absolute;
@@ -150,15 +148,30 @@ html, body, #root {
   justify-content: space-between;
   padding: 0;
   z-index: 25;
-  transform: translateY(-100%);
-  opacity: 0;
   pointer-events: none;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
 }
 
-.synwave-header.visible {
-  transform: translateY(0);
+/* SYNWAVE Brand Logo - Always visible; smooth opacity reduction when upper menus auto-hide */
+.header-brand.floating-pill {
+  padding: 6px 16px 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto !important;
+  cursor: pointer;
   opacity: 1;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+/* Reduced opacity when upper menus are hidden */
+.header-brand.floating-pill.dimmed {
+  opacity: 0.45;
+}
+
+/* Full opacity when menus are visible or on hover */
+.header-brand.floating-pill.full-opacity,
+.header-brand.floating-pill:hover {
+  opacity: 1.0 !important;
 }
 
 .header-brand {
@@ -321,6 +334,7 @@ html, body, #root {
 .player-dock.visible {
   transform: translateY(0);
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* Seek Bar */
@@ -2274,19 +2288,19 @@ html, body, #root {
 .synwave-youtube-stage-screen {
   position: absolute;
   left: 50%;
-  top: 48.6%;
+  top: 48%;
   transform: translate(-50%, -50%);
-  width: min(73.3vw, 130.3vh);
+  width: min(68vw, calc(62vh * (16 / 9)));
   aspect-ratio: 16 / 9;
   border-radius: 4px;
   overflow: hidden;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 1;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.5s ease, visibility 0.5s ease;
-  box-shadow: 0 0 45px rgba(0, 240, 255, 0.25), 0 0 100px rgba(0, 0, 0, 0.95);
-  border: 1px solid rgba(0, 240, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.85);
   background: #000;
 }
 
@@ -2303,28 +2317,35 @@ html, body, #root {
   display: block;
 }
 
-.yt-stage-pill {
-  position: absolute;
-  bottom: 10px;
-  right: 12px;
+/* Phase 15: Clean video aperture - overlays removed from stage screen, relocated to floating dock */
+.track-video-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(3, 6, 16, 0.85);
-  border: 1px solid rgba(0, 240, 255, 0.4);
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-family: var(--font-mono);
+  gap: 4px;
+  margin-top: 2px;
   font-size: 0.62rem;
-  color: #e2e8f0;
-  backdrop-filter: blur(8px);
-  z-index: 6;
+  font-family: var(--font-mono);
+  color: var(--neon-cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.9;
 }
 
-.yt-pill-tag {
+.track-video-indicator .video-indicator-icon {
+  flex-shrink: 0;
   color: var(--neon-cyan);
-  font-weight: 800;
-  letter-spacing: 0.5px;
+}
+
+.track-video-indicator .video-indicator-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.highlight-cyan {
+  color: var(--neon-cyan) !important;
+  font-weight: 600;
 }
 
 .btn-yt-key-setup {
@@ -2401,7 +2422,17 @@ html, body, #root {
 .header-center-loader-wrapper {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -120%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.header-center-loader-wrapper.visible,
+.synwave-header.menus-visible .header-center-loader-wrapper,
+.synwave-header.visible .header-center-loader-wrapper {
+  transform: translate(-50%, 0);
+  opacity: 1;
   pointer-events: auto;
 }
 
@@ -2410,6 +2441,18 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 6px;
+  transform: translateY(-120%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.header-toggles.floating-pill.visible,
+.synwave-header.menus-visible .header-toggles.floating-pill,
+.synwave-header.visible .header-toggles.floating-pill {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dock-content {
@@ -2670,5 +2713,449 @@ html, body, #root {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* ==========================================================================
+   YouTube Data API v3 Startup Verification Gate & Key Modal
+   ========================================================================== */
+
+.synwave-key-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(3, 7, 18, 0.88) 0%, rgba(1, 3, 9, 0.96) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+  animation: keyModalFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes keyModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.synwave-key-modal {
+  width: 100%;
+  max-width: 580px;
+  background: rgba(10, 15, 30, 0.94);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.15), 0 25px 60px rgba(0, 0, 0, 0.85);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.key-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.1) 0%, rgba(255, 0, 85, 0.05) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.key-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.key-icon-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+}
+
+.key-modal-header h3 {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 1.5px;
+  color: #fff;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.key-modal-subtitle {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin: 3px 0 0 0;
+  font-family: var(--font-sans);
+}
+
+.key-modal-body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.key-gate-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #fca5a5;
+}
+
+.gate-lock-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #ef4444;
+}
+
+.active-key-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+  font-size: 0.78rem;
+}
+
+.active-key-label {
+  color: #6ee7b7;
+  font-weight: 500;
+}
+
+.active-key-code {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 8px;
+  border-radius: 5px;
+  color: #a7f3d0;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  letter-spacing: 1px;
+}
+
+.key-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-input-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #94a3b8;
+}
+
+.btn-paste-link {
+  background: transparent;
+  border: none;
+  color: var(--neon-cyan);
+  font-size: 0.72rem;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-paste-link:hover {
+  background: rgba(0, 240, 255, 0.12);
+  color: #fff;
+}
+
+.key-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.key-text-input {
+  width: 100%;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 0 44px 0 14px;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: #fff;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.key-text-input:focus {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.35);
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.key-toggle-visibility {
+  position: absolute;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s ease;
+}
+
+.key-toggle-visibility:hover {
+  color: var(--neon-cyan);
+}
+
+.key-error-card {
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: keyShake 0.3s ease;
+}
+
+@keyframes keyShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.key-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.key-error-icon {
+  color: #ef4444;
+}
+
+.key-error-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.2);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.key-error-message {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #fecaca;
+  margin: 0;
+}
+
+.key-success-card {
+  padding: 12px 16px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6ee7b7;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.key-guide-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.key-guide-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #cbd5e1;
+}
+
+.key-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--neon-cyan);
+  font-size: 0.72rem;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.key-guide-link:hover {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+
+.key-guide-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.key-guide-steps strong {
+  color: #e2e8f0;
+}
+
+.key-guide-note {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-style: italic;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.key-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.key-validate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.key-validate-btn.loading {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.spinner-icon {
+  animation: spinSlow 1s linear infinite;
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Startup Gate Overlay (While verifying key on app launch) */
+.synwave-startup-gate-overlay {
+  position: fixed;
+  inset: 0;
+  background: #02050f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease;
+}
+
+.startup-gate-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.startup-gate-logo {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.startup-gate-logo-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  z-index: 2;
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+}
+
+.startup-gate-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 2px solid var(--neon-cyan);
+  animation: gatePulse 1.6s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+
+@keyframes gatePulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.startup-gate-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  letter-spacing: 3px;
+  color: #fff;
+  margin: 0;
+}
+
+.startup-gate-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--neon-cyan);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
 
 

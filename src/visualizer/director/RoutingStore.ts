@@ -29,8 +29,12 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       vocalToScreenGlow: 1.0,
       laserDensity: 1.25,
       spotlightCount: 3,
+      minSpotlightCount: 1,
+      maxSpotlightCount: 7,
+      autoBpmSpotlightSpawning: true,
       effectDecay: 1.0,
       cameraShakeStrength: 0.0,
+      spotlightShakeIntensity: 1.0,
       screenShakeIntensity: 1.0,
       screenFlashIntensity: 1.0,
       screenFlashColorSaturation: 1.0,
@@ -103,7 +107,20 @@ export class RoutingStore {
   }
 
   public setSpotlightCount(count: number): void {
-    this.updateConfig({ spotlightCount: Math.max(1, Math.min(8, Math.round(count))) });
+    const min = this.config.minSpotlightCount ?? 1;
+    const max = this.config.maxSpotlightCount ?? 7;
+    this.updateConfig({ spotlightCount: Math.max(min, Math.min(max, Math.round(count))) });
+  }
+
+  public setSpotlightCountLimits(minCount: number, maxCount: number): void {
+    const min = Math.max(1, Math.min(8, Math.round(minCount)));
+    const max = Math.max(min, Math.min(8, Math.round(maxCount)));
+    const current = Math.max(min, Math.min(max, this.config.spotlightCount ?? 3));
+    this.updateConfig({
+      minSpotlightCount: min,
+      maxSpotlightCount: max,
+      spotlightCount: current,
+    });
   }
 
   public toggleEffect(family: keyof AudioVisualRoutingConfig['enabledEffects']): void {

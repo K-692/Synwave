@@ -7,16 +7,13 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Video, Key, X, Check } from 'lucide-react';
-import { getYouTubeApiKey, setYouTubeApiKey } from '../services/youtubeService';
 
 interface YouTubeStagePlayerProps {
   videoId: string | null;
-  videoTitle?: string;
   currentTime: number;
   isPlaying: boolean;
-  onKeySaved?: () => void;
   onPlayerReady?: (ready: boolean) => void;
+  getAudioCurrentTime?: () => number;
 }
 
 declare global {
@@ -60,26 +57,16 @@ interface YTPlayerInstance {
 
 export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
   videoId,
-  videoTitle,
   currentTime,
   isPlaying,
-  onKeySaved,
   onPlayerReady,
+  getAudioCurrentTime,
 }) => {
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const containerId = 'synwave-yt-iframe-player';
   const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [hasApiKey, setHasApiKey] = useState(false);
   const isSyncingRef = useRef(false);
-
-  // Check if API key is present
-  useEffect(() => {
-    const key = getYouTubeApiKey();
-    setHasApiKey(!!key);
-    setApiKeyInput(key);
-  }, []);
+  const lastSyncTimestampRef = useRef(0);
 
   // 1. Load YouTube Iframe API Script
   useEffect(() => {
@@ -102,8 +89,8 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
         }
         playerRef.current = null;
         setIsPlayerReady(false);
-        onPlayerReady?.(false);
       }
+      onPlayerReady?.(true);
       return;
     }
 
@@ -131,6 +118,8 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
           playerVars: {
             autoplay: 1,
             controls: 0,
+            cc_load_policy: 0,
+            iv_load_policy: 3,
             disablekb: 1,
             fs: 0,
             modestbranding: 1,
@@ -144,24 +133,60 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
               // Volume MUST be strictly OFF as audio plays from the local audio file
               event.target.mute();
               event.target.setVolume(0);
+
+              // Phase 15: Captions default-off inspection
+              try {
+                const target = event.target as unknown as {
+                  unloadModule?: (module: string) => void;
+                  setOption?: (module: string, option: string, value: unknown) => void;
+                };
+                if (typeof target.unloadModule === 'function') {
+                  target.unloadModule('captions');
+                }
+                if (typeof target.setOption === 'function') {
+                  target.setOption('captions', 'track', {});
+                }
+              } catch {
+                // Ignore unsupported commands without crashing
+              }
+
               setIsPlayerReady(true);
               onPlayerReady?.(true);
 
-              if (currentTime > 0) {
-                event.target.seekTo(currentTime, true);
+              const initialTime = getAudioCurrentTime ? getAudioCurrentTime() : currentTime;
+              if (initialTime > 0) {
+                event.target.seekTo(initialTime, true);
               }
               if (isPlaying) {
                 event.target.playVideo();
               }
             },
-            onStateChange: () => {
-              // Ensure volume stays permanently muted
+            onError: (err) => {
+              console.warn('[YouTubeStagePlayer] Video embedding failure or restriction:', err);
+              setIsPlayerReady(true);
+              onPlayerReady?.(true);
+            },
+            onStateChange: (event) => {
               playerRef.current?.mute();
+              // High-precision sync anchor: When video begins playing (state 1), lock instantly to master audio clock
+              if (event.data === 1 && getAudioCurrentTime) {
+                try {
+                  const masterTime = getAudioCurrentTime();
+                  const ytTime = playerRef.current?.getCurrentTime() ?? 0;
+                  if (Math.abs(ytTime - masterTime) > 0.08) {
+                    playerRef.current?.seekTo(masterTime, true);
+                  }
+                } catch {
+                  // ignore
+                }
+              }
             },
           },
         });
       } catch (err) {
         console.warn('YouTube Iframe Player instantiation warning:', err);
+        setIsPlayerReady(true);
+        onPlayerReady?.(true);
       }
     };
 
@@ -187,6 +212,8 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
     try {
       playerRef.current.mute();
       if (isPlaying) {
+        const masterTime = getAudioCurrentTime ? getAudioCurrentTime() : currentTime;
+        playerRef.current.seekTo(masterTime, true);
         playerRef.current.playVideo();
       } else {
         playerRef.current.pauseVideo();
@@ -196,7 +223,38 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
     }
   }, [isPlaying, isPlayerReady]);
 
-  // 4. Continuous Timestamp Synchronization with Audio Clock
+  // 4. Continuous High-Frequency Drift Monitor (Tight audio-video alignment)
+  useEffect(() => {
+    if (!playerRef.current || !isPlayerReady || !isPlaying) return;
+
+    const syncInterval = setInterval(() => {
+      if (isSyncingRef.current || !playerRef.current) return;
+      const now = performance.now();
+      if (now - lastSyncTimestampRef.current < 250) return; // Prevent rapid seek storms
+
+      try {
+        const masterTime = getAudioCurrentTime ? getAudioCurrentTime() : currentTime;
+        const ytTime = playerRef.current.getCurrentTime();
+        const drift = ytTime - masterTime;
+
+        // Snap into sync if drift exceeds 140ms
+        if (Math.abs(drift) > 0.14) {
+          isSyncingRef.current = true;
+          lastSyncTimestampRef.current = now;
+          playerRef.current.seekTo(masterTime, true);
+          setTimeout(() => {
+            isSyncingRef.current = false;
+          }, 200);
+        }
+      } catch {
+        // ignore transient seek errors
+      }
+    }, 100);
+
+    return () => clearInterval(syncInterval);
+  }, [isPlaying, isPlayerReady, getAudioCurrentTime, currentTime]);
+
+  // 5. Seek / Large Jump Synchronization with Audio Clock
   useEffect(() => {
     if (!playerRef.current || !isPlayerReady || isSyncingRef.current) return;
 
@@ -204,111 +262,26 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
       const ytTime = playerRef.current.getCurrentTime();
       const diff = Math.abs(ytTime - currentTime);
 
-      // Re-align if video timestamp drifts more than 0.35 seconds from audio clock
-      if (diff > 0.35) {
+      // Snap immediately if large seek occurred (> 0.4s)
+      if (diff > 0.40) {
         isSyncingRef.current = true;
         playerRef.current.seekTo(currentTime, true);
         setTimeout(() => {
           isSyncingRef.current = false;
-        }, 300);
+        }, 200);
       }
     } catch {
-      // ignore transient seek exceptions
+      // ignore
     }
   }, [currentTime, isPlayerReady]);
 
-  const handleSaveApiKey = () => {
-    setYouTubeApiKey(apiKeyInput.trim());
-    setHasApiKey(!!apiKeyInput.trim());
-    setShowKeyModal(false);
-    onKeySaved?.();
-  };
-
+  // Phase 15: Render purely the clean iframe container without any Synwave-generated text overlays
   return (
-    <>
-      {/* YouTube Stage Screen Container */}
-      <div
-        id="synwave-youtube-stage-screen"
-        className={`synwave-youtube-stage-screen ${videoId ? 'active' : ''}`}
-      >
-        <div id={containerId} className="yt-iframe-target" />
-
-        {/* Video Overlay Info Pill */}
-        {videoId && videoTitle && (
-          <div className="yt-stage-pill" title={`Synchronized Video: ${videoTitle}`}>
-            <Video size={13} className="yt-icon-pulse" />
-            <span className="yt-pill-title">{videoTitle}</span>
-            <span className="yt-pill-tag">MUTED • SYNCED</span>
-          </div>
-        )}
-      </div>
-
-      {/* API Key Modal Button Trigger if key is missing */}
-      {!hasApiKey && (
-        <button
-          className="btn-yt-key-setup"
-          onClick={() => setShowKeyModal(true)}
-          title="Configure YouTube Data API v3 Key"
-        >
-          <Key size={14} />
-          <span>Set YouTube API Key</span>
-        </button>
-      )}
-
-      {/* YouTube API Key Modal */}
-      {showKeyModal && (
-        <div className="modal-backdrop" onClick={() => setShowKeyModal(false)}>
-          <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="flex items-center gap-2">
-                <Key size={18} className="text-cyan-400" />
-                <h3 className="modal-title">YouTube Data API v3 Key</h3>
-              </div>
-              <button className="btn-close" onClick={() => setShowKeyModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <p className="modal-description">
-                To automatically search and fetch official videos matching the song recognized by Shazam,
-                Synwave requires a <strong>Google Cloud YouTube Data API v3 Key</strong>.
-              </p>
-
-              <div className="api-key-input-group">
-                <input
-                  type="password"
-                  placeholder="AIzaSy..."
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  className="modal-input"
-                />
-              </div>
-
-              <div className="api-key-help">
-                <p>
-                  <strong>How to get a free API Key:</strong>
-                </p>
-                <ol>
-                  <li>Go to Google Cloud Console (console.cloud.google.com).</li>
-                  <li>Enable <em>YouTube Data API v3</em> in APIs & Services.</li>
-                  <li>Under <em>Credentials</em>, click Create Credentials &gt; API Key.</li>
-                </ol>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowKeyModal(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleSaveApiKey}>
-                <Check size={16} />
-                <span>Save Key</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <div
+      id="synwave-youtube-stage-screen"
+      className={`synwave-youtube-stage-screen ${videoId ? 'active' : ''}`}
+    >
+      <div id={containerId} className="yt-iframe-target" />
+    </div>
   );
 };

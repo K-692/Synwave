@@ -9,6 +9,7 @@
 import React, { useRef, useState } from 'react';
 import {
   Activity,
+  Key,
   SlidersHorizontal,
   Upload,
 } from 'lucide-react';
@@ -24,6 +25,8 @@ interface HeaderProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onFilesSelected?: (files: FileList | File[]) => void;
+  onOpenKeySettings?: () => void;
+  isKeyModalOpen?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -35,18 +38,24 @@ export const Header: React.FC<HeaderProps> = ({
   onMouseEnter,
   onMouseLeave,
   onFilesSelected,
+  onOpenKeySettings,
+  isKeyModalOpen = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen;
 
   return (
     <header
-      className={`synwave-header floating-header ${isVisible || isRoutingOpen || isDiagnosticOpen ? 'visible' : ''}`}
+      className={`synwave-header floating-header ${isMenuVisible ? 'menus-visible visible' : 'menus-hidden'}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Top Left: Clean Synwave Logo Pill (Always Present) */}
-      <div className="header-brand floating-pill" title="Synwave Procedural Concert Stage">
+      {/* Top Left: Clean Synwave Logo Pill (Permanently visible; dims smoothly when menus hide) */}
+      <div
+        className={`header-brand floating-pill ${isMenuVisible ? 'full-opacity' : 'dimmed'}`}
+        title="Synwave Procedural Concert Stage"
+      >
         <div className="brand-logo">
           <img src="/icon.png" alt="Synwave App Icon" className="brand-logo-img" />
           <div className="brand-pulse-ring" />
@@ -54,9 +63,9 @@ export const Header: React.FC<HeaderProps> = ({
         <span className="brand-title">SYNWAVE</span>
       </div>
 
-      {/* Center Top: Load Audio File Floating Pill */}
+      {/* Center Top: Load Audio File Floating Pill (Auto-hides with upper menus) */}
       {onFilesSelected && (
-        <div className="header-center-loader-wrapper">
+        <div className={`header-center-loader-wrapper menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
           <div
             className={`header-audio-loader floating-pill ${isDragging ? 'drag-over' : ''}`}
             onClick={() => fileInputRef.current?.click()}
@@ -91,8 +100,18 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* Top Right: Floating Drawer & Console Toggles */}
-      <div className="header-toggles floating-pill">
+      {/* Top Right: Floating Drawer & Console Toggles (Auto-hides with upper menus) */}
+      <div className={`header-toggles floating-pill menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
+        {onOpenKeySettings && (
+          <button
+            className={`btn-icon ${isKeyModalOpen ? 'active' : ''}`}
+            onClick={onOpenKeySettings}
+            title="YouTube Data API Key & Validation Gate"
+          >
+            <Key size={18} />
+          </button>
+        )}
+
         {onToggleRouting && (
           <button
             className={`btn-icon ${isRoutingOpen ? 'active' : ''}`}

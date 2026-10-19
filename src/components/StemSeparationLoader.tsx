@@ -1,17 +1,18 @@
 /**
  * Synwave Demucs Neural Stem Separation Loader
- * Displayed while Demucs extracts 4 audio stems (drums, bass, instruments, vocals)
- * with animated stem meters and hardware acceleration status.
+ * Displayed while ShazamIO recognizes audio and Demucs extracts 4 audio stems
+ * (drums, bass, instruments, vocals) with animated stem meters and hardware acceleration status.
  */
 
 import React, { useEffect, useState } from 'react';
-import { Cpu, Disc3, Mic2, Music, Sparkles } from 'lucide-react';
+import { Cpu, Disc3, Mic2, Music, Radio, Sparkles } from 'lucide-react';
 
 interface StemSeparationLoaderProps {
   isVisible: boolean;
   songTitle?: string;
   songArtist?: string;
   statusText?: string;
+  phase?: 'recognizing' | 'extracting';
 }
 
 export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
@@ -19,6 +20,7 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
   songTitle,
   songArtist,
   statusText = 'Separating neural stems with Demucs HTDemucs...',
+  phase = 'extracting',
 }) => {
   const [dots, setDots] = useState('');
   const [activeStemIdx, setActiveStemIdx] = useState(0);
@@ -41,29 +43,58 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
     { name: 'VOCALS', desc: 'Perimeter cross-stage scissor lights, screen glow', icon: Mic2, color: '#ffea00' },
   ];
 
+  const isRecognizing = phase === 'recognizing';
+
   return (
-    <div className="demucs-loader-backdrop">
+    <div className="demucs-loader-backdrop" role="dialog" aria-modal="true" aria-label="Audio Processing Status">
       <div className="demucs-loader-card glass-panel">
         {/* Glow Header */}
         <div className="demucs-loader-header">
           <div className="demucs-badge">
-            <Sparkles size={14} className="neon-cyan-icon" />
-            <span>DEMUCS v4 • NEURAL STEM SEPARATION</span>
+            {isRecognizing ? (
+              <>
+                <Radio size={14} className="neon-cyan-icon animate-pulse" />
+                <span>SHAZAMIO • ACOUSTIC FINGERPRINT RECOGNITION</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} className="neon-cyan-icon" />
+                <span>DEMUCS v4 • NEURAL STEM SEPARATION</span>
+              </>
+            )}
           </div>
-          <h2 className="demucs-title">EXTRACTING STAGE STEMS{dots}</h2>
-          {songTitle && (
-            <p className="demucs-subtitle">
-              <span className="demucs-track-name">{songTitle}</span>
-              {songArtist && <span className="demucs-track-artist"> — {songArtist}</span>}
-            </p>
-          )}
+
+          <h2 className="demucs-title">
+            {isRecognizing ? (
+              `IDENTIFYING TRACK WITH SHAZAMIO${dots}`
+            ) : songTitle ? (
+              `EXTRACTING STAGE STEMS — ${songTitle.toUpperCase()}${dots}`
+            ) : (
+              `EXTRACTING STAGE STEMS${dots}`
+            )}
+          </h2>
+
+          <p className="demucs-subtitle">
+            {isRecognizing ? (
+              <span className="demucs-recognizing-hint">
+                Listening to acoustic waveform & resolving song metadata...
+              </span>
+            ) : songTitle ? (
+              <>
+                <span className="demucs-track-name">{songTitle}</span>
+                {songArtist && <span className="demucs-track-artist"> — {songArtist}</span>}
+              </>
+            ) : (
+              <span className="demucs-track-name">Preparing Demucs neural models</span>
+            )}
+          </p>
         </div>
 
         {/* 4 Stems Status Grid */}
         <div className="demucs-stems-grid">
           {stems.map((stem, idx) => {
             const Icon = stem.icon;
-            const isActive = activeStemIdx === idx;
+            const isActive = isRecognizing ? true : activeStemIdx === idx;
             return (
               <div
                 key={stem.name}

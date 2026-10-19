@@ -46,13 +46,62 @@ async def health_check():
         "shazam": True,
     }
 
+def extract_shazam_bpm(track: dict):
+    """
+    Inspect the raw Shazam response to determine whether a valid, explicit BPM field is available.
+    Does NOT assume ShazamIO always provides BPM.
+    Validates that the value is numeric and within a plausible tempo range (50.0 to 240.0 BPM).
+    """
+    if not track or not isinstance(track, dict):
+        return None
+
+    candidate_values = []
+
+    # 1. Direct top-level bpm / tempo keys
+    for k in ["bpm", "tempo", "beats_per_minute"]:
+        if k in track and track[k] is not None:
+            candidate_values.append(track[k])
+
+    # 2. Attributes dictionary (common in Apple Music / Shazam catalog schemas)
+    attrs = track.get("attributes", {})
+    if isinstance(attrs, dict):
+        for k in ["bpm", "tempo"]:
+            if k in attrs and attrs[k] is not None:
+                candidate_values.append(attrs[k])
+
+    # 3. Section metadata array
+    for section in track.get("sections", []):
+        for meta in section.get("metadata", []):
+            title = str(meta.get("title", "")).strip().upper()
+            if title in ["BPM", "TEMPO", "BEATS PER MINUTE"]:
+                candidate_values.append(meta.get("text"))
+
+    # 4. Parse and validate candidate value
+    import re
+    for val in candidate_values:
+        try:
+            if isinstance(val, (int, float)):
+                bpm_float = float(val)
+            elif isinstance(val, str):
+                match = re.search(r"(\d+(\.\d+)?)", val)
+                bpm_float = float(match.group(1)) if match else None
+            else:
+                bpm_float = None
+
+            if bpm_float is not None and 50.0 <= bpm_float <= 240.0:
+                return round(bpm_float, 1)
+        except (ValueError, TypeError):
+            continue
+
+    return None
+
 @app.post("/api/recognize")
 async def recognize_audio(
     file: UploadFile = File(None),
     filePath: str = Form(None)
 ):
     """
-    Recognize song title and artist from an uploaded audio file or local path.
+    Recognize song title, artist, and verified BPM from an uploaded audio file or local path.
     """
     try:
         data = None
@@ -81,6 +130,10 @@ async def recognize_audio(
                     if meta.get("title") == "Album":
                         album = meta.get("text")
 
+        verified_bpm = extract_shazam_bpm(track)
+        bpm_source = "shazamio" if verified_bpm is not None else None
+        bpm_confidence = 1.0 if verified_bpm is not None else None
+
         if title:
             return {
                 "success": True,
@@ -91,16 +144,70 @@ async def recognize_audio(
                 "coverArt": cover_art,
                 "query": f"{title} {artist or ''}".strip(),
                 "shazamKey": track.get("key"),
+                "bpm": verified_bpm,
+                "bpmSource": bpm_source,
+                "bpmConfidence": bpm_confidence,
             }
         else:
             return {
                 "success": False,
                 "message": "No Shazam match found for this audio segment.",
+                "bpm": None,
+                "bpmSource": None,
+                "bpmConfidence": None,
             }
 
     except Exception as e:
         return {
             "success": False,
+            "error": str(e),
+            "bpm": None,
+            "bpmSource": None,
+            "bpmConfidence": None,
+        }
+
+@app.post("/api/check-stems-cache")
+async def check_stems_cache(
+    fileHash: str = Form(None),
+    fingerprint: str = Form(None),
+    songTitle: str = Form(None),
+    songArtist: str = Form(None)
+):
+    """
+    Ultra-fast (<5ms) cache verification endpoint. Checks if Demucs stems are already
+    computed and cached on disk for this fileHash, fingerprint, or unique song identity.
+    Returns cached stems immediately without uploading the audio file.
+    """
+    try:
+        from demucs_service import get_demucs_service
+        service = get_demucs_service()
+        song_key = service.get_song_key(songTitle, songArtist) if songTitle else None
+
+        cached = None
+        for key in [fingerprint, fileHash]:
+            if key:
+                cached = service.get_cached_result(key, song_key=song_key)
+                if cached:
+                    break
+        if not cached and song_key:
+            cached = service.get_cached_result("", song_key=song_key)
+
+        if cached:
+            return {
+                "success": True,
+                "cached": True,
+                "fileHash": fileHash or fingerprint or song_key,
+                **cached,
+            }
+        return {
+            "success": False,
+            "cached": False,
+            "message": "Stems not found in cache",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "cached": False,
             "error": str(e)
         }
 
@@ -108,18 +215,44 @@ async def recognize_audio(
 async def separate_stems(
     file: UploadFile = File(None),
     filePath: str = Form(None),
-    fileHash: str = Form(None)
+    fileHash: str = Form(None),
+    fingerprint: str = Form(None),
+    songTitle: str = Form(None),
+    songArtist: str = Form(None)
 ):
     """
     Separates 4 stems (drums, bass, instruments, vocals) from the audio file using Demucs.
+    Checks multi-tiered local cache (fileHash, fingerprint, song identity) before running neural inference.
     Returns normalized RMS envelope curves for real-time visualization sync.
     """
     try:
         from demucs_service import get_demucs_service
         service = get_demucs_service()
+        song_key = service.get_song_key(songTitle, songArtist) if songTitle else None
+
+        # Check cache immediately with available keys before doing any file I/O
+        for candidate_key in [fingerprint, fileHash]:
+            if candidate_key:
+                cached = service.get_cached_result(candidate_key, song_key=song_key)
+                if cached:
+                    return {
+                        "success": True,
+                        "cached": True,
+                        "fileHash": candidate_key,
+                        **cached,
+                    }
+        if song_key:
+            cached = service.get_cached_result("", song_key=song_key)
+            if cached:
+                return {
+                    "success": True,
+                    "cached": True,
+                    "fileHash": song_key,
+                    **cached,
+                }
 
         if filePath and os.path.exists(filePath):
-            result = service.separate_file(filePath, fileHash)
+            result = service.separate_file(filePath, file_hash=fileHash or fingerprint, song_key=song_key)
             return result
         elif file is not None:
             data = await file.read()
@@ -127,8 +260,8 @@ async def separate_stems(
                 raise HTTPException(status_code=400, detail="Empty audio file provided.")
             computed_hash = fileHash or service.compute_hash(data)
 
-            # Check cache before writing to disk
-            cached = service.get_cached_result(computed_hash)
+            # Check cache with computed byte hash
+            cached = service.get_cached_result(computed_hash, song_key=song_key)
             if cached:
                 return {
                     "success": True,
@@ -138,18 +271,24 @@ async def separate_stems(
                 }
 
             # Save to temporary path for demucs processing
-            temp_dir = Path(".synwave_cache/temp")
+            temp_dir = Path(__file__).resolve().parent / ".synwave_cache" / "temp"
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_file = temp_dir / f"upload_{computed_hash}.mp3"
             with open(temp_file, "wb") as f:
                 f.write(data)
 
             try:
-                result = service.separate_file(str(temp_file), computed_hash)
+                result = service.separate_file(str(temp_file), file_hash=computed_hash, song_key=song_key)
+                # Also save under fingerprint if provided
+                if fingerprint and result.get("success"):
+                    service.save_cached_result(fingerprint, result, song_key=song_key)
                 return result
             finally:
                 if temp_file.exists():
-                    temp_file.unlink()
+                    try:
+                        temp_file.unlink()
+                    except Exception:
+                        pass
         else:
             raise HTTPException(status_code=400, detail="No file or filePath provided.")
     except Exception as e:

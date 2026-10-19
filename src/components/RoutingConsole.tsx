@@ -131,7 +131,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
               <span>DRUMS & KICK ROUTING (SCREEN IMPACT & BLINDERS)</span>
             </h4>
             <div className="sliders-grid">
-              {/* Screen Shake Intensity */}
+              {/* YouTube Screen Shake Intensity */}
               <div className="slider-control">
                 <div className="slider-label-row">
                   <span>YouTube Screen Shake</span>
@@ -143,7 +143,10 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   max="2.5"
                   step="0.05"
                   value={config.screenShakeIntensity ?? 1.0}
-                  onChange={(e) => handleSliderChange('screenShakeIntensity', parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleSliderChange('screenShakeIntensity', val);
+                  }}
                 />
                 <span className="slider-hint">Drums/kick displacement strictly on the YouTube stage screen (window stays steady)</span>
               </div>
@@ -311,10 +314,10 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
               <span>STAGE SPOTLIGHTS & THUMBNAIL PALETTE</span>
             </h4>
             <div className="sliders-grid">
-              {/* Colouring Spotlight Count */}
+              {/* Colouring Spotlight Active Count */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Colouring Spotlights</span>
+                  <span>Active Spotlights</span>
                   <span className="slider-val">{config.spotlightCount ?? 3} Fixtures</span>
                 </div>
                 <input
@@ -328,7 +331,49 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                     RoutingStore.getInstance().setSpotlightCount(count);
                   }}
                 />
-                <span className="slider-hint">Base active colour-tinted spotlights sweeping the stage (scaled dynamically by instrumental intensity)</span>
+                <span className="slider-hint">Active colour-tinted spotlights placed symmetrically on Top, Left, and Right of YouTube player</span>
+              </div>
+
+              {/* Min Spotlight Count (BPM <= 70) */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Min Spotlights (BPM ≤ 70)</span>
+                  <span className="slider-val">{config.minSpotlightCount ?? 1} Fixtures</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="4"
+                  step="1"
+                  value={config.minSpotlightCount ?? 1}
+                  onChange={(e) => {
+                    const min = parseInt(e.target.value, 10);
+                    const max = config.maxSpotlightCount ?? 7;
+                    RoutingStore.getInstance().setSpotlightCountLimits(min, max);
+                  }}
+                />
+                <span className="slider-hint">Spawn count floor for calm, low-tempo tracks below 70 BPM</span>
+              </div>
+
+              {/* Max Spotlight Count (BPM >= 160) */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Max Spotlights (BPM ≥ 160)</span>
+                  <span className="slider-val">{config.maxSpotlightCount ?? 7} Fixtures</span>
+                </div>
+                <input
+                  type="range"
+                  min="4"
+                  max="8"
+                  step="1"
+                  value={config.maxSpotlightCount ?? 7}
+                  onChange={(e) => {
+                    const max = parseInt(e.target.value, 10);
+                    const min = config.minSpotlightCount ?? 1;
+                    RoutingStore.getInstance().setSpotlightCountLimits(min, max);
+                  }}
+                />
+                <span className="slider-hint">Spawn count ceiling for high-intensity, high-tempo tracks at or above 160 BPM</span>
               </div>
 
               {/* Max Brightness Limit */}

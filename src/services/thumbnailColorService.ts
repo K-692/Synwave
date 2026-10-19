@@ -129,12 +129,12 @@ export async function extractThumbnailColors(videoId: string): Promise<Extracted
         }
 
         if (candidates.length === 0) {
-          // Fallback if video is purely black/monochrome
+          // Deliberate fallback if video is purely black/monochrome (avoids locking to cyan/blue)
           resolve({
-            primary: '#00f0ff',
-            secondary: '#ff007f',
-            accent: '#ffe600',
-            spotlightColors: ['#00f0ff', '#ff007f', '#ffe600'],
+            primary: '#ffaa00',
+            secondary: '#ff3c00',
+            accent: '#00ffcc',
+            spotlightColors: ['#ffaa00', '#ff3c00', '#00ffcc'],
           });
           return;
         }

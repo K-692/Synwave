@@ -29,12 +29,13 @@ import type {
   VisualEffect,
   VisualEffectContext,
 } from '../types';
-import { COLOR_PALETTES } from './palettes';
+import type { ExtractedStageColors } from '../services/thumbnailColorService';
 import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
 import { ThinLasersEffect } from './effects/ThinLasersEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
+import { resolveFlashPaletteColors } from './effects/laserColorUtils';
 
 export interface VisualSceneConfig {
   id: string;
@@ -71,6 +72,10 @@ export class VisualEngine {
   private activePalette: ColorPalette;
   private targetPalette: ColorPalette;
 
+  // Phase 11: Dynamic Song & Track Palette State
+  private customSongPalette: ColorPalette | null = null;
+  private trackSignaturePalette: ColorPalette | null = null;
+
   // Animation and Timing
   private animationFrameId: number | null = null;
   private lastFrameTime = performance.now();
@@ -105,7 +110,22 @@ export class VisualEngine {
   private quality: QualityPreset = 'high';
   private effectIntensity = 1.0;
   private isPlaying = false;
+
+  // Phase 18: Flash-Screen Sequence State (Song Palette Synchronized with Compulsory White)
   private currentFlashOpacity = 0;
+  private currentFlashBg = 'radial-gradient(circle at center, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.80) 25%, rgba(255,255,255,0.45) 60%, rgba(255,255,255,0.06) 100%)';
+  private flashSequenceStep = 0; // 0: Compulsory White (#FFFFFF), 1, 2, ... Song Palette Colors
+  private wasKickLastFrame = false;
+  private lastKickTimestamp = 0;
+  private hasDispatchedZeroFlash = true;
+  private cachedFlashColors: string[] | null = null;
+
+  public getActiveFlashColors(): string[] {
+    if (!this.cachedFlashColors) {
+      this.cachedFlashColors = resolveFlashPaletteColors(this.activePalette, this.trackSeed);
+    }
+    return this.cachedFlashColors;
+  }
 
   // Live state callbacks
   public onCurrentSectionChange?: (section: string) => void;
@@ -114,12 +134,68 @@ export class VisualEngine {
 
   public setIsPlaying(playing: boolean): void {
     this.isPlaying = playing;
+    if (!playing) {
+      this.currentFlashOpacity = 0;
+      this.wasKickLastFrame = false;
+      if (this.onWindowFlash && !this.hasDispatchedZeroFlash) {
+        this.onWindowFlash(0, '#ffffff');
+        this.hasDispatchedZeroFlash = true;
+      }
+    }
+  }
+
+  /**
+   * Phase 11: Procedural Track Signature Palette Fallback
+   * Generates a deterministic, vibrant, aesthetically balanced color palette
+   * derived from the track seed and musical analysis. Guarantees that songs without
+   * video thumbnails (or before thumbnails load) have a distinctive, beautiful color identity
+   * spread across the 360° color wheel rather than being locked to blue, violet, or cyan.
+   */
+  private generateTrackSignaturePalette(seed: number, mood?: string): ColorPalette {
+    // Golden ratio hue stepping distributes consecutive seeds evenly around the 360° color wheel
+    const baseHue = (Math.abs(seed * 0.618033988749895) % 1.0);
+    let primHue = baseHue;
+    let primSat = 0.95;
+    let primLight = 0.52;
+
+    if (mood === 'chill-ambient') {
+      primSat = 0.85;
+      primLight = 0.48;
+    } else if (mood === 'euphoric-drop') {
+      primSat = 1.0;
+      primLight = 0.55;
+    } else if (mood === 'retro-groove') {
+      primSat = 0.90;
+      primLight = 0.52;
+    }
+
+    const secHue = (primHue + 0.28) % 1.0;
+    const accHue = (primHue + 0.55) % 1.0;
+    const compHue = (primHue + 0.50) % 1.0;
+
+    const primColor = new THREE.Color().setHSL(primHue, primSat, primLight);
+    const secColor = new THREE.Color().setHSL(secHue, primSat * 0.92, primLight * 0.95);
+    const accColor = new THREE.Color().setHSL(accHue, 1.0, 0.60);
+    const laserColor = new THREE.Color().setHSL(compHue, 1.0, 0.55);
+
+    return {
+      id: `track-${seed}`,
+      name: `Track Signature ${seed}`,
+      primary: `#${primColor.getHexString()}`,
+      secondary: `#${secColor.getHexString()}`,
+      accent: `#${accColor.getHexString()}`,
+      background: '#04060d',
+      glow: `#${primColor.getHexString()}`,
+      laserColor: `#${laserColor.getHexString()}`,
+      ambientColor: '#100a20',
+    };
   }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.activePalette = { ...COLOR_PALETTES[0] };
-    this.targetPalette = { ...COLOR_PALETTES[0] };
+    this.trackSignaturePalette = this.generateTrackSignaturePalette(this.trackSeed, this.currentMood);
+    this.activePalette = { ...this.trackSignaturePalette };
+    this.targetPalette = { ...this.trackSignaturePalette };
     this.initThree();
     this.initEffects();
     this.setupWindowListeners();
@@ -158,11 +234,11 @@ export class VisualEngine {
     this.ambientLight = new THREE.AmbientLight(0x05070f, 1.2);
     this.scene.add(this.ambientLight);
 
-    this.stageKeyLight = new THREE.PointLight(0x00f0ff, 1.2, 35, 1.8);
+    this.stageKeyLight = new THREE.PointLight(new THREE.Color(this.activePalette.primary), 1.2, 35, 1.8);
     this.stageKeyLight.position.set(10, 12, 1);
     this.scene.add(this.stageKeyLight);
 
-    this.stageFillLight = new THREE.PointLight(0xff007f, 1.0, 35, 1.8);
+    this.stageFillLight = new THREE.PointLight(new THREE.Color(this.activePalette.secondary), 1.0, 35, 1.8);
     this.stageFillLight.position.set(-10, 12, 1);
     this.scene.add(this.stageFillLight);
   }
@@ -262,8 +338,7 @@ export class VisualEngine {
     document.addEventListener('mozfullscreenchange', this.triggerResize);
     document.addEventListener('MSFullscreenChange', this.triggerResize);
     window.addEventListener('orientationchange', this.triggerResize);
-    // Mouse hover screen movement is removed per user request:
-    // Camera stays firmly fixed in front of the stage!
+    this.triggerResize();
   }
 
   /**
@@ -301,6 +376,29 @@ export class VisualEngine {
     }
     this.currentSceneIndex = Math.abs(seed) % CONCERT_SCENES.length;
     this.applyScene(CONCERT_SCENES[this.currentSceneIndex]);
+
+    // Phase 11: Clear previous track's custom palette and establish new track signature palette
+    this.customSongPalette = null;
+    this.trackSignaturePalette = this.generateTrackSignaturePalette(seed, this.currentMood);
+    this.targetPalette = { ...this.trackSignaturePalette };
+    this.activePalette = { ...this.trackSignaturePalette };
+
+    // Immediately push new palette to laser system during track transition
+    const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
+    if (thinLasers) {
+      thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
+    }
+
+    // Phase 18: Invalidate flash palette cache and reset flash state on track transition
+    this.cachedFlashColors = null;
+    this.currentFlashOpacity = 0;
+    this.flashSequenceStep = 0;
+    this.wasKickLastFrame = false;
+    this.lastKickTimestamp = 0;
+    if (this.onWindowFlash) {
+      this.onWindowFlash(0, '#ffffff');
+      this.hasDispatchedZeroFlash = true;
+    }
   }
 
   public setQuality(quality: QualityPreset): void {
@@ -335,26 +433,38 @@ export class VisualEngine {
    * Mood-driven concert color palette manager
    */
   private evaluateMusicMoodPalette(features: AudioFeatures, deltaSeconds: number): void {
-    const mood = this.currentMood || features.mood || 'euphoric-drop';
+    // Phase 11: If a custom song palette is active, preserve the song's color identity
+    // and do not overwrite it with static preset palettes!
+    if (this.customSongPalette) {
+      this.targetPalette = this.customSongPalette;
+      const lerpRate = Math.min(1.0, deltaSeconds * 2.8);
+      const targetPrimCol = new THREE.Color(this.targetPalette.primary);
+      const targetSecCol = new THREE.Color(this.targetPalette.secondary);
 
-    let targetIndex = 0;
-    if (mood === 'chill-ambient') {
-      targetIndex = 3; // Deep Space Indigo
-    } else if (mood === 'euphoric-drop' || features.isDrop) {
-      targetIndex = 4; // Solar Flare Amber / Fiery Rave
-    } else if (mood === 'dark-aggressive') {
-      targetIndex = 4; // Solar Flare Crimson
-    } else if (mood === 'uplifting-melodic') {
-      targetIndex = 0; // Cyberpunk Neon
-    } else if (mood === 'retro-groove') {
-      targetIndex = 1; // Warm Sunset
-    } else {
-      targetIndex = 2; // Matrix Emerald
+      const primCol = new THREE.Color(this.activePalette.primary);
+      primCol.lerp(targetPrimCol, lerpRate);
+      this.activePalette.primary = `#${primCol.getHexString()}`;
+
+      const secCol = new THREE.Color(this.activePalette.secondary);
+      secCol.lerp(targetSecCol, lerpRate);
+      this.activePalette.secondary = `#${secCol.getHexString()}`;
+
+      this.activePalette.laserColor = this.activePalette.primary;
+      if (this.targetPalette.spotlightColors) {
+        this.activePalette.spotlightColors = [...this.targetPalette.spotlightColors];
+      }
+
+      this.stageKeyLight.color.lerp(targetPrimCol, lerpRate);
+      this.stageFillLight.color.lerp(targetSecCol, lerpRate);
+      return;
     }
 
-    this.targetPalette = COLOR_PALETTES[targetIndex];
+    // If no custom song palette, use the track's deterministic signature palette
+    const effectiveMood = this.currentMood || features.mood || 'euphoric-drop';
+    const basePalette = this.trackSignaturePalette || this.generateTrackSignaturePalette(this.trackSeed, effectiveMood);
+    this.targetPalette = basePalette;
 
-    const lerpRate = deltaSeconds * 2.8;
+    const lerpRate = Math.min(1.0, deltaSeconds * 2.8);
     const targetPrimCol = new THREE.Color(this.targetPalette.primary);
     const targetSecCol = new THREE.Color(this.targetPalette.secondary);
 
@@ -365,6 +475,11 @@ export class VisualEngine {
     const secCol = new THREE.Color(this.activePalette.secondary);
     secCol.lerp(targetSecCol, lerpRate);
     this.activePalette.secondary = `#${secCol.getHexString()}`;
+
+    this.activePalette.laserColor = this.activePalette.primary;
+    if (this.targetPalette.spotlightColors) {
+      this.activePalette.spotlightColors = [...this.targetPalette.spotlightColors];
+    }
 
     this.stageKeyLight.color.lerp(targetPrimCol, lerpRate);
     this.stageFillLight.color.lerp(targetSecCol, lerpRate);
@@ -461,14 +576,15 @@ export class VisualEngine {
 
     // Beat grid extraction from features
     const beatGrid: BeatGridState = {
-      bpm: features.estimatedBpm || 128,
+      bpm: features.estimatedBpm || 120,
+      bpmSource: features.bpmSource,
       beatIndex: features.beatIndex || 0,
       barIndex: features.barIndex || 1,
       beatPhase: features.beatPhase || 0,
       isBeat: features.isBeat,
       isBar: features.isBar || false,
       isPhrase: features.isPhrase || false,
-      confidence: features.beatConfidence || 0.5,
+      confidence: features.beatConfidence || 0.0,
     };
 
     // Update procedural Show Director
@@ -526,42 +642,85 @@ export class VisualEngine {
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // 4. Kick Screen Flash with Bass-Modulated Thumbnail Color Gradients
+    // 4. Kick Screen Flash with Song Palette Distribution and Compulsory White (Phase 18)
     const flashMult = routingConfig.screenFlashIntensity ?? 1.0;
-    if (this.isPlaying && !routingConfig.reducedFlash && features.isKick) {
-      const kickVal = Math.max(features.stems.kick, features.kickIntensity || 0.8);
-      if (kickVal > 0.30) {
-        const targetOpacity = Math.min(0.85, (0.35 + kickVal * 0.45) * flashMult);
-        if (targetOpacity > this.currentFlashOpacity) {
-          this.currentFlashOpacity = targetOpacity;
-        }
+    const isFlashAllowed = this.isPlaying && !routingConfig.reducedFlash && flashMult > 0.01;
+
+    if (!isFlashAllowed) {
+      this.currentFlashOpacity = 0;
+      this.wasKickLastFrame = false;
+      if (this.onWindowFlash && !this.hasDispatchedZeroFlash) {
+        this.onWindowFlash(0, '#ffffff');
+        this.hasDispatchedZeroFlash = true;
       }
     } else {
-      // Rapid decay for snappy concert strobe flash
-      this.currentFlashOpacity = Math.max(0, this.currentFlashOpacity - (rawDelta * 14.0));
-    }
+      // Audio-reactivity: detect fresh kick transient onset with musical spacing lockout
+      const timeSinceLastKick = trackTimeSeconds - this.lastKickTimestamp;
+      const isKickOnset = features.isKick && !this.wasKickLastFrame;
+      const isBeatKick = features.isBeat && (features.stems.kick > 0.28 || features.onsetStrength > 0.25);
+      const isTransientKick = (isKickOnset || isBeatKick) && (timeSinceLastKick > 0.16 || this.lastKickTimestamp === 0);
 
-    if (this.onWindowFlash) {
-      if (this.currentFlashOpacity > 0.01) {
-        // Bass intensity modulates color: Low intensity -> white; High intensity -> thumbnail color gradient
-        const bassVal = Math.max(features.stems.bass, features.bass || 0);
-        const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
-        const colorRatio = Math.min(1.0, Math.max(0, (bassVal - 0.25) / 0.55) * satMult);
+      this.wasKickLastFrame = features.isKick;
 
-        let flashBg: string;
-        if (colorRatio < 0.20) {
-          // Low bass: pure brilliant white strobe
-          flashBg = 'radial-gradient(circle at center, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.15) 100%)';
-        } else {
-          // High bass: thumbnail-extracted gradient palette blended with white center
-          const prim = this.activePalette.primary;
-          const sec = this.activePalette.secondary;
-          const acc = this.activePalette.accent || prim;
-          flashBg = `radial-gradient(circle at center, rgba(255,255,255,0.9) 10%, ${prim} 40%, ${sec} 75%, ${acc} 100%)`;
+      if (isTransientKick) {
+        this.lastKickTimestamp = trackTimeSeconds;
+        const kickVal = Math.max(features.stems.kick, features.kickIntensity || 0.5, features.onsetStrength || 0.5);
+
+        if (kickVal > 0.22) {
+          const flashColors = this.getActiveFlashColors();
+
+          // Advance flash sequence:
+          // A new sequence is initiated on musical phrase/bar boundaries or after pauses (> 0.65s).
+          // Every sequence begins with Step 0: Compulsory Pure White (#FFFFFF).
+          // Subsequent kicks in the sequence cycle through the active song palette.
+          if (timeSinceLastKick > 0.65 || features.isBar) {
+            this.flashSequenceStep = 0; // Compulsory Pure White (#FFFFFF)
+          } else {
+            this.flashSequenceStep = (this.flashSequenceStep + 1) % flashColors.length;
+          }
+
+          const selectedHex = flashColors[this.flashSequenceStep] || '#ffffff';
+          const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
+
+          if (this.flashSequenceStep === 0 || selectedHex.toLowerCase() === '#ffffff') {
+            // Step 0: Compulsory Brilliant Pure White (#FFFFFF) full-window concert blinder
+            this.currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.96) 35%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0.72) 100%)';
+          } else {
+            // Distinct Song Palette Colors with white-hot filament center and radiant full-window wash
+            const col = new THREE.Color(selectedHex);
+            if (satMult !== 1.0) {
+              const hsl = { h: 0, s: 0, l: 0 };
+              col.getHSL(hsl);
+              col.setHSL(hsl.h, Math.min(1.0, hsl.s * satMult), hsl.l);
+            }
+            const r = Math.round(col.r * 255);
+            const g = Math.round(col.g * 255);
+            const b = Math.round(col.b * 255);
+
+            this.currentFlashBg = `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.92) 25%, rgba(${r},${g},${b},0.90) 60%, rgba(${r},${g},${b},0.75) 100%)`;
+          }
+
+          const maxBri = routingConfig.maxBrightnessLimit || 1.0;
+          const maxAllowed = 0.96 * maxBri;
+          const targetOpacity = Math.min(maxAllowed, (0.50 + kickVal * 0.48) * flashMult * maxBri);
+          if (targetOpacity > this.currentFlashOpacity) {
+            this.currentFlashOpacity = targetOpacity;
+          }
         }
-        this.onWindowFlash(this.currentFlashOpacity, flashBg);
-      } else {
-        this.onWindowFlash(0, '#ffffff');
+      }
+
+      // Smooth musical blinder decay (~150ms to 200ms visible bloom)
+      const decayRate = 5.2 * (routingConfig.effectDecay ?? 1.0);
+      this.currentFlashOpacity = Math.max(0, this.currentFlashOpacity - (rawDelta * decayRate));
+
+      if (this.onWindowFlash) {
+        if (this.currentFlashOpacity > 0.01) {
+          this.hasDispatchedZeroFlash = false;
+          this.onWindowFlash(this.currentFlashOpacity, this.currentFlashBg);
+        } else if (!this.hasDispatchedZeroFlash) {
+          this.hasDispatchedZeroFlash = true;
+          this.onWindowFlash(0, '#ffffff');
+        }
       }
     }
 
@@ -649,16 +808,96 @@ export class VisualEngine {
     return lights ? lights.getSpotlightCount() : 3;
   }
 
+  public setSongPalette(extracted: ExtractedStageColors | ColorPalette | null): void {
+    if (!extracted) {
+      this.customSongPalette = null;
+      if (this.trackSignaturePalette) {
+        this.targetPalette = { ...this.trackSignaturePalette };
+        this.activePalette = { ...this.trackSignaturePalette };
+      }
+    } else {
+      const prim = extracted.primary || '#ffaa00';
+      const sec = extracted.secondary || '#ff3c00';
+      const acc = ('accent' in extracted && extracted.accent) ? extracted.accent : '#00ffcc';
+
+      const customPal: ColorPalette = {
+        id: 'custom-song-palette',
+        name: 'Song Palette',
+        primary: prim,
+        secondary: sec,
+        accent: acc,
+        background: '#04060d',
+        glow: prim,
+        laserColor: prim,
+        ambientColor: '#100a20',
+        ...('spotlightColors' in extracted ? { spotlightColors: extracted.spotlightColors } : {}),
+      };
+      this.customSongPalette = customPal;
+
+      this.targetPalette = { ...customPal };
+      this.activePalette = { ...customPal };
+    }
+
+    // Immediately propagate updated palette to lasers with deterministic track seed
+    const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
+    if (thinLasers) {
+      thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
+    }
+
+    // Phase 18: Invalidate flash palette cache and reset flash state
+    this.cachedFlashColors = null;
+    this.currentFlashOpacity = 0;
+    this.flashSequenceStep = 0;
+    this.wasKickLastFrame = false;
+    this.lastKickTimestamp = 0;
+    if (this.onWindowFlash) {
+      this.onWindowFlash(0, '#ffffff');
+      this.hasDispatchedZeroFlash = true;
+    }
+  }
+
   public setCustomSpotlightColors(colors: string[] | null): void {
     const lights = this.effects.find((e) => e.id === 'stage-lights') as StageLightsEffect | undefined;
     if (lights) {
       lights.setSpotlightColors(colors || []);
     }
     if (colors && colors.length > 0) {
-      this.targetPalette.primary = colors[0];
-      if (colors[1]) this.targetPalette.secondary = colors[1];
-      if (colors[2]) this.targetPalette.accent = colors[2];
-      this.activePalette = { ...this.targetPalette };
+      const prim = colors[0];
+      const sec = colors[1] || colors[0];
+      const acc = colors[2] || sec;
+
+      const customPal: ColorPalette = {
+        id: 'custom-spotlight-palette',
+        name: 'Spotlight Song Palette',
+        primary: prim,
+        secondary: sec,
+        accent: acc,
+        background: '#04060d',
+        glow: prim,
+        laserColor: prim,
+        ambientColor: '#100a20',
+        spotlightColors: colors,
+      };
+      this.customSongPalette = customPal;
+
+      this.targetPalette = { ...customPal };
+      this.activePalette = { ...customPal };
+
+      const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
+      if (thinLasers) {
+        thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
+      }
+
+      // Phase 18: Invalidate flash palette cache and reset flash state
+      this.cachedFlashColors = null;
+      this.currentFlashOpacity = 0;
+      this.flashSequenceStep = 0;
+      this.wasKickLastFrame = false;
+      this.lastKickTimestamp = 0;
+      if (this.onWindowFlash) {
+        this.onWindowFlash(0, '#ffffff');
+        this.hasDispatchedZeroFlash = true;
+      }
     }
   }
 

@@ -29,13 +29,16 @@ import {
   Calendar,
   User,
   Music,
+  Video,
 } from 'lucide-react';
 import type { QualityPreset, RepeatMode, TrackRecord } from '../types';
 import { SongTimeline } from './SongTimeline';
 
 interface PlayerControlsProps {
   currentTrack: TrackRecord | null;
+  videoTitle?: string;
   isPlaying: boolean;
+  isAudioReady?: boolean;
   isVideoReady?: boolean;
   isVideoLoading?: boolean;
   currentTime: number;
@@ -61,7 +64,9 @@ interface PlayerControlsProps {
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
   currentTrack,
+  videoTitle,
   isPlaying,
+  isAudioReady = true,
   isVideoReady = true,
   isVideoLoading = false,
   currentTime,
@@ -176,7 +181,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     }
   };
 
-  const isPlayAllowed = !isVideoLoading && (isVideoReady || !currentTrack);
+  const isPlayAllowed = !isVideoLoading && (isVideoReady || !currentTrack) && isAudioReady;
 
   return (
     <>
@@ -220,6 +225,12 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               <span className="track-artist">
                 {currentTrack?.artist || 'Select or Drop Audio to Begin'}
               </span>
+              {videoTitle && (
+                <div className="track-video-indicator" title={`Synchronized Stage Video: ${videoTitle}`}>
+                  <Video size={10} className="video-indicator-icon" />
+                  <span className="video-indicator-title">{videoTitle}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -249,7 +260,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                 disabled={!isPlayAllowed}
                 title={
                   !isPlayAllowed
-                    ? 'Pre-processing neural stems... Please wait'
+                    ? isVideoLoading
+                      ? 'Loading stage video... Please wait'
+                      : !isAudioReady
+                      ? 'Loading audio track... Please wait'
+                      : 'Preparing media...'
                     : isPlaying
                     ? 'Pause'
                     : 'Play'
@@ -370,6 +385,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                 </span>
                 <span className="info-value">{currentTrack.artist}</span>
               </div>
+
+              {videoTitle && (
+                <div className="info-field">
+                  <span className="info-label">
+                    <Video size={14} /> STAGE VIDEO MATCH
+                  </span>
+                  <span className="info-value highlight-cyan">{videoTitle}</span>
+                </div>
+              )}
 
               <div className="info-field">
                 <span className="info-label">PRODUCER</span>

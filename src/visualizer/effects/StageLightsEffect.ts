@@ -13,6 +13,8 @@
 import * as THREE from 'three';
 import { BaseEffect } from './BaseEffect';
 import type { VisualEffectContext } from '../../types';
+import { mapBpmToSpotlightCount } from '../../services/tempoService';
+import { calculateStageDimensions, type StageDimensions } from '../stage/stageDimensions';
 
 interface MovingHead {
   group: THREE.Group;
@@ -22,6 +24,9 @@ interface MovingHead {
   basePos: THREE.Vector3;
   targetPos: THREE.Vector3;
   currentTarget: THREE.Vector3;
+  targetSlotPos: THREE.Vector3;
+  side: 'top' | 'left' | 'right';
+  activationFactor: number;
   index: number;
 }
 
@@ -43,9 +48,16 @@ export class StageLightsEffect extends BaseEffect {
   readonly family = 'Stage Lighting';
   readonly cost = 'medium';
 
-  // Colouring Spotlights: default count 3, adjustable via slider
-  private spotlightCount = 3;
+  // Colouring Spotlights: default count 3, mapped from BPM in [70, 160] with configurable limits
+  private targetSpotlightCount = 3;
+  private minSpotlightCount = 1;
+  private maxSpotlightCount = 7;
+  private autoBpmSpawning = true;
   private customSpotlightColors: THREE.Color[] = [];
+  private currentDimensions: StageDimensions = calculateStageDimensions(
+    typeof window !== 'undefined' ? window.innerWidth : 1920,
+    typeof window !== 'undefined' ? window.innerHeight : 1080
+  );
 
   private fixtures: MovingHead[] = [];
   private perimeterBassLights: PerimeterBassLight[] = [];
@@ -57,17 +69,144 @@ export class StageLightsEffect extends BaseEffect {
   private perimeterRotationAngle = 0;
 
   public setSpotlightCount(count: number): void {
-    this.spotlightCount = Math.max(1, Math.min(8, Math.round(count)));
+    this.targetSpotlightCount = Math.max(1, Math.min(8, Math.round(count)));
   }
 
   public getSpotlightCount(): number {
-    return this.spotlightCount;
+    return this.targetSpotlightCount;
+  }
+
+  public setSpotlightLimits(min: number, max: number): void {
+    this.minSpotlightCount = Math.max(1, Math.min(8, Math.round(min)));
+    this.maxSpotlightCount = Math.max(this.minSpotlightCount, Math.min(8, Math.round(max)));
+  }
+
+  public setAutoBpmSpawning(enabled: boolean): void {
+    this.autoBpmSpawning = enabled;
   }
 
   public setSpotlightColors(colors: string[]): void {
     if (colors && colors.length > 0) {
       this.customSpotlightColors = colors.map((hex) => new THREE.Color(hex));
     }
+  }
+
+  /**
+   * Phase 4 & 10: Symmetrical spotlight mount positions around the YouTube stage screen (Top, Left, Right).
+   * Generates perfectly balanced, non-clustered, bilateral layout relative to current player stage dimensions.
+   */
+  public static getSymmetricalSpotlightLayout(
+    count: number,
+    dims?: StageDimensions
+  ): {
+    pos: THREE.Vector3;
+    side: 'top' | 'left' | 'right';
+    defaultTarget: THREE.Vector3;
+  }[] {
+    const c = Math.max(1, Math.min(8, Math.round(count)));
+    const layout: { pos: THREE.Vector3; side: 'top' | 'left' | 'right'; defaultTarget: THREE.Vector3 }[] = [];
+
+    const d = dims || calculateStageDimensions(1920, 1080);
+    const halfW = d.halfWidth;
+    const halfH = d.halfHeight;
+    const topY = d.topY + 1.25;
+    const zPos = d.screenZ + 0.5;
+    const leftX = d.leftX - 1.55;
+    const rightX = d.rightX + 1.55;
+    const midY = d.screenCenterY + 0.15 * halfH;
+    const upperY = d.screenCenterY + 0.60 * halfH;
+    const lowerY = d.screenCenterY - 0.25 * halfH;
+
+    switch (c) {
+      case 1:
+        // 1 Top Center
+        layout.push({
+          pos: new THREE.Vector3(0.0, topY, zPos),
+          side: 'top',
+          defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0),
+        });
+        break;
+
+      case 2:
+        // 1 Left, 1 Right (flanking player symmetrically at vertical center)
+        layout.push(
+          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
+          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
+        );
+        break;
+
+      case 3:
+        // 1 Top Center, 1 Left, 1 Right
+        layout.push(
+          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
+          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
+        );
+        break;
+
+      case 4:
+        // 2 Top, 1 Left, 1 Right
+        layout.push(
+          { pos: new THREE.Vector3(-0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-2.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(2.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
+          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
+        );
+        break;
+
+      case 5:
+        // 3 Top (Center at X = 0, Outer at ±0.60 * halfW), 1 Left, 1 Right
+        layout.push(
+          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(-0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-3.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(3.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
+          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
+        );
+        break;
+
+      case 6:
+        // 2 Top (±0.48 * halfW), 2 Left, 2 Right
+        layout.push(
+          { pos: new THREE.Vector3(-0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-2.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(2.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
+        );
+        break;
+
+      case 7:
+        // 3 Top (Center at X = 0, Outer at ±0.60 * halfW), 2 Left, 2 Right
+        layout.push(
+          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
+          { pos: new THREE.Vector3(-0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-3.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(3.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
+        );
+        break;
+
+      case 8:
+      default:
+        // 4 Top (±0.30 * halfW, ±0.75 * halfW), 2 Left, 2 Right
+        layout.push(
+          { pos: new THREE.Vector3(-0.30 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-1.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.30 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(1.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(-0.75 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-4.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(0.75 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(4.5, 1.8, 14.0) },
+          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
+          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
+          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
+        );
+        break;
+    }
+
+    return layout;
   }
 
   public initialize(context: VisualEffectContext): void {
@@ -93,22 +232,13 @@ export class StageLightsEffect extends BaseEffect {
     coneGeo.rotateX(-Math.PI / 2); // Body extends along +Z
     this.disposables.push(coneGeo);
 
-    // 1. Colouring Spotlights (Up to 8 fixtures mounted on overhead truss)
-    const overheadPositions: THREE.Vector3[] = [
-      new THREE.Vector3(-7.5, 12.2, -4.0), // 0: Left
-      new THREE.Vector3(0.0, 12.4, -4.0),  // 1: Center
-      new THREE.Vector3(7.5, 12.2, -4.0),  // 2: Right
-      new THREE.Vector3(-4.0, 12.3, -4.0), // 3: Mid-Left
-      new THREE.Vector3(4.0, 12.3, -4.0),  // 4: Mid-Right
-      new THREE.Vector3(-11.0, 12.0, -4.0),// 5: Far-Left
-      new THREE.Vector3(11.0, 12.0, -4.0), // 6: Far-Right
-      new THREE.Vector3(0.0, 11.8, 0.8),   // 7: Front Center
-    ];
+    // 1. Colouring Spotlights (Instantiate 8 fixtures with symmetrical default layout)
+    const baseLayout = StageLightsEffect.getSymmetricalSpotlightLayout(8, this.currentDimensions);
 
-    for (let i = 0; i < overheadPositions.length; i++) {
-      const pos = overheadPositions[i];
+    for (let i = 0; i < baseLayout.length; i++) {
+      const slot = baseLayout[i];
       const fixtureGroup = new THREE.Group();
-      fixtureGroup.position.copy(pos);
+      fixtureGroup.position.copy(slot.pos);
 
       // Chassis
       const baseMesh = new THREE.Mesh(baseGeo, baseMat);
@@ -140,6 +270,7 @@ export class StageLightsEffect extends BaseEffect {
       coneMesh.position.set(0, 0, 0.1);
       fixtureGroup.add(coneMesh);
 
+      fixtureGroup.lookAt(slot.defaultTarget);
       this.group.add(fixtureGroup);
 
       this.fixtures.push({
@@ -147,9 +278,12 @@ export class StageLightsEffect extends BaseEffect {
         baseMesh,
         lensMesh,
         coneMesh,
-        basePos: pos,
-        targetPos: new THREE.Vector3(0, 1.8, 14.0),
-        currentTarget: new THREE.Vector3(0, 1.8, 14.0),
+        basePos: slot.pos.clone(),
+        targetSlotPos: slot.pos.clone(),
+        targetPos: slot.defaultTarget.clone(),
+        currentTarget: slot.defaultTarget.clone(),
+        side: slot.side,
+        activationFactor: i < this.targetSpotlightCount ? 1.0 : 0.0,
         index: i,
       });
     }
@@ -224,7 +358,7 @@ export class StageLightsEffect extends BaseEffect {
         group: pGroup,
         lensMesh: pLens,
         coneMesh: pCone,
-        basePos: cfg.pos,
+        basePos: cfg.pos.clone(),
         baseTarget: cfg.target.clone(),
         currentTarget: cfg.target.clone(),
         side: cfg.side,
@@ -233,14 +367,154 @@ export class StageLightsEffect extends BaseEffect {
       });
     }
 
+    // Align perimeter lights with current dimensions
+    this.recalculatePerimeterPositions(this.currentDimensions);
+
     // 3. Dynamic Stage Wash Point Lights (Tinted by Thumbnail Palette)
     this.washLight1 = new THREE.PointLight(0xff6600, 0.6, 25, 1.8);
-    this.washLight1.position.set(-6, 6.0, -1.0);
+    this.washLight1.position.set(
+      -0.45 * this.currentDimensions.halfWidth,
+      this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+      -1.0
+    );
     this.group.add(this.washLight1);
 
     this.washLight2 = new THREE.PointLight(0xff0077, 0.6, 25, 1.8);
-    this.washLight2.position.set(6, 6.0, -1.0);
+    this.washLight2.position.set(
+      0.45 * this.currentDimensions.halfWidth,
+      this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+      -1.0
+    );
     this.group.add(this.washLight2);
+  }
+
+  public override resize(width: number, height: number): void {
+    this.currentDimensions = calculateStageDimensions(width, height);
+    this.recalculateSpotlightPositions(this.currentDimensions);
+    this.recalculatePerimeterPositions(this.currentDimensions);
+    if (this.washLight1 && this.washLight2) {
+      this.washLight1.position.set(
+        -0.45 * this.currentDimensions.halfWidth,
+        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+        -1.0
+      );
+      this.washLight2.position.set(
+        0.45 * this.currentDimensions.halfWidth,
+        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+        -1.0
+      );
+    }
+  }
+
+  private recalculateSpotlightPositions(dims: StageDimensions): void {
+    const layout = StageLightsEffect.getSymmetricalSpotlightLayout(this.targetSpotlightCount, dims);
+    for (let i = 0; i < this.fixtures.length; i++) {
+      const fix = this.fixtures[i];
+      if (i < layout.length) {
+        fix.targetSlotPos.copy(layout[i].pos);
+        fix.side = layout[i].side;
+        fix.targetPos.copy(layout[i].defaultTarget);
+        fix.group.position.copy(layout[i].pos);
+      }
+    }
+  }
+
+  private recalculatePerimeterPositions(dims: StageDimensions): void {
+    const configs: {
+      pos: THREE.Vector3;
+      target: THREE.Vector3;
+      side: 'left' | 'right' | 'top' | 'bottom';
+      phaseOffset: number;
+    }[] = [
+      // Left tower fixtures (aim across towards right & forward)
+      {
+        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.65 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.70 * dims.halfHeight, 12.0),
+        side: 'left',
+        phaseOffset: 0.0,
+      },
+      {
+        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.20 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.rightX, dims.screenCenterY - 0.20 * dims.halfHeight, 14.0),
+        side: 'left',
+        phaseOffset: 0.8,
+      },
+      {
+        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY + 0.25 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.rightX - 1.0, dims.screenCenterY + 0.20 * dims.halfHeight, 16.0),
+        side: 'left',
+        phaseOffset: 1.6,
+      },
+      {
+        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY + 0.70 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.rightX - 2.0, dims.screenCenterY + 0.55 * dims.halfHeight, 18.0),
+        side: 'left',
+        phaseOffset: 2.4,
+      },
+
+      // Right tower fixtures (aim across towards left & forward)
+      {
+        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.65 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.70 * dims.halfHeight, 12.0),
+        side: 'right',
+        phaseOffset: 3.2,
+      },
+      {
+        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.20 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.leftX, dims.screenCenterY - 0.20 * dims.halfHeight, 14.0),
+        side: 'right',
+        phaseOffset: 4.0,
+      },
+      {
+        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.25 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.leftX + 1.0, dims.screenCenterY + 0.20 * dims.halfHeight, 16.0),
+        side: 'right',
+        phaseOffset: 4.8,
+      },
+      {
+        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.70 * dims.halfHeight, dims.screenZ + 0.4),
+        target: new THREE.Vector3(dims.leftX + 2.0, dims.screenCenterY + 0.55 * dims.halfHeight, 18.0),
+        side: 'right',
+        phaseOffset: 5.6,
+      },
+
+      // Top truss fixtures (sweep downward across the deck)
+      {
+        pos: new THREE.Vector3(-0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
+        target: new THREE.Vector3(0.65 * dims.halfWidth, 0.8, 14.0),
+        side: 'top',
+        phaseOffset: 1.2,
+      },
+      {
+        pos: new THREE.Vector3(0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
+        target: new THREE.Vector3(-0.65 * dims.halfWidth, 0.8, 14.0),
+        side: 'top',
+        phaseOffset: 4.4,
+      },
+
+      // Bottom screen frame fixtures (cross upward into audience space)
+      {
+        pos: new THREE.Vector3(-0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
+        target: new THREE.Vector3(0.70 * dims.halfWidth, 6.0, 15.0),
+        side: 'bottom',
+        phaseOffset: 2.0,
+      },
+      {
+        pos: new THREE.Vector3(0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
+        target: new THREE.Vector3(-0.70 * dims.halfWidth, 6.0, 15.0),
+        side: 'bottom',
+        phaseOffset: 5.2,
+      },
+    ];
+
+    for (let i = 0; i < this.perimeterBassLights.length && i < configs.length; i++) {
+      const p = this.perimeterBassLights[i];
+      const cfg = configs[i];
+      p.basePos.copy(cfg.pos);
+      p.baseTarget.copy(cfg.target);
+      p.group.position.copy(cfg.pos);
+      p.side = cfg.side;
+    }
   }
 
   public update(context: VisualEffectContext): void {
@@ -290,36 +564,129 @@ export class StageLightsEffect extends BaseEffect {
       ? this.customSpotlightColors
       : [primaryCol, secondaryCol, accentCol];
 
-    const beatPulse = Math.sin(features.beatPhase * Math.PI) * 0.025;
+    // Spotlight tempo synchronization based on BPM provenance
+    const bpmSource = features.bpmSource || 'unavailable';
+    const bpmConfidence = features.bpmConfidence ?? (bpmSource === 'shazamio' ? 1.0 : (bpmSource === 'demucs' ? 0.65 : 0.0));
+    const verifiedTempoSpeed = (bpmSource !== 'unavailable' && features.estimatedBpm > 0)
+      ? Math.max(0.6, Math.min(1.8, features.estimatedBpm / 128.0))
+      : 1.0;
+
+    // Rhythmic pulse: locked on verified ShazamIO, scaled by confidence on Demucs, zero when unavailable
+    const beatPulse = (bpmSource !== 'unavailable')
+      ? Math.sin(features.beatPhase * Math.PI) * (0.015 + bpmConfidence * 0.02)
+      : 0.0;
+
     const rawBrightness = 0.07 + (bassStem * 0.09 * bassBeamMult) + beatPulse + (features.isDrop ? 0.05 : 0);
     const baseBrightness = Math.min(0.22 * maxBri, rawBrightness * maxBri);
 
     // -------------------------------------------------------------
-    // 1. Colouring Spotlights (Active Count: this.spotlightCount)
+    // 1. Colouring Spotlights (Symmetrical layout across Top, Left, Right based on BPM)
     // -------------------------------------------------------------
-    const activeCount = Math.min(this.fixtures.length, this.spotlightCount);
+    // Auto BPM mapping: update count monotonically based on BPM across [70, 160] range
+    if (routingConfig?.minSpotlightCount !== undefined) {
+      this.minSpotlightCount = routingConfig.minSpotlightCount;
+    }
+    if (routingConfig?.maxSpotlightCount !== undefined) {
+      this.maxSpotlightCount = routingConfig.maxSpotlightCount;
+    }
+    if (routingConfig?.autoBpmSpotlightSpawning !== undefined) {
+      this.autoBpmSpawning = routingConfig.autoBpmSpotlightSpawning;
+    }
+
+    if (this.autoBpmSpawning && features.estimatedBpm && features.estimatedBpm > 0 && features.bpmSource !== 'unavailable') {
+      const mappedCount = mapBpmToSpotlightCount(
+        features.estimatedBpm,
+        this.minSpotlightCount,
+        this.maxSpotlightCount
+      );
+      if (mappedCount !== this.targetSpotlightCount) {
+        this.targetSpotlightCount = mappedCount;
+      }
+    }
+
+    const currentLayout = StageLightsEffect.getSymmetricalSpotlightLayout(
+      this.targetSpotlightCount,
+      this.currentDimensions
+    );
+    const activeCount = this.targetSpotlightCount;
 
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
+      const isActive = i < currentLayout.length;
 
-      if (i >= activeCount) {
+      // Update target slot position and side if active
+      if (isActive) {
+        fix.targetSlotPos.copy(currentLayout[i].pos);
+        fix.side = currentLayout[i].side;
+        if (deltaSeconds > 0) {
+          fix.activationFactor = Math.min(1.0, fix.activationFactor + deltaSeconds * 3.5);
+        } else {
+          fix.activationFactor = 1.0;
+        }
+      } else {
+        if (deltaSeconds > 0) {
+          fix.activationFactor = Math.max(0.0, fix.activationFactor - deltaSeconds * 3.0);
+        } else {
+          fix.activationFactor = 0.0;
+        }
+      }
+
+      // Smooth mount position lerp
+      if (deltaSeconds > 0) {
+        fix.group.position.lerp(fix.targetSlotPos, deltaSeconds * 4.5);
+      } else {
+        fix.group.position.copy(fix.targetSlotPos);
+      }
+
+      // If fully deactivated, zero out opacities and skip lookAt/scale
+      if (fix.activationFactor <= 0.001) {
         (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         continue;
       }
 
-      // Dynamic pan/tilt sweeps
-      if (features.isDrop) {
-        const spreadX = Math.sin(time * 3.2 + i * 1.2) * 9.5;
-        const spreadY = 2.0 + Math.cos(time * 2.8 + i * 0.8) * 2.0;
-        const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
-        fix.targetPos.set(spreadX, spreadY, spreadZ);
+      // Dynamic pan/tilt sweeps tailored to Top, Left, and Right mounts
+      const offset = (i / Math.max(1, activeCount)) * Math.PI * 2;
+      const sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed;
+
+      if (fix.side === 'top') {
+        if (features.isDrop) {
+          const spreadX = fix.targetSlotPos.x * 0.6 + Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 8.0;
+          const spreadY = 1.8 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 1.8;
+          const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
+          fix.targetPos.set(spreadX, spreadY, spreadZ);
+        } else {
+          const sweepX = fix.targetSlotPos.x * 0.5 + Math.sin(time * sweepSpeed + offset) * 6.5;
+          const sweepY = 1.8 + Math.sin(time * 0.6 * verifiedTempoSpeed + offset * 0.5) * 1.4;
+          const sweepZ = 13.5 + Math.cos(time * 0.5 + offset) * 2.2;
+          fix.targetPos.set(sweepX, sweepY, sweepZ);
+        }
+      } else if (fix.side === 'left') {
+        // Left tower: aims across towards right stage and forward into audience
+        if (features.isDrop) {
+          const spreadX = 2.5 + Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 6.0;
+          const spreadY = 2.4 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 2.2;
+          const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
+          fix.targetPos.set(spreadX, spreadY, spreadZ);
+        } else {
+          const sweepX = 3.0 + Math.sin(time * sweepSpeed + offset) * 5.0;
+          const sweepY = 2.5 + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 2.0;
+          const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.2;
+          fix.targetPos.set(sweepX, sweepY, sweepZ);
+        }
       } else {
-        const offset = (i / activeCount) * Math.PI * 2;
-        const sweepX = Math.sin(time * (0.8 + instStem * 1.4) + offset) * 7.5;
-        const sweepY = 2.2 + Math.sin(time * 0.6 + offset * 0.5) * 1.5;
-        const sweepZ = 13.5 + Math.cos(time * 0.5 + offset) * 2.0;
-        fix.targetPos.set(sweepX, sweepY, sweepZ);
+        // Right tower: mirrors left fixture symmetrically!
+        if (features.isDrop) {
+          const spreadX = -2.5 - Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 6.0;
+          const spreadY = 2.4 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 2.2;
+          const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
+          fix.targetPos.set(spreadX, spreadY, spreadZ);
+        } else {
+          const sweepX = -3.0 - Math.sin(time * sweepSpeed + offset) * 5.0;
+          const sweepY = 2.5 + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 2.0;
+          const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.2;
+          fix.targetPos.set(sweepX, sweepY, sweepZ);
+        }
       }
 
       if (deltaSeconds > 0) {
@@ -332,11 +699,11 @@ export class StageLightsEffect extends BaseEffect {
 
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       lensMat.color.copy(lightCol);
-      lensMat.opacity = Math.min(0.95 * maxBri, baseBrightness * 4.2);
+      lensMat.opacity = Math.min(0.95 * maxBri, baseBrightness * 4.2) * fix.activationFactor;
 
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
       coneMat.color.copy(lightCol);
-      coneMat.opacity = Math.min(0.22 * maxBri, baseBrightness);
+      coneMat.opacity = Math.min(0.22 * maxBri, baseBrightness) * fix.activationFactor;
 
       const beamScale = 1.0 + bassStem * 0.35 * bassBeamMult;
       fix.coneMesh.scale.set(beamScale, beamScale, 1.0);
@@ -402,6 +769,8 @@ export class StageLightsEffect extends BaseEffect {
         target.y += Math.abs(Math.cos(orbitAngle)) * orbitRadiusY + 1.0;
         target.z += Math.sin(orbitAngle) * 4.0;
       }
+
+      pLight.group.position.copy(pLight.basePos);
 
       if (deltaSeconds > 0) {
         pLight.currentTarget.lerp(target, deltaSeconds * (6.0 + bassFactor * 9.0));
