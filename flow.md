@@ -995,6 +995,61 @@ Standardized the disk cache structure into three discrete, dedicated subdirector
   - Added real-time disk store indicator displaying active `.synwave_cache` status, total stems count, and total shazam count.
   - Added interactive "PURGE ALL CACHES" button in the HUD to wipe server disk files, browser IndexedDB stems, and localStorage recognition simultaneously with a single click.
 
+### 5.21 Phase 22 — Canonical Single-File Caching Architecture, Strict Namespace Separation (`shazam_*.json` vs `stems_*.json`), and Content-Aware Alias Indexing
+
+#### 1. Problem Diagnosis & Directory Redundancy Analysis
+An investigation into `.synwave_cache/shazam` and `.synwave_cache/stems` revealed significant duplication and naming collisions:
+1. **Identical Candidate-Key Filenames Across Directories:** Both `shazam_server.py` and `demucs_service.py` wrote cached JSON files directly named after candidate lookup keys (`file_{name}_{size}_{mtime}.json`, `song_{hash}.json`, and raw SHA-256 digests). Consequently, `.synwave_cache/shazam` and `.synwave_cache/stems` contained identical file names (e.g. `file_ILLENIUM....json`, `song_02870d34....json`), creating the impression that both folders were storing duplicate data.
+2. **Multi-File Redundancy within Folders:** For every uploaded track, both services iterated over all candidate lookup keys and saved a separate, identical copy of the JSON payload under each key. For stems, a single song created up to five 244 KB duplicate files in `.synwave_cache/stems`, wasting disk space and causing cache bloat.
+3. **Lack of Self-Documenting Payloads:** Cached JSON files lacked explicit typing metadata indicating whether they contained Demucs stem curves or Shazam song recognition metadata.
+
+#### 2. Architecture & Design Principles
+Implemented a strict, canonical single-file caching architecture with index table indirection:
+1. **Strict Namespace Prefixing & Type Tagging:**
+   - **`shazam/` Store:** Exactly ONE canonical file per track prefixed with `shazam_`:
+     `shazam_{canonical_hash}.json` containing:
+     ```json
+     {
+       "service": "shazam",
+       "type": "song_metadata",
+       "title": "...",
+       "artist": "...",
+       "album": "...",
+       "genre": "...",
+       "coverArt": "...",
+       "bpm": 140.0,
+       "bpmSource": "shazamio",
+       "bpmConfidence": 1.0,
+       "cached": true
+     }
+     ```
+   - **`stems/` Store:** Exactly ONE canonical file per track prefixed with `stems_`:
+     `stems_{canonical_hash}.json` containing:
+     ```json
+     {
+       "service": "demucs",
+       "type": "stem_envelopes",
+       "fps": 25,
+       "durationSeconds": 220.68,
+       "stems": { "drums": [...], "bass": [...], "instruments": [...], "vocals": [...] },
+       "kickEvents": [...],
+       "kickOnsets": [...],
+       "demucsBpm": { "bpm": 140.0, "confidence": 0.88, "source": "demucs" }
+     }
+     ```
+2. **Zero-Duplication Alias Indexing (`index.json`):**
+   - Maintained `.synwave_cache/shazam/index.json` and `.synwave_cache/stems/index.json`.
+   - Each `index.json` provides an $O(1)$ dictionary mapping of all alias candidate keys (`fingerprint`, `file_hash`, `song_key`, path digests, raw hashes) to their respective canonical file (`shazam_{id}.json` or `stems_{id}.json`).
+   - Eliminates duplicate file copies on disk while preserving instantaneous lookup across any alias key.
+3. **Cross-Service Type Safety & Content Validation:**
+   - `get_cached_shazam_result` strictly verifies that payloads contain `"title"` and do NOT contain `"stems"`.
+   - `get_cached_result` in `DemucsService` strictly verifies that payloads contain `"stems"`.
+   - Cross-contamination between folders is completely prevented at the parser and retrieval layer.
+4. **Automated Migration & Content Deduplication:**
+   - Both services include self-healing startup migration routines (`migrate_legacy_shazam_cache()` and `migrate_legacy_stems_cache()`).
+   - Existing legacy un-prefixed files and duplicate candidate files are automatically consolidated into single canonical files and registered in `index.json`.
+   - Duplicate stem files sharing identical audio envelope signatures are merged, reclaiming disk space.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1002,10 +1057,12 @@ Standardized the disk cache structure into three discrete, dedicated subdirector
 - **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
-- **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with unified persistent disk caching under `.synwave_cache/shazam` and `.synwave_cache/stems`.
+- **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
+- **Cache Separation & Deduplication:** `shazam/` strictly stores song recognition metadata; `stems/` strictly stores Demucs 4-stem envelopes. All candidate keys map through `index.json` with zero filename collisions and zero duplicate files.
 - **Cache Synchronization:** Server disk store is authoritative; missing caches trigger live Shazam recognition and Demucs stem extraction on upload and create `.synwave_cache` on disk. Browser storage serves as an offline fallback.
 - **Laser Visuals:** 22-pattern 360° 3D laser system with razor-thin geometries, user-adjustable width slider in routing console, instant on/off activation, and downbeat spike timestamp snapping.
 - **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
+
 
 
 

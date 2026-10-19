@@ -19,6 +19,7 @@ from demucs.api import Separator
 BASE_DIR = Path(__file__).resolve().parent
 CACHE_BASE_DIR = BASE_DIR / ".synwave_cache"
 CACHE_DIR = CACHE_BASE_DIR / "stems"
+STEMS_INDEX_FILE = CACHE_DIR / "index.json"
 
 # Migrate legacy .syncwave_cache folder if present
 legacy_cache_dir = BASE_DIR / ".syncwave_cache"
@@ -38,6 +39,141 @@ if legacy_cache_dir.exists() and legacy_cache_dir.is_dir():
         print(f"[DemucsService] Legacy cache migration notice: {e}")
 
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def load_stems_index() -> Dict[str, str]:
+    """Load the alias-to-canonical-stem-file mapping from index.json."""
+    if STEMS_INDEX_FILE.exists():
+        try:
+            with open(STEMS_INDEX_FILE, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            print(f"[DemucsService] Error loading index.json: {e}")
+    return {}
+
+def save_stems_index(index: Dict[str, str]) -> None:
+    """Save the alias-to-canonical-stem-file mapping to index.json."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(STEMS_INDEX_FILE, "w") as f:
+            json.dump(index, f, indent=2)
+    except Exception as e:
+        print(f"[DemucsService] Error writing index.json: {e}")
+
+def migrate_legacy_stems_cache() -> None:
+    """
+    Consolidate legacy/duplicated stem files in .synwave_cache/stems into
+    single canonical stems_{hash}.json files with index.json.
+    Purges duplicated un-prefixed files so .synwave_cache/stems only contains
+    distinct 'stems_*.json' and 'index.json'.
+    """
+    if not CACHE_DIR.exists():
+        return
+    index = load_stems_index()
+    index_changed = False
+
+    # 1. Convert any un-prefixed .json to stems_*.json
+    for f in list(CACHE_DIR.glob("*.json")):
+        if f.name == "index.json" or f.name.startswith("stems_"):
+            continue
+        try:
+            with open(f, "r") as fp:
+                data = json.load(fp)
+            if not isinstance(data, dict):
+                f.unlink()
+                continue
+            # If accidentally a shazam metadata file ended up in stems, remove it
+            if "stems" not in data:
+                f.unlink()
+                continue
+
+            # Identify canonical key from song identity or SHA256 hex digest
+            canon_key = None
+            if f.name.startswith("song_") and len(f.stem) > 5:
+                canon_key = f.stem[5:]
+            elif len(f.stem) == 64 and all(c in "0123456789abcdef" for c in f.stem.lower()):
+                canon_key = f.stem.lower()
+            else:
+                canon_key = hashlib.sha256(f.stem.encode("utf-8")).hexdigest()
+
+            canonical_filename = f"stems_{canon_key}.json"
+            canonical_path = CACHE_DIR / canonical_filename
+
+            # Tag with service and type for explicit identification
+            data["service"] = "demucs"
+            data["type"] = "stem_envelopes"
+
+            # Write canonical file if not already present or if the current one is larger
+            if not canonical_path.exists() or canonical_path.stat().st_size < f.stat().st_size:
+                with open(canonical_path, "w") as out_fp:
+                    json.dump(data, out_fp)
+
+            # Register alias in index
+            index[f.stem] = canonical_filename
+            index[canon_key] = canonical_filename
+            index_changed = True
+
+            # Remove redundant duplicate file
+            f.unlink()
+        except Exception as e:
+            print(f"[DemucsService] Error migrating {f.name}: {e}")
+
+    # 2. Content-based deduplication among all stems_*.json files
+    # Group files that have identical audio stem envelopes and keep only ONE file per track
+    content_groups: Dict[str, List[Path]] = {}
+    for f in list(CACHE_DIR.glob("stems_*.json")):
+        try:
+            with open(f, "r") as fp:
+                data = json.load(fp)
+            if not isinstance(data, dict) or "stems" not in data:
+                f.unlink()
+                continue
+            # Fingerprint the envelopes (drums + duration + frame count)
+            drums = data.get("stems", {}).get("drums", [])
+            dur = data.get("durationSeconds", 0)
+            sig = f"{dur}_{len(drums)}_{drums[:60]}"
+            sig_hash = hashlib.sha256(sig.encode("utf-8")).hexdigest()
+            content_groups.setdefault(sig_hash, []).append(f)
+        except Exception as e:
+            print(f"[DemucsService] Error hashing {f.name}: {e}")
+
+    for sig_hash, files in content_groups.items():
+        if len(files) > 1:
+            # Pick best canonical file (prefer one matching an index key, like a song_key)
+            best = None
+            for cand in files:
+                for k, v in index.items():
+                    if v == cand.name and (k.startswith("song_") or len(k) == 64):
+                        best = cand
+                        break
+                if best:
+                    break
+            if not best:
+                best = files[0]
+
+            canonical_name = best.name
+            for other in files:
+                if other != best:
+                    # Update all index entries that pointed to other
+                    other_raw = other.stem.replace("stems_", "")
+                    index[other_raw] = canonical_name
+                    index[other.stem] = canonical_name
+                    for k, v in list(index.items()):
+                        if v == other.name:
+                            index[k] = canonical_name
+                    try:
+                        other.unlink()
+                        index_changed = True
+                    except Exception as e:
+                        print(f"[DemucsService] Error removing duplicate {other.name}: {e}")
+
+    if index_changed:
+        save_stems_index(index)
+        print("[DemucsService] Successfully consolidated stems cache into distinct canonical stems_*.json files.")
+
+# Execute one-time consolidation on module load
+migrate_legacy_stems_cache()
 
 class DemucsService:
     def __init__(self, model_name: str = "htdemucs"):
@@ -66,54 +202,158 @@ class DemucsService:
         digest = hashlib.sha256(norm.encode("utf-8")).hexdigest()
         return f"song_{digest}"
 
+    def get_canonical_id(self, file_hash: Optional[str] = None, song_key: Optional[str] = None) -> str:
+        """Derive a single canonical 64-char hex ID for the track."""
+        if song_key and song_key.startswith("song_") and len(song_key) > 5:
+            return song_key[5:]
+        if file_hash:
+            if len(file_hash) == 64 and all(c in "0123456789abcdef" for c in file_hash.lower()):
+                return file_hash.lower()
+            return hashlib.sha256(file_hash.encode("utf-8")).hexdigest()
+        return hashlib.sha256(str(time.time()).encode("utf-8")).hexdigest()
+
+    def register_alias(self, alias: str, canonical_filename: str) -> None:
+        """Register an alias lookup key in index.json pointing to canonical stems file."""
+        if not alias or not canonical_filename:
+            return
+        index = load_stems_index()
+        safe_alias = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in alias)
+        index[alias] = canonical_filename
+        if safe_alias and safe_alias != alias:
+            index[safe_alias] = canonical_filename
+        index[hashlib.sha256(alias.encode("utf-8")).hexdigest()] = canonical_filename
+        save_stems_index(index)
+
     def get_cached_result(self, file_hash: str, song_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Retrieve pre-computed stem envelopes from local cache if present by hash, fingerprint, or song identity."""
+        """
+        Retrieve pre-computed stem envelopes from local cache if present.
+        Prioritizes index.json, then canonical stems_{id}.json.
+        Guarantees that retrieved data is genuine Demucs stem envelopes.
+        """
         candidates = []
         if file_hash:
-            # 1. Direct file_hash.json
-            safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in file_hash)
-            candidates.append(CACHE_DIR / f"{safe_name}.json")
-            # 2. SHA256 digest of file_hash (useful for long fingerprints like file:name:size:mtime)
-            hash_digest = hashlib.sha256(file_hash.encode("utf-8")).hexdigest()
-            candidates.append(CACHE_DIR / f"{hash_digest}.json")
-        if song_key:
-            # 3. Direct song_key.json
-            safe_song = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in song_key)
-            candidates.append(CACHE_DIR / f"{safe_song}.json")
-
-        for cache_file in candidates:
-            if cache_file.exists():
-                try:
-                    with open(cache_file, "r") as f:
-                        data = json.load(f)
-                        if data and "stems" in data:
-                            return data
-                except Exception as e:
-                    print(f"[DemucsService] Cache read error for {cache_file.name}: {e}")
-        return None
-
-    def save_cached_result(self, file_hash: str, data: Dict[str, Any], song_key: Optional[str] = None) -> None:
-        """Persist computed stem envelopes to local cache under file_hash, fingerprint hash, and song_key."""
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        keys_to_save = set()
-        if file_hash:
+            candidates.append(file_hash)
             safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in file_hash)
             if safe_name:
-                keys_to_save.add(safe_name)
-            keys_to_save.add(hashlib.sha256(file_hash.encode("utf-8")).hexdigest())
+                candidates.append(safe_name)
+            candidates.append(hashlib.sha256(file_hash.encode("utf-8")).hexdigest())
         if song_key:
+            candidates.append(song_key)
             safe_song = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in song_key)
             if safe_song:
-                keys_to_save.add(safe_song)
+                candidates.append(safe_song)
 
-        for key in keys_to_save:
-            cache_file = CACHE_DIR / f"{key}.json"
-            try:
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(cache_file, "w") as f:
-                    json.dump(data, f)
-            except Exception as e:
-                print(f"[DemucsService] Cache write error for {cache_file.name}: {e}")
+        # 1. Lookup in index.json
+        index = load_stems_index()
+        for key in candidates:
+            if key in index:
+                target_file = CACHE_DIR / index[key]
+                if target_file.exists():
+                    try:
+                        with open(target_file, "r") as f:
+                            data = json.load(f)
+                            # Verification: must contain stem envelopes
+                            if data and "stems" in data:
+                                return data
+                    except Exception as e:
+                        print(f"[DemucsService] Cache read error for {target_file.name}: {e}")
+
+        # 2. Direct probe for canonical stems_{key}.json
+        for key in candidates:
+            target_file = CACHE_DIR / f"stems_{key}.json"
+            if target_file.exists():
+                try:
+                    with open(target_file, "r") as f:
+                        data = json.load(f)
+                        if data and "stems" in data:
+                            index[key] = target_file.name
+                            save_stems_index(index)
+                            return data
+                except Exception as e:
+                    print(f"[DemucsService] Cache read error for {target_file.name}: {e}")
+
+        # 3. Fallback: check legacy un-prefixed file and migrate it on the fly
+        for key in candidates:
+            legacy_file = CACHE_DIR / f"{key}.json"
+            if legacy_file.exists() and legacy_file.name != "index.json":
+                try:
+                    with open(legacy_file, "r") as f:
+                        data = json.load(f)
+                        if data and "stems" in data:
+                            canon_id = self.get_canonical_id(file_hash=file_hash, song_key=song_key)
+                            canonical_filename = f"stems_{canon_id}.json"
+                            canonical_file = CACHE_DIR / canonical_filename
+                            data["service"] = "demucs"
+                            data["type"] = "stem_envelopes"
+                            with open(canonical_file, "w") as out_f:
+                                json.dump(data, out_f)
+                            index[key] = canonical_filename
+                            save_stems_index(index)
+                            try:
+                                legacy_file.unlink()
+                            except Exception:
+                                pass
+                            return data
+                except Exception as e:
+                    print(f"[DemucsService] Legacy cache fallback error for {legacy_file.name}: {e}")
+
+        return None
+
+    def save_cached_result(
+        self,
+        file_hash: str,
+        data: Dict[str, Any],
+        song_key: Optional[str] = None,
+        fingerprint: Optional[str] = None
+    ) -> str:
+        """
+        Persist computed stem envelopes to local cache as a SINGLE canonical file 'stems_{id}.json'.
+        Registers candidate aliases (file_hash, song_key, fingerprint) in index.json.
+        Avoids file duplication on disk.
+        """
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        canon_id = self.get_canonical_id(file_hash=file_hash, song_key=song_key)
+        canonical_filename = f"stems_{canon_id}.json"
+        canonical_file = CACHE_DIR / canonical_filename
+
+        # Explicit payload tags for clarity
+        data["service"] = "demucs"
+        data["type"] = "stem_envelopes"
+
+        try:
+            with open(canonical_file, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"[DemucsService] Cache write error for {canonical_file.name}: {e}")
+            return canonical_filename
+
+        # Update index with all alias keys
+        index = load_stems_index()
+        aliases = set()
+        if file_hash:
+            aliases.add(file_hash)
+            safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in file_hash)
+            if safe_name:
+                aliases.add(safe_name)
+            aliases.add(hashlib.sha256(file_hash.encode("utf-8")).hexdigest())
+        if song_key:
+            aliases.add(song_key)
+            safe_song = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in song_key)
+            if safe_song:
+                aliases.add(safe_song)
+        if fingerprint:
+            aliases.add(fingerprint)
+            safe_fp = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in fingerprint)
+            if safe_fp:
+                aliases.add(safe_fp)
+            aliases.add(hashlib.sha256(fingerprint.encode("utf-8")).hexdigest())
+        aliases.add(canon_id)
+
+        for alias in aliases:
+            index[alias] = canonical_filename
+
+        save_stems_index(index)
+        return canonical_filename
 
     def extract_stem_envelopes(self, stems_dict: Dict[str, torch.Tensor], sr: int = 44100) -> Dict[str, Any]:
         """
@@ -374,10 +614,16 @@ class DemucsService:
             "totalKicks": len(sorted_onsets),
         }
 
-    def separate_file(self, file_path: str, file_hash: Optional[str] = None, song_key: Optional[str] = None) -> Dict[str, Any]:
+    def separate_file(
+        self,
+        file_path: str,
+        file_hash: Optional[str] = None,
+        song_key: Optional[str] = None,
+        fingerprint: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Run Demucs separation on an audio file path or return cached result.
-        Supports multi-key lookup (file_hash and song_key).
+        Supports multi-key lookup (file_hash, fingerprint, and song_key) with index.json mapping.
         """
         path = Path(file_path)
         if not path.exists():
@@ -388,14 +634,26 @@ class DemucsService:
             with open(path, "rb") as f:
                 file_hash = self.compute_hash(f.read())
 
-        # Check cache
-        cached = self.get_cached_result(file_hash, song_key=song_key)
+        # Check cache across all available keys
+        cached = None
+        for key in [fingerprint, file_hash]:
+            if key:
+                cached = self.get_cached_result(key, song_key=song_key)
+                if cached:
+                    break
+        if not cached and song_key:
+            cached = self.get_cached_result("", song_key=song_key)
+
         if cached:
             # Backwards compatibility: calculate and persist demucsBpm if not in old cache
             if "demucsBpm" not in cached:
                 onsets = cached.get("kickOnsets") or [k["time"] for k in cached.get("kickEvents", [])]
                 cached["demucsBpm"] = self.calculate_tempo_from_kicks(onsets)
-                self.save_cached_result(file_hash, cached, song_key=song_key)
+                self.save_cached_result(file_hash, cached, song_key=song_key, fingerprint=fingerprint)
+            elif fingerprint:
+                # Ensure fingerprint alias is registered
+                canon_id = self.get_canonical_id(file_hash=file_hash, song_key=song_key)
+                self.register_alias(fingerprint, f"stems_{canon_id}.json")
 
             print(f"[DemucsService] Returning cached stems for hash: {file_hash[:10]}... (Demucs BPM: {cached.get('demucsBpm', {}).get('bpm')})")
             return {
@@ -417,8 +675,8 @@ class DemucsService:
         result["deviceUsed"] = self.device
         result["separationTimeSeconds"] = round(elapsed, 2)
 
-        # Save to cache under both file_hash and song_key
-        self.save_cached_result(file_hash, result, song_key=song_key)
+        # Save to cache as a single canonical stems_{id}.json with index aliases
+        self.save_cached_result(file_hash, result, song_key=song_key, fingerprint=fingerprint)
 
         return {
             "success": True,
