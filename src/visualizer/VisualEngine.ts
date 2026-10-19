@@ -111,6 +111,9 @@ export class VisualEngine {
   private cameraBaseZ = 9.2;
   private cameraTargetFov = 60;
 
+  // Active Video State for Stage Screen Pass-Through
+  private hasActiveVideo = false;
+
   // Settings
   private quality: QualityPreset = 'high';
   private effectIntensity = 1.0;
@@ -135,7 +138,7 @@ export class VisualEngine {
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
-      alpha: false,
+      alpha: true, // Transparent WebGL canvas so video is visible behind it
       powerPreference: 'high-performance',
       preserveDrawingBuffer: true,
     });
@@ -147,8 +150,9 @@ export class VisualEngine {
     this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
-    // Pure solid black outdoor stadium background
-    this.scene.background = new THREE.Color(0x000000);
+    // Null background allows transparent compositing over DOM elements (e.g. YouTube stage video)
+    this.scene.background = null;
+    this.renderer.setClearColor(0x000000, 0);
     this.scene.fog = new THREE.FogExp2(0x000000, 0.012);
 
     // Fixed camera in front of the stage (Audience View matching reference photo)
@@ -256,6 +260,7 @@ export class VisualEngine {
       mood: this.currentMood || features.mood || 'euphoric-drop',
       directorState: directorState || this.currentDirectorState || undefined,
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
+      hasVideo: this.hasActiveVideo,
     };
   }
 
@@ -588,6 +593,14 @@ export class VisualEngine {
 
   public setTrackDuration(dur: number): void {
     if (dur > 0) this.trackDuration = dur;
+  }
+
+  public setVideoActive(active: boolean): void {
+    this.hasActiveVideo = active;
+    const stageStructure = this.effects.find((e) => e.id === 'stage-structure') as StageStructureEffect | undefined;
+    if (stageStructure) {
+      stageStructure.setVideoActive(active);
+    }
   }
 
   public getDirectorState(): ShowDirectorState | null {

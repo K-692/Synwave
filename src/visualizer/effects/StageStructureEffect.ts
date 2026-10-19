@@ -25,11 +25,23 @@ export class StageStructureEffect extends BaseEffect {
   private stageScreenThemes: StageScreenThemes;
   private screenTexture!: THREE.CanvasTexture;
   private screenMesh!: THREE.Mesh;
+  private backWallMesh!: THREE.Mesh;
   private stageDeckMesh!: THREE.Mesh;
+  private hasVideo = false;
 
   constructor() {
     super();
     this.stageScreenThemes = new StageScreenThemes();
+  }
+
+  public setVideoActive(active: boolean): void {
+    this.hasVideo = active;
+    if (this.screenMesh) {
+      this.screenMesh.visible = !active;
+    }
+    if (this.backWallMesh) {
+      this.backWallMesh.visible = !active;
+    }
   }
 
   public initialize(context: VisualEffectContext): void {
@@ -66,7 +78,7 @@ export class StageStructureEffect extends BaseEffect {
     this.disposables.push(edgeGeo, edgeMat);
 
     // 2. Solid Rectangular LED Jumbotron Screen (Exact match to reference photo)
-    // 21m wide by 11.8m tall, centered at (0, 4.8, -4.5)
+    // 21m wide by 11.8m tall, centered at (0, 4.6, -4.5)
     const screenWidth = 21.0;
     const screenHeight = 11.8;
 
@@ -86,13 +98,49 @@ export class StageStructureEffect extends BaseEffect {
     this.group.add(this.screenMesh);
     this.disposables.push(screenGeo, screenMat, this.screenTexture);
 
-    // Screen Solid Black Backing Wall
+    // Screen Solid Black Backing Wall (Hidden when video is playing to allow video shine-through)
     const backWallGeo = new THREE.BoxGeometry(screenWidth + 1.2, screenHeight + 1.2, 0.4);
     const backWallMat = new THREE.MeshBasicMaterial({ color: 0x010204 });
-    const backWall = new THREE.Mesh(backWallGeo, backWallMat);
-    backWall.position.set(0, 4.6, -4.75);
-    this.group.add(backWall);
+    this.backWallMesh = new THREE.Mesh(backWallGeo, backWallMat);
+    this.backWallMesh.position.set(0, 4.6, -4.75);
+    this.group.add(this.backWallMesh);
     this.disposables.push(backWallGeo, backWallMat);
+
+    // Jumbotron Screen Outer Frame Bezel (Always visible to frame both procedural visuals and YouTube video)
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x111625,
+      roughness: 0.4,
+      metalness: 0.8,
+    });
+    this.disposables.push(frameMat);
+
+    // Top Frame Bezel
+    const hFrameGeo = new THREE.BoxGeometry(screenWidth + 0.44, 0.22, 0.28);
+    this.disposables.push(hFrameGeo);
+    const topFrame = new THREE.Mesh(hFrameGeo, frameMat);
+    topFrame.position.set(0, 4.6 + screenHeight / 2 + 0.11, -4.48);
+    this.group.add(topFrame);
+
+    // Bottom Frame Bezel
+    const btmFrame = new THREE.Mesh(hFrameGeo, frameMat);
+    btmFrame.position.set(0, 4.6 - screenHeight / 2 - 0.11, -4.48);
+    this.group.add(btmFrame);
+
+    // Left and Right Frame Bezels
+    const vFrameGeo = new THREE.BoxGeometry(0.22, screenHeight, 0.28);
+    this.disposables.push(vFrameGeo);
+    const leftFrame = new THREE.Mesh(vFrameGeo, frameMat);
+    leftFrame.position.set(-(screenWidth / 2 + 0.11), 4.6, -4.48);
+    this.group.add(leftFrame);
+
+    const rightFrame = new THREE.Mesh(vFrameGeo, frameMat);
+    rightFrame.position.set(screenWidth / 2 + 0.11, 4.6, -4.48);
+    this.group.add(rightFrame);
+
+    // Apply initial video active state if provided in context
+    if (context.hasVideo) {
+      this.setVideoActive(true);
+    }
 
     // 3. Heavy-Duty Aluminum Box-Truss Roof & Framework (Matching photo)
     this.createBoxTrussRig(screenWidth, screenHeight);
@@ -164,6 +212,15 @@ export class StageStructureEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
+    if (context.hasVideo !== undefined && context.hasVideo !== this.hasVideo) {
+      this.setVideoActive(context.hasVideo);
+    }
+
+    if (this.hasVideo) {
+      // YouTube video is playing behind the transparent stage screen opening
+      return;
+    }
+
     const { features } = context;
 
     // Render solid pitch-black screen with centered track details illuminated by spotlight glow

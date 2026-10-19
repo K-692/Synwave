@@ -225,6 +225,7 @@ export interface VisualEffectContext {
   mood?: MusicMood;
   directorState?: ShowDirectorState;
   routingConfig?: AudioVisualRoutingConfig;
+  hasVideo?: boolean;
 }
 
 export interface VisualEffect {

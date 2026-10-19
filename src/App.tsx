@@ -114,6 +114,11 @@ export const App: React.FC = () => {
     return unsub;
   }, []);
 
+  // Synchronize visual engine stage screen transparency with video state
+  useEffect(() => {
+    visualEngineRef.current?.setVideoActive(!!currentVideoId);
+  }, [currentVideoId]);
+
   // Visual Settings: Default to GPU/MPS if present, otherwise 60 FPS standard
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
     effectIntensity: 1.0,
@@ -561,12 +566,39 @@ export const App: React.FC = () => {
   }, [isPlaying, currentTime, duration]);
 
   return (
-    <div className="synwave-app">
-      {/* Three.js 3D Procedural Canvas */}
+    <div
+      className="synwave-app"
+      onDoubleClick={handleToggleFullscreen}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFilesSelected(e.dataTransfer.files);
+        }
+      }}
+    >
+      {/* Synchronized YouTube Iframe Stage Screen Player (Sent back behind 3D canvas) */}
+      <YouTubeStagePlayer
+        videoId={currentVideoId}
+        videoTitle={currentVideoTitle}
+        currentTime={currentTime}
+        isPlaying={isPlaying}
+        onKeySaved={() => {
+          if (currentTrack) {
+            searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
+              if (res) {
+                setCurrentVideoId(res.videoId);
+                setCurrentVideoTitle(res.title);
+              }
+            });
+          }
+        }}
+      />
+
+      {/* Three.js 3D Procedural Canvas (Runs on top of YouTube video with transparent WebGL) */}
       <canvas
         ref={canvasRef}
         className="visualizer-canvas"
-        onDoubleClick={handleToggleFullscreen}
         title="Double-click to toggle fullscreen (or press 'F', Space to Play/Pause)"
       />
 
@@ -676,24 +708,6 @@ export const App: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Synchronized YouTube Iframe Stage Screen Player */}
-      <YouTubeStagePlayer
-        videoId={currentVideoId}
-        videoTitle={currentVideoTitle}
-        currentTime={currentTime}
-        isPlaying={isPlaying}
-        onKeySaved={() => {
-          if (currentTrack) {
-            searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
-              if (res) {
-                setCurrentVideoId(res.videoId);
-                setCurrentVideoTitle(res.title);
-              }
-            });
-          }
-        }}
-      />
 
       {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}
       <PlayerControls

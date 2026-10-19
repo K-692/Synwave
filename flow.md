@@ -153,14 +153,21 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
    - Requires a Google Cloud **YouTube Data API v3 Key** configured via `.env` (`VITE_YOUTUBE_API_KEY`) or via the in-app key setup modal.
 
 3. **Synchronized Video Iframe Player (`YouTubeStagePlayer.tsx`):**
-   - Mounts a 16:9 YouTube video iframe positioned directly on the 3D stadium stage screen.
+   - Mounts a 16:9 YouTube video iframe positioned directly behind the 3D stadium stage screen (`z-index: 1`).
    - **Strict Volume Muting (`volume=0`, `mute()`):** Prevents double-audio playback so the high-fidelity local audio file runs purely through Synwave's procedural Web Audio engine.
    - **Authoritative Timestamp Synchronization:** The YouTube video's playback state and playhead are continuously locked to the local audio engine's `currentTime`. Pausing, playing, or seeking the audio file automatically seeks and re-aligns the video playhead with $<0.35\text{s}$ tolerance.
 
-4. **Streamlined UI & Center-Screen Interaction:**
+4. **Optical Stacking & Transparent WebGL Compositing Architecture:**
+   - **Sent Video to Back (`z-index: 1`):** The YouTube iframe container is placed behind the Three.js canvas in the DOM stacking order (`z-index: 1`).
+   - **Transparent WebGL Canvas (`z-index: 2`):** `THREE.WebGLRenderer` is initialized with `alpha: true`, `scene.background = null`, and `renderer.setClearColor(0x000000, 0)` with `pointer-events: none`.
+   - **3D Stage Screen Pass-Through Portal:** When a video is active (`hasVideo = true`), `StageStructureEffect`'s `screenMesh` and `backWallMesh` at $Z = -4.5$ are hidden (`visible = false`), while the persistent Jumbotron outer bezel frame remains visible.
+   - **All 3D Visualization Elements Run ON TOP of the Screen:** Because all 16 moving-head volumetric light cones, 28 razor-thin lasers, flame blasters, cryo smoke, trusses, and crowd silhouettes physically reside in front of the screen ($Z > -4.5$, camera at $Z = 9.2$), rendering the canvas at `z-index: 2` directly overlays all beams, lasers, flames, and smoke across the playing video.
+   - **Exact 3D Perspective Sizing:** The video player element is styled to exactly match the 3D screen opening (`width: min(73.3vw, 130.3vh); aspect-ratio: 16 / 9; top: 48.6%; left: 50%`), aligning seamlessly with the aluminum trusses and DJ riser platform.
+
+5. **Streamlined UI & Center-Screen Interaction:**
    - Removed folder-level playing, Track Queue (Playlist Drawer), and Signal & Visual Inspector Drawer.
    - Removed "Open File" and "Open Folder" header buttons.
-   - Replaced with an intuitive center-screen dropzone: clicking anywhere on the stage screen opens the system audio picker, while dragging and dropping any audio file initiates instant playback, Shazam recognition, and synchronized video playback.
+   - Replaced with an intuitive center-screen dropzone: clicking anywhere on the stage screen opens the system audio picker, while dragging and dropping any audio file initiates instant playback, Shazam recognition, and synchronized video playback. Window-level drag-drop allows dropping files anywhere on the app.
 
 ---
 
@@ -184,8 +191,8 @@ Automatic runtime profiling determines system graphics capabilities via WebGL un
 
 ## 9. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly in 460ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build` bundled cleanly in 377ms).
 - **Vite Development Server:** Running continuously at `http://localhost:5173/`.
-- **ShazamIO Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` using `.venv`. Verified with `Feel Something.mp3`.
+- **ShazamIO Microservice:** Running continuously as a local daemon at `http://127.0.0.1:8765/` using `.venv`.
 - **Git Repository:** Committed locally on branch `main` (Rule 8: awaiting explicit user push instruction).
-- **Screen Aesthetics:** Center screen acts as an interactive click/drop zone; when a track is identified, the synchronized YouTube video iframe renders on the concert stage screen muted and locked to audio time.
+- **Visual Stacking:** YouTube iframe is sent to the background (`z-index: 1`), and the transparent Three.js WebGL canvas (`z-index: 2`) renders all stage lights, moving head cones, razor-thin lasers, smoke, fire plumes, and trusses directly on top of the playing video.
