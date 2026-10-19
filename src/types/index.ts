@@ -83,8 +83,6 @@ export type StageProfile = 'festival-mainstage';
 export interface EnabledEffectsConfig {
   lights: boolean;
   lasers: boolean;
-  flames: boolean;
-  screen: boolean;
 }
 
 export interface AudioVisualRoutingConfig {
@@ -96,14 +94,12 @@ export interface AudioVisualRoutingConfig {
   perimeterBassRotationSpeed: number;   // 0.2 to 3.0 (default 1.0, 360-degree rotation)
   instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, arena cathedral laser fan speed)
   vocalToScreenGlow: number;            // 0.2 to 2.0 (default 1.0)
-  pyroThreshold: number;                // 0.2 to 1.0 (default 0.45)
   laserDensity: number;                 // 0.2 to 2.0 (default 1.0)
   spotlightCount: number;               // 1 to 8 (default 3)
   spotlightIntensity: number;           // 0.5 to 2.5 (default 1.3)
   effectDecay: number;                  // 0.5 to 2.0 (default 1.0)
   cameraShakeStrength: number;          // Legacy alias
   reducedFlash: boolean;                // true/false
-  disablePyrotechnics: boolean;         // true/false
   maxBrightnessLimit: number;           // 0.3 to 1.0 (default 1.0)
   enabledEffects: EnabledEffectsConfig;
 }
@@ -230,6 +226,10 @@ export interface TrackRecord {
   analysisStatus: AnalysisStatus;
   analysis?: TrackAnalysis;
   demucsStems?: DemucsStemData;
+  producer?: string;
+  releaseDate?: string;
+  description?: string;
+  youtubeVideoId?: string;
   seed: number; // Deterministic random seed for this track
 }
 

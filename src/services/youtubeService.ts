@@ -1,6 +1,6 @@
 /**
  * Synwave YouTube Data API v3 Search Service
- * Searches for official music videos matching song name & artist.
+ * Searches for official music videos and retrieves rich metadata (Title, Artist, Producer, Release Date).
  */
 
 export interface YouTubeSearchResult {
@@ -8,6 +8,9 @@ export interface YouTubeSearchResult {
   title: string;
   channelTitle: string;
   thumbnailUrl: string;
+  publishedAt?: string;
+  description?: string;
+  producer?: string;
 }
 
 const STORAGE_KEY = 'synwave_youtube_api_key';
@@ -26,6 +29,22 @@ export function setYouTubeApiKey(key: string): void {
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+}
+
+function decodeHtmlEntities(str: string): string {
+  const txt = document.createElement('textarea');
+  txt.innerHTML = str;
+  return txt.value;
+}
+
+function extractProducerFromDescription(desc: string): string | undefined {
+  if (!desc) return undefined;
+  // Check for "Produced by", "Producer", "Music Producer", "Composed by"
+  const producerMatch = desc.match(/(?:produced by|music producer|producer|composed by|composer)[:\s]+([^\n\r,;]+)/i);
+  if (producerMatch) {
+    return producerMatch[1].trim();
+  }
+  return undefined;
 }
 
 export async function searchYouTubeVideo(query: string): Promise<YouTubeSearchResult | null> {
@@ -58,11 +77,28 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeSearchRe
     }
 
     const item = data.items[0];
+    const rawTitle = item.snippet.title || cleanQuery;
+    const decodedTitle = decodeHtmlEntities(rawTitle);
+    const channel = decodeHtmlEntities(item.snippet.channelTitle || 'Official Artist');
+    const desc = item.snippet.description || '';
+    const publishedAt = item.snippet.publishedAt
+      ? new Date(item.snippet.publishedAt).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : undefined;
+
+    const producer = extractProducerFromDescription(desc);
+
     return {
       videoId: item.id.videoId,
-      title: item.snippet.title,
-      channelTitle: item.snippet.channelTitle,
+      title: decodedTitle,
+      channelTitle: channel,
       thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || '',
+      publishedAt,
+      description: desc,
+      producer,
     };
   } catch (err) {
     console.error('YouTube search exception:', err);

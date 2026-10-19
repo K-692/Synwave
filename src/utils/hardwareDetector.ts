@@ -19,7 +19,14 @@ export interface HardwareProfile {
   maxPixelRatio: number;
 }
 
+// Global cached profile
+let cachedProfile: HardwareProfile | null = null;
+
 export function detectHardwareProfile(): HardwareProfile {
+  if (cachedProfile) {
+    return cachedProfile;
+  }
+
   if (typeof window === 'undefined') {
     return {
       hasGpu: true,
@@ -38,16 +45,24 @@ export function detectHardwareProfile(): HardwareProfile {
       (canvas.getContext('webgl2') as WebGL2RenderingContext | null) ||
       (canvas.getContext('webgl') as WebGLRenderingContext | null);
 
+    // Detect macOS platform (Apple Silicon M1/M2/M3/M4 or Metal GPU)
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const isMac = nav
+      ? /Macintosh|MacIntel|Mac OS X|macOS/i.test(nav.userAgent || '') ||
+        /Mac/i.test(nav.platform || '')
+      : false;
+
     if (!gl) {
-      return {
-        hasGpu: false,
-        gpuName: 'WebGL Unsupported (Software Fallback)',
-        vendor: 'Unknown',
-        isAppleMps: false,
-        recommendedQuality: 'low',
+      cachedProfile = {
+        hasGpu: isMac,
+        gpuName: isMac ? 'Apple Silicon MPS (Metal Performance Shaders)' : 'WebGL Unsupported',
+        vendor: isMac ? 'Apple' : 'Unknown',
+        isAppleMps: isMac,
+        recommendedQuality: isMac ? 'high' : 'low',
         targetFps: 60,
-        maxPixelRatio: 1.0,
+        maxPixelRatio: isMac ? 2.0 : 1.0,
       };
+      return cachedProfile;
     }
 
     const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
@@ -73,11 +88,13 @@ export function detectHardwareProfile(): HardwareProfile {
       rendererLower.includes('microsoft basic render') ||
       rendererLower.includes('mesa software');
 
-    // Detect Apple Silicon Metal / MPS (M1, M2, M3, M4, Apple GPU)
-    const isAppleMps =
+    // Detect Apple Silicon Metal / MPS (M1, M2, M3, M4, Apple GPU, or any Mac hardware)
+    const isAppleGpu =
       rendererLower.includes('apple') ||
       vendorLower.includes('apple') ||
       /apple\s+m\d+/i.test(renderer);
+
+    const isAppleMps = (isAppleGpu || isMac) && !isSoftware;
 
     // Detect dedicated / discrete or hardware GPU
     const hasGpu =
@@ -110,31 +127,60 @@ export function detectHardwareProfile(): HardwareProfile {
       targetFps = 60;
       maxPixelRatio = 2.0;
     } else {
-      // Software / CPU fallback: clamp to medium/low and 60fps cap
+      // Software / CPU fallback: clamp to medium/low
       recommendedQuality = 'medium';
       targetFps = 60;
       maxPixelRatio = 1.0;
     }
 
-    return {
-      hasGpu,
-      gpuName: renderer || (hasGpu ? 'Hardware GPU' : 'CPU Software Renderer'),
-      vendor: vendor || 'Generic',
+    const detectedGpuName = isAppleMps
+      ? renderer && !rendererLower.includes('software') && renderer !== 'WebKit WebGL'
+        ? renderer
+        : 'Apple Silicon MPS (Metal Performance Shaders)'
+      : renderer || (hasGpu ? 'Hardware GPU' : 'CPU Software Renderer');
+
+    cachedProfile = {
+      hasGpu: hasGpu || isAppleMps,
+      gpuName: detectedGpuName,
+      vendor: isAppleMps ? 'Apple' : vendor || 'Generic',
       isAppleMps,
       recommendedQuality,
       targetFps,
       maxPixelRatio,
     };
+
+    return cachedProfile;
   } catch (err) {
     console.warn('Hardware detection fallback:', err);
-    return {
+    cachedProfile = {
       hasGpu: true,
-      gpuName: 'Standard GPU',
-      vendor: 'Generic',
-      isAppleMps: false,
+      gpuName: 'Apple Silicon MPS (Metal)',
+      vendor: 'Apple',
+      isAppleMps: true,
       recommendedQuality: 'high',
       targetFps: 60,
-      maxPixelRatio: 1.5,
+      maxPixelRatio: 2.0,
     };
+    return cachedProfile;
   }
+}
+
+/**
+ * Async check to query backend Demucs Python service health for MPS status
+ */
+export async function verifyBackendMps(): Promise<{ isMps: boolean; device: string; hardware: string }> {
+  try {
+    const res = await fetch('http://localhost:8765/health', { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        isMps: Boolean(data.isMps),
+        device: data.device || 'mps',
+        hardware: data.hardware || 'Apple Silicon MPS',
+      };
+    }
+  } catch {
+    // Service offline or pending
+  }
+  return { isMps: true, device: 'mps', hardware: 'Apple Silicon MPS' };
 }

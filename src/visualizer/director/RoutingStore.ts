@@ -21,13 +21,12 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
     id: 'festival-mainstage',
     name: 'Festival Mainstage',
     subtitle: 'Ultra / Tomorrowland Stadium',
-    description: 'High-octane EDM arena with wide laser fans, sync flame cannons, punchy moving heads, and bass-reactive stage wash.',
+    description: 'High-octane EDM arena with 360° downward instrument lasers, perimeter moving heads, and bass-reactive stage wash.',
     accentColor: '#ff0055',
     defaultConfig: {
       kickSensitivity: 1.15,
       bassToBeamIntensity: 1.2,
       vocalToScreenGlow: 1.0,
-      pyroThreshold: 0.45,
       laserDensity: 1.25,
       spotlightCount: 3,
       effectDecay: 1.0,
@@ -39,20 +38,17 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       instrumentalMovementSpeed: 1.0,
       spotlightIntensity: 1.0,
       reducedFlash: false,
-      disablePyrotechnics: false,
       maxBrightnessLimit: 1.0,
       enabledEffects: {
         lights: true,
         lasers: true,
-        flames: true,
-        screen: true,
       },
     },
   },
 };
 
-const STORAGE_KEY_CONFIG = 'synwave_routing_config_v3';
-const STORAGE_KEY_PROFILE = 'synwave_active_profile_v3';
+const STORAGE_KEY_CONFIG = 'synwave_routing_config_v4';
+const STORAGE_KEY_PROFILE = 'synwave_active_profile_v4';
 
 export class RoutingStore {
   private static instance: RoutingStore;
@@ -118,30 +114,27 @@ export class RoutingStore {
 
   public resetToProfileDefault(): void {
     const profileMeta = STAGE_PROFILES[this.activeProfile];
-    if (profileMeta) {
-      this.config = {
-        ...profileMeta.defaultConfig,
-        enabledEffects: { ...profileMeta.defaultConfig.enabledEffects },
-      };
-      this.persistToStorage();
-      this.notifyListeners();
-    }
+    if (!profileMeta) return;
+    this.config = {
+      ...profileMeta.defaultConfig,
+      enabledEffects: { ...profileMeta.defaultConfig.enabledEffects },
+    };
+    this.persistToStorage();
+    this.notifyListeners();
   }
 
-  public subscribe(listener: (config: AudioVisualRoutingConfig, profile: StageProfile) => void): () => void {
+  public subscribe(
+    listener: (config: AudioVisualRoutingConfig, profile: StageProfile) => void
+  ): () => void {
     this.listeners.add(listener);
-    listener(this.getConfig(), this.getActiveProfile());
-    return () => {
-      this.listeners.delete(listener);
-    };
+    listener(this.config, this.activeProfile);
+    return () => this.listeners.delete(listener);
   }
 
   private notifyListeners(): void {
-    const cfg = this.getConfig();
-    const prof = this.getActiveProfile();
     for (const listener of this.listeners) {
       try {
-        listener(cfg, prof);
+        listener(this.config, this.activeProfile);
       } catch (e) {
         console.error('Error notifying routing listener:', e);
       }

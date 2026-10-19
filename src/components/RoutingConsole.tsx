@@ -2,12 +2,12 @@
  * Synwave Audio-to-Visual Routing Console
  * 
  * Comprehensive calibration console for the 3D concert stage:
- * - Drums & Kicks: Screen Shake (YouTube iframe only), Screen Flash Strobe, Kick Sensitivity, Flame Threshold
- * - Bass Spectrum: 360° Perimeter Light Rotation Speed, Bass-to-Beam Radiance, Flash Color Saturation
- * - Instruments: Arena Cathedral Fan Lasers Sweep Speed & Fan Spread
+ * - Drums & Kicks: Screen Shake (YouTube iframe only), Screen Flash Strobe, Kick Sensitivity
+ * - Bass Spectrum: 360° Perimeter Light Rotation Speed, Bass-to-Beam Radiance, Flash Color Saturation, Envelope Decay
+ * - Instruments: 360° Downward Instrument Lasers Sweep Speed & Beam Density
  * - Spotlights: Fixture Count (1-8), Thumbnail Palette Tuning, Global Brightness Ceiling
- * - Master Toggles: Moving Head Lights, Cathedral Lasers, Flame Cannons, Jumbotron Screen
- * - Safety & Accessibility: Reduced Flash Mode, Disable Pyrotechnics
+ * - Master Toggles: Moving Head Lights & 360° Rig, Downward Instrument Lasers
+ * - Safety & Accessibility: Reduced Flash Mode
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,20 +15,17 @@ import {
   X,
   RotateCcw,
   Sliders,
-  Flame,
   Lightbulb,
-  Tv,
   Zap,
   Shield,
   EyeOff,
-  Sparkles,
   Disc3,
   Waves,
   Music,
   Activity,
 } from 'lucide-react';
-import { RoutingStore, STAGE_PROFILES } from '../visualizer/director/RoutingStore';
-import type { AudioVisualRoutingConfig, StageProfile } from '../types';
+import { RoutingStore } from '../visualizer/director/RoutingStore';
+import type { AudioVisualRoutingConfig } from '../types';
 
 interface RoutingConsoleProps {
   isOpen: boolean;
@@ -39,15 +36,11 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
   const [config, setConfig] = useState<AudioVisualRoutingConfig>(
     RoutingStore.getInstance().getConfig()
   );
-  const [activeProfile, setActiveProfile] = useState<StageProfile>(
-    RoutingStore.getInstance().getActiveProfile()
-  );
 
   useEffect(() => {
     const routingStore = RoutingStore.getInstance();
-    const unsubscribe = routingStore.subscribe((cfg, prof) => {
+    const unsubscribe = routingStore.subscribe((cfg) => {
       setConfig(cfg);
-      setActiveProfile(prof);
     });
     return unsubscribe;
   }, []);
@@ -55,7 +48,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
   if (!isOpen) return null;
 
   const handleSliderChange = (
-    key: keyof Omit<AudioVisualRoutingConfig, 'enabledEffects' | 'reducedFlash' | 'disablePyrotechnics'>,
+    key: keyof Omit<AudioVisualRoutingConfig, 'enabledEffects' | 'reducedFlash'>,
     value: number
   ) => {
     RoutingStore.getInstance().updateConfig({ [key]: value });
@@ -65,7 +58,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
     RoutingStore.getInstance().toggleEffect(family);
   };
 
-  const handleToggleSafety = (key: 'reducedFlash' | 'disablePyrotechnics') => {
+  const handleToggleSafety = (key: 'reducedFlash') => {
     RoutingStore.getInstance().updateConfig({ [key]: !config[key] });
   };
 
@@ -85,7 +78,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             <Sliders size={20} className="neon-cyan-icon" />
             <div>
               <h3>AUDIO-TO-VISUAL ROUTING CONSOLE</h3>
-              <p>Calibrate offline neural stem triggers, 360° perimeter bass rig, arena cathedral lasers, and screen blinders</p>
+              <p>Calibrate neural stem triggers, 360° perimeter bass rig, 360° downward instrument lasers, and screen blinders</p>
             </div>
           </div>
 
@@ -93,10 +86,10 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             <button
               className="btn btn-secondary btn-sm"
               onClick={handleReset}
-              title="Reset sliders to stage profile defaults"
+              title="Reset sliders to stage defaults"
             >
               <RotateCcw size={14} />
-              <span>Reset Profile</span>
+              <span>Reset Defaults</span>
             </button>
             <button className="btn-icon btn-sm" onClick={onClose} title="Close Console">
               <X size={18} />
@@ -106,39 +99,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
 
         {/* Modal Body */}
         <div className="routing-modal-body">
-          {/* Section 1: Active Stage Mode */}
-          <div className="routing-section">
-            <h4 className="routing-section-heading">
-              <Sparkles size={16} />
-              <span>ACTIVE STAGE MODE</span>
-            </h4>
-            <div className="profile-grid">
-              {(Object.keys(STAGE_PROFILES) as StageProfile[]).map((profKey) => {
-                const prof = STAGE_PROFILES[profKey];
-                const isActive = activeProfile === profKey;
-                return (
-                  <div
-                    key={profKey}
-                    className={`profile-card ${isActive ? 'active' : ''}`}
-                    style={{
-                      borderColor: prof.accentColor,
-                    }}
-                  >
-                    <div className="profile-card-top">
-                      <span className="profile-name" style={{ color: prof.accentColor }}>
-                        {prof.name}
-                      </span>
-                      <span className="profile-badge">ACTIVE</span>
-                    </div>
-                    <span className="profile-subtitle">{prof.subtitle}</span>
-                    <p className="profile-desc">{prof.description}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Section 2: Master Effect Family Toggles */}
+          {/* Section 1: Master Effect Family Toggles */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Zap size={16} />
@@ -150,7 +111,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 onClick={() => handleToggleEffect('lights')}
               >
                 <Lightbulb size={16} />
-                <span>Moving Head Lights & 360° Rig</span>
+                <span>Moving Head Lights & 360° Screen Rig</span>
               </button>
 
               <button
@@ -158,29 +119,12 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 onClick={() => handleToggleEffect('lasers')}
               >
                 <Zap size={16} />
-                <span>Arena Cathedral Lasers</span>
-              </button>
-
-              <button
-                className={`effect-toggle-pill ${config.enabledEffects.flames && !config.disablePyrotechnics ? 'active' : ''}`}
-                onClick={() => handleToggleEffect('flames')}
-                disabled={config.disablePyrotechnics}
-              >
-                <Flame size={16} />
-                <span>Flame Cannons</span>
-              </button>
-
-              <button
-                className={`effect-toggle-pill ${config.enabledEffects.screen ? 'active' : ''}`}
-                onClick={() => handleToggleEffect('screen')}
-              >
-                <Tv size={16} />
-                <span>Jumbotron Stage Screen</span>
+                <span>360° Downward Instrument Lasers</span>
               </button>
             </div>
           </div>
 
-          {/* Section 3: Drums & Kicks Routing Engine */}
+          {/* Section 2: Drums & Kicks Routing Engine */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Disc3 size={16} />
@@ -235,29 +179,12 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.kickSensitivity}
                   onChange={(e) => handleSliderChange('kickSensitivity', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Controls drum kick threshold for flash strobing and flame bursts</span>
-              </div>
-
-              {/* Pyro Trigger Threshold */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Flame Burst Threshold</span>
-                  <span className="slider-val">{config.pyroThreshold.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="1.0"
-                  step="0.05"
-                  value={config.pyroThreshold}
-                  onChange={(e) => handleSliderChange('pyroThreshold', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Higher values reserve stage flamethrowers for massive drops</span>
+                <span className="slider-hint">Controls drum kick threshold for flash strobing</span>
               </div>
             </div>
           </div>
 
-          {/* Section 4: Bass Spectrum & 360° Perimeter Rig */}
+          {/* Section 3: Bass Spectrum & 360° Perimeter Rig */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Waves size={16} />
@@ -295,7 +222,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.bassToBeamIntensity}
                   onChange={(e) => handleSliderChange('bassToBeamIntensity', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Modulates moving-head beam thickness, floor wash, and top bass cannons</span>
+                <span className="slider-hint">Modulates moving-head beam thickness, floor wash, and perimeter radiance</span>
               </div>
 
               {/* Screen Flash Color Saturation */}
@@ -312,7 +239,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.screenFlashColorSaturation ?? 1.0}
                   onChange={(e) => handleSliderChange('screenFlashColorSaturation', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Low bass produces pure white strobe; high bass blends video thumbnail gradients</span>
+                <span className="slider-hint">Low bass produces crisp white strobe; high bass blends video thumbnail gradients</span>
               </div>
 
               {/* Effect Envelope Decay */}
@@ -334,17 +261,17 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             </div>
           </div>
 
-          {/* Section 5: Instrumental Arena Cathedral Fan Lasers */}
+          {/* Section 4: 360° Downward Instrument Lasers */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Music size={16} />
-              <span>INSTRUMENTAL CATHEDRAL FAN LASERS</span>
+              <span>360° DOWNWARD INSTRUMENT LASERS</span>
             </h4>
             <div className="sliders-grid">
-              {/* Instrumental Movement Speed & Spread */}
+              {/* Instrumental Movement Speed */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>Instrumental Sweep Speed & Spread</span>
+                  <span>360° Conical Sweep Speed</span>
                   <span className="slider-val">{(config.instrumentalMovementSpeed ?? 1.0).toFixed(2)}x</span>
                 </div>
                 <input
@@ -355,7 +282,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.instrumentalMovementSpeed ?? 1.0}
                   onChange={(e) => handleSliderChange('instrumentalMovementSpeed', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Higher instrumental frequency increases fan spread and scissor crossing speed</span>
+                <span className="slider-hint">Higher instrumental frequency increases 360° conical rotation rate towards the stage floor</span>
               </div>
 
               {/* Laser Density */}
@@ -372,12 +299,12 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.laserDensity}
                   onChange={(e) => handleSliderChange('laserDensity', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Adjusts active razor beam count across the stadium cathedral canopy</span>
+                <span className="slider-hint">Adjusts active razor beam count from the 3 top laser stations</span>
               </div>
             </div>
           </div>
 
-          {/* Section 6: Stage Spotlights & Palette Configuration */}
+          {/* Section 5: Stage Spotlights & Palette Configuration */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Activity size={16} />
@@ -401,7 +328,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                     RoutingStore.getInstance().setSpotlightCount(count);
                   }}
                 />
-                <span className="slider-hint">Number of active colour-tinted spotlights sweeping the stage (default: 3)</span>
+                <span className="slider-hint">Base active colour-tinted spotlights sweeping the stage (scaled dynamically by instrumental intensity)</span>
               </div>
 
               {/* Max Brightness Limit */}
@@ -423,7 +350,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             </div>
           </div>
 
-          {/* Section 7: Safety & Accessibility Controls */}
+          {/* Section 6: Safety & Accessibility Controls */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Shield size={16} />
@@ -443,21 +370,6 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   </span>
                 </div>
                 <p className="safety-desc">Tones down high-contrast blinder strobing for photosensitive viewers</p>
-              </div>
-
-              {/* Disable Pyrotechnics Toggle */}
-              <div
-                className={`safety-card ${config.disablePyrotechnics ? 'active' : ''}`}
-                onClick={() => handleToggleSafety('disablePyrotechnics')}
-              >
-                <div className="safety-card-header">
-                  <Flame size={18} />
-                  <span className="safety-title">Disable Pyrotechnics</span>
-                  <span className={`safety-toggle-indicator ${config.disablePyrotechnics ? 'on' : 'off'}`}>
-                    {config.disablePyrotechnics ? 'DISABLED' : 'ENABLED'}
-                  </span>
-                </div>
-                <p className="safety-desc">Completely deactivates all stage flamethrowers across all presets</p>
               </div>
             </div>
           </div>

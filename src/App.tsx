@@ -492,25 +492,47 @@ export const App: React.FC = () => {
     // Load track into audio engine without autoplay (playback is unlocked once video is ready)
     await loadTrack(track, false);
 
-    // Trigger silent ShazamIO identification in background (no popup)
+    // Identify audio and fetch official YouTube API metadata (Music Name, Artist, Producer, Release Date)
     try {
       const match = await identifyAudioWithShazam(audioFile);
       const recognizedTitle = (match.success && match.title) ? match.title : initialTitle;
       const recognizedArtist = (match.success && match.artist) ? match.artist : initialArtist;
 
-      setCurrentTrack((prev) =>
-        prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
-      );
-      visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
-
       const searchQuery = match.query || `${recognizedTitle} ${recognizedArtist}`;
       const ytResult = await searchYouTubeVideo(searchQuery);
+
       if (ytResult) {
         setCurrentVideoId(ytResult.videoId);
         setCurrentVideoTitle(ytResult.title);
-        // Video iframe will load and fire onPlayerReady(true) to unlock playback
+
+        // Populate track record strictly with official YouTube API metadata
+        setCurrentTrack((prev) =>
+          prev
+            ? {
+                ...prev,
+                title: ytResult.title,
+                artist: ytResult.channelTitle,
+                producer: ytResult.producer || 'Official Production',
+                releaseDate: ytResult.publishedAt || 'N/A',
+                description: ytResult.description || '',
+                youtubeVideoId: ytResult.videoId,
+              }
+            : null
+        );
+
+        visualEngineRef.current?.setTrackInfo(ytResult.title, ytResult.channelTitle);
+
+        // Safety watchdog: ensure play button cleanly appears unlocked even if iframe network is slow
+        setTimeout(() => {
+          setIsVideoLoading(false);
+          setIsVideoReady(true);
+        }, 5000);
       } else {
         // Fallback if no video found
+        setCurrentTrack((prev) =>
+          prev ? { ...prev, title: recognizedTitle, artist: recognizedArtist } : null
+        );
+        visualEngineRef.current?.setTrackInfo(recognizedTitle, recognizedArtist);
         setIsVideoReady(true);
         setIsVideoLoading(false);
       }
@@ -602,12 +624,6 @@ export const App: React.FC = () => {
       } else if (e.code === 'KeyC' || e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         setIsRoutingOpen((prev) => !prev);
-      } else if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
-        e.preventDefault();
-        const currentCfg = RoutingStore.getInstance().getConfig();
-        RoutingStore.getInstance().updateConfig({
-          disablePyrotechnics: !currentCfg.disablePyrotechnics,
-        });
       } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         const currentCfg = RoutingStore.getInstance().getConfig();

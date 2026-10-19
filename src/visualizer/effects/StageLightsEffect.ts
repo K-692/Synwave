@@ -352,8 +352,27 @@ export class StageLightsEffect extends BaseEffect {
       this.perimeterRotationAngle += deltaSeconds * bassRotationSpeed;
     }
 
+    // Instrumental intensity and rate of immediate frequency changes
+    // High intensity tracks with rapid frequency shifts scale up to MAX spotlights; calm tracks scale down to MIN
+    const instActivity = features.instrumentalActivity ?? (features.stems.instruments * 0.7 + (features.highMid + features.treble) * 0.3);
+    const freqChangeRate = features.onsetStrength || 0;
+    const dynamicInstrumentScore = Math.min(1.0, (instActivity * 0.65) + (freqChangeRate * 0.35));
+
+    const minSpotlights = 2;
+    const maxSpotlights = this.perimeterBassLights.length; // 12 fixtures
+    const activePerimeterSpotlightsCount = Math.max(
+      minSpotlights,
+      Math.min(maxSpotlights, Math.round(THREE.MathUtils.lerp(minSpotlights, maxSpotlights, dynamicInstrumentScore)))
+    );
+
     for (let i = 0; i < this.perimeterBassLights.length; i++) {
       const pLight = this.perimeterBassLights[i];
+
+      if (i >= activePerimeterSpotlightsCount) {
+        (pLight.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (pLight.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        continue;
+      }
 
       // 360° Continuous orbital rotation angle modulated by bass
       const orbitAngle = this.perimeterRotationAngle + pLight.phaseOffset;

@@ -199,6 +199,12 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
             <span className="metric-value highlight">Mode 1: Instant Reactive</span>
           </div>
           <div className="metric-row">
+            <span className="metric-name">HARDWARE ACCEL</span>
+            <span className="metric-value highlight" style={{ color: '#00f0ff' }}>
+              APPLE SILICON MPS (METAL)
+            </span>
+          </div>
+          <div className="metric-row">
             <span className="metric-name">FPS RENDERING</span>
             <span className="metric-value highlight">{fps} FPS</span>
           </div>

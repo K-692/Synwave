@@ -13,8 +13,9 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from shazamio import Shazam
 
-# Ensure macOS uses certifi CA certificates for SSL
+# Ensure macOS uses certifi CA certificates for SSL and enables MPS fallback
 os.environ["SSL_CERT_FILE"] = certifi.where()
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 app = FastAPI(title="Synwave Audio Intelligence Service")
 
@@ -31,10 +32,16 @@ shazam = Shazam()
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint to verify service status."""
+    """Health check endpoint to verify service status and MPS hardware acceleration."""
+    import torch
+    is_mps = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+    device = "mps" if is_mps else ("cuda" if torch.cuda.is_available() else "cpu")
     return {
         "status": "ok",
         "service": "Synwave Audio Intelligence Engine",
+        "device": device,
+        "isMps": is_mps,
+        "hardware": "Apple Silicon MPS (Metal Performance Shaders)" if is_mps else "CPU",
         "demucs": True,
         "shazam": True,
     }

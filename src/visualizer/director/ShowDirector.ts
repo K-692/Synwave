@@ -48,16 +48,12 @@ export class ShowDirector {
     const allowedEffects: EnabledEffectsConfig = {
       lights: routingConfig.enabledEffects.lights,
       lasers: routingConfig.enabledEffects.lasers,
-      flames: routingConfig.enabledEffects.flames && !routingConfig.disablePyrotechnics,
-      screen: routingConfig.enabledEffects.screen,
     };
 
     switch (this.currentSection) {
       case 'intro': {
         this.choreographyPattern = 'Ethereal Dawn';
         this.intensityMultiplier = 0.65;
-        // Suppress intense pyro & full lasers in intro
-        allowedEffects.flames = false;
         allowedEffects.lasers = false;
         break;
       }
@@ -65,8 +61,6 @@ export class ShowDirector {
       case 'verse': {
         this.choreographyPattern = 'Festival Groove Synchronizer';
         this.intensityMultiplier = 0.95;
-        // Moderate lasers, no pyro in standard verse
-        allowedEffects.flames = false;
         break;
       }
 
@@ -74,8 +68,6 @@ export class ShowDirector {
         this.choreographyPattern = 'Tension Accelerando';
         // Escalating intensity towards the climax: 1.1 -> 1.55
         this.intensityMultiplier = 1.1 + this.sectionProgress * 0.45;
-        // Lasers form tight tunnel, smoke geysers prep, pyro primed
-        allowedEffects.flames = false; // Hold flames until the exact drop hit!
         break;
       }
 
@@ -89,8 +81,6 @@ export class ShowDirector {
       case 'breakdown': {
         this.choreographyPattern = 'Atmospheric Drift';
         this.intensityMultiplier = 0.7;
-        // Silence pyro & aggressive lasers in breakdown
-        allowedEffects.flames = false;
         allowedEffects.lasers = false;
         break;
       }
@@ -98,7 +88,6 @@ export class ShowDirector {
       case 'outro': {
         this.choreographyPattern = 'Gentle Dissolve';
         this.intensityMultiplier = 0.5;
-        allowedEffects.flames = false;
         allowedEffects.lasers = false;
         break;
       }

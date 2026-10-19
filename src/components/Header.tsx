@@ -1,7 +1,9 @@
 /**
- * Synwave Header Component
- * Top navigation bar attached to window edge with auto-hide behavior.
- * Includes the Load Audio File container relocated to the top bar.
+ * Synwave Floating Top Header Component
+ * Floating navigation pill buttons directly on the 3D stage window (zero solid container background).
+ * - Top Left: Permanent clean SYNWAVE logo (no audio name inside logo)
+ * - Center Top: Centered Load Audio / Drop File button
+ * - Top Right: Floating Console & Telemetry HUD Toggles
  */
 
 import React, { useRef, useState } from 'react';
@@ -25,10 +27,8 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  currentTrackTitle,
   isRoutingOpen = false,
   isDiagnosticOpen = false,
-  activeProfileName,
   isVisible,
   onToggleRouting,
   onToggleDiagnostic,
@@ -41,77 +41,58 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`synwave-header glass-panel ${isVisible || isRoutingOpen || isDiagnosticOpen ? 'visible' : ''}`}
+      className={`synwave-header floating-header ${isVisible || isRoutingOpen || isDiagnosticOpen ? 'visible' : ''}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Brand */}
-      <div className="header-brand">
+      {/* Top Left: Clean Synwave Logo Pill (Always Present) */}
+      <div className="header-brand floating-pill" title="Synwave Procedural Concert Stage">
         <div className="brand-logo">
           <img src="/icon.png" alt="Synwave App Icon" className="brand-logo-img" />
           <div className="brand-pulse-ring" />
         </div>
-        <div className="brand-text">
-          <span className="brand-title">SYNWAVE</span>
-          {currentTrackTitle && (
-            <span className="brand-subtitle" title={currentTrackTitle}>
-              {currentTrackTitle.length > 28
-                ? `${currentTrackTitle.substring(0, 28)}...`
-                : currentTrackTitle}
-            </span>
-          )}
-        </div>
-
-        {/* Active Stage Profile Badge */}
-        {activeProfileName && (
-          <div
-            className="header-profile-badge"
-            onClick={onToggleRouting}
-            title="Active Stage Profile (Click to open Routing Console)"
-          >
-            <span className="profile-indicator-dot" />
-            <span>{activeProfileName}</span>
-          </div>
-        )}
+        <span className="brand-title">SYNWAVE</span>
       </div>
 
-      {/* Top Bar Load Audio File Container */}
+      {/* Center Top: Load Audio File Floating Pill */}
       {onFilesSelected && (
-        <div
-          className={`header-audio-loader ${isDragging ? 'drag-over' : ''}`}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-              onFilesSelected(e.dataTransfer.files);
-            }
-          }}
-          title="Click to select or drag & drop audio file to pre-process & play"
-        >
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: 'none' }}
-            accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                onFilesSelected(e.target.files);
+        <div className="header-center-loader-wrapper">
+          <div
+            className={`header-audio-loader floating-pill ${isDragging ? 'drag-over' : ''}`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                onFilesSelected(e.dataTransfer.files);
               }
             }}
-          />
-          <Upload size={14} className="header-upload-icon" />
-          <span className="header-upload-text">LOAD AUDIO / DROP FILE</span>
+            title="Click to select or drag & drop audio file to pre-process & play"
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  onFilesSelected(e.target.files);
+                }
+              }}
+            />
+            <Upload size={14} className="header-upload-icon neon-cyan-icon" />
+            <span className="header-upload-text">LOAD AUDIO / DROP FILE</span>
+          </div>
         </div>
       )}
 
-      {/* Right Drawer & Console Toggles */}
-      <div className="header-toggles">
+      {/* Top Right: Floating Drawer & Console Toggles */}
+      <div className="header-toggles floating-pill">
         {onToggleRouting && (
           <button
             className={`btn-icon ${isRoutingOpen ? 'active' : ''}`}

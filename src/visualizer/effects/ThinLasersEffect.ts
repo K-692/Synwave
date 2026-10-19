@@ -1,480 +1,274 @@
 /**
- * Synwave Arena Cathedral Crossing Fan Lasers Effect
+ * Synwave 360° Downward Instrument Lasers Effect
  * 
- * Re-architected to match the real-world arena concert stage reference image:
- * - Left & Right Concentrated Stage Floor Projector Stations shooting wide crossing radial fans
- *   of straight, razor-sharp beams into the arena ceiling and stands.
- * - Crossing beams form an authentic geometric stadium diamond canopy.
- * - Central stage hub projector shooting vertical-diagonal cathedral rays.
- * - Driven dynamically by the INSTRUMENTAL STEM and instrumentalActivity:
- *   Higher instrumental frequency/activity -> faster sweeping, wider fan spread, and dynamic scissor crossing.
- * - Top-of-screen straight bass laser machines throwing high-power beams towards the camera.
- * - Freeze support: when music is paused (deltaSeconds === 0), all beams freeze completely in place.
+ * High-intensity laser system mounted at the TOP of the YouTube screen:
+ * - 3 Laser Stations at the top of the video screen facing lights downwards into stage and audience.
+ * - Origin emitters are clean pin-point diode dots (no large white circles).
+ * - Full 360-degree conical sweeping & manipulation driven by high frequencies of the INSTRUMENTAL STEM
+ *   (instruments, highMid, treble, and rapid transient frequency shifts).
+ * - Activated strictly during high-intensity music sections (drops, heavy climaxes, high global intensity).
+ * - Beam colors are dynamically computed as the exact OPPOSITE (complementary hue) of the active color palette.
+ * - Paused playback freezes laser animation in place.
  */
 
 import * as THREE from 'three';
 import { BaseEffect } from './BaseEffect';
 import type { VisualEffectContext } from '../../types';
 
-interface StadiumFanRay {
-  meshGroup: THREE.Group;
+interface TopLaserBeam {
+  group: THREE.Group;
   coreMesh: THREE.Mesh;
   sheathMesh: THREE.Mesh;
-  origin: THREE.Vector3;
+  stationIdx: number;
+  rayIdx: number;
   baseAzimuth: number;
   baseElevation: number;
-  currentEndpoint: THREE.Vector3;
-  station: 'left' | 'right' | 'center';
-  rayIndex: number;
 }
 
-interface TopBassLaserMachine {
-  group: THREE.Group;
-  chassisMesh: THREE.Mesh;
-  lensMesh: THREE.Mesh;
-  beamGroup: THREE.Group;
-  coreMesh: THREE.Mesh;
-  sheathMesh: THREE.Mesh;
-  fanMesh: THREE.Mesh;
+interface TopLaserStation {
   origin: THREE.Vector3;
-  target: THREE.Vector3;
-  currentTarget: THREE.Vector3;
+  dotMesh: THREE.Mesh;
+  dotMat: THREE.MeshBasicMaterial;
+  beams: TopLaserBeam[];
 }
 
 export class ThinLasersEffect extends BaseEffect {
   readonly id = 'thin-lasers';
-  readonly name = 'Arena Cathedral Crossing Fan Lasers';
+  readonly name = '360° Downward Instrument Lasers';
   readonly family = 'Lasers';
   readonly cost = 'medium';
 
-  private stadiumRays: StadiumFanRay[] = [];
-  private topBassMachines: TopBassLaserMachine[] = [];
-
-  // Emitter flare meshes at each station
-  private leftStationFlare!: THREE.Mesh;
-  private rightStationFlare!: THREE.Mesh;
-  private centerStationFlare!: THREE.Mesh;
-
-  // Internal time accumulator (freezes when deltaSeconds === 0)
+  private stations: TopLaserStation[] = [];
   private internalTime = 0;
-  private instrumentalSweepPhase = 0;
+  private currentSweepAngle = 0;
+  private currentBeamOpacity = 0;
 
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // 1. Razor-Thin Volumetric Beam Geometries (Unit cylinder aligned along +Z)
-    const coreGeo = new THREE.CylinderGeometry(0.006, 0.012, 1.0, 8, 1, true);
+    // 1. Shared Beam Geometries (Unit cylinder aligned along +Z)
+    const coreGeo = new THREE.CylinderGeometry(0.007, 0.016, 1.0, 8, 1, true);
     coreGeo.rotateX(Math.PI / 2);
     this.disposables.push(coreGeo);
 
-    const sheathGeo = new THREE.CylinderGeometry(0.016, 0.032, 1.0, 8, 1, true);
+    const sheathGeo = new THREE.CylinderGeometry(0.024, 0.048, 1.0, 8, 1, true);
     sheathGeo.rotateX(Math.PI / 2);
     this.disposables.push(sheathGeo);
 
-    // Emitter flare sphere geometry
-    const flareGeo = new THREE.SphereGeometry(0.40, 16, 16);
-    this.disposables.push(flareGeo);
+    // 2. Tiny pin-point diode dot geometry for emitter nozzle origin (NO white circles)
+    const dotGeo = new THREE.SphereGeometry(0.04, 10, 10);
+    this.disposables.push(dotGeo);
 
-    // 2. High-Power Arena Stage Projector Stations (Flanking the screen)
-    // Left Wing Station (x = -5.0, y = 0.5, z = -1.2)
-    // Right Wing Station (x = +5.0, y = 0.5, z = -1.2)
-    // Center Stage Station (x = 0.0, y = 0.6, z = -2.2)
-    const leftStationPos = new THREE.Vector3(-5.0, 0.5, -1.2);
-    const rightStationPos = new THREE.Vector3(5.0, 0.5, -1.2);
-    const centerStationPos = new THREE.Vector3(0.0, 0.6, -2.2);
-
-    const flareMatLeft = new THREE.MeshBasicMaterial({
-      color: 0x88eeff,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-    });
-    const flareMatRight = flareMatLeft.clone();
-    const flareMatCenter = flareMatLeft.clone();
-    this.disposables.push(flareMatLeft, flareMatRight, flareMatCenter);
-
-    this.leftStationFlare = new THREE.Mesh(flareGeo, flareMatLeft);
-    this.leftStationFlare.position.copy(leftStationPos);
-    this.group.add(this.leftStationFlare);
-
-    this.rightStationFlare = new THREE.Mesh(flareGeo, flareMatRight);
-    this.rightStationFlare.position.copy(rightStationPos);
-    this.group.add(this.rightStationFlare);
-
-    this.centerStationFlare = new THREE.Mesh(flareGeo, flareMatCenter);
-    this.centerStationFlare.position.copy(centerStationPos);
-    this.group.add(this.centerStationFlare);
-
-    // 3. Generate Crossing Cathedral Fan Rays
-    // Left Station: 16 straight razor beams fanning up & crossing right into arena
-    const leftRayCount = 16;
-    for (let i = 0; i < leftRayCount; i++) {
-      const t = i / (leftRayCount - 1); // 0 to 1
-      // Azimuth: from outward left (-20°) across to right stands (+65°)
-      const azimuth = THREE.MathUtils.degToRad(-20 + t * 85);
-      // Elevation: from 14° up to 72° into ceiling
-      const elevation = THREE.MathUtils.degToRad(14 + Math.pow(t, 0.85) * 58);
-
-      this.createFanRay(leftStationPos, azimuth, elevation, 'left', i, coreGeo, sheathGeo);
-    }
-
-    // Right Station: 16 straight razor beams symmetrically fanning up & crossing left into arena
-    const rightRayCount = 16;
-    for (let i = 0; i < rightRayCount; i++) {
-      const t = i / (rightRayCount - 1);
-      // Azimuth: from outward right (+20°) across to left stands (-65°)
-      const azimuth = THREE.MathUtils.degToRad(20 - t * 85);
-      const elevation = THREE.MathUtils.degToRad(14 + Math.pow(t, 0.85) * 58);
-
-      this.createFanRay(rightStationPos, azimuth, elevation, 'right', i, coreGeo, sheathGeo);
-    }
-
-    // Center Station: 8 straight razor beams bursting vertically into stadium apex
-    const centerRayCount = 8;
-    for (let i = 0; i < centerRayCount; i++) {
-      const t = (i / (centerRayCount - 1)) * 2 - 1; // -1 to +1
-      const azimuth = THREE.MathUtils.degToRad(t * 38);
-      const elevation = THREE.MathUtils.degToRad(35 + Math.abs(t) * 25);
-
-      this.createFanRay(centerStationPos, azimuth, elevation, 'center', i, coreGeo, sheathGeo);
-    }
-
-    // 4. Two Top-of-Screen Bass Laser Machines (Retained for high-power straight bass projection)
-    const chassisGeo = new THREE.BoxGeometry(0.85, 0.55, 0.70);
-    const chassisMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0c14,
-      metalness: 0.9,
-      roughness: 0.25,
-    });
-    this.disposables.push(chassisGeo, chassisMat);
-
-    const lensGeo = new THREE.SphereGeometry(0.18, 12, 12);
-    this.disposables.push(lensGeo);
-
-    const fanLength = 32.0;
-    const fanGeo = new THREE.ConeGeometry(8.5, fanLength, 16, 2, true);
-    fanGeo.translate(0, -fanLength / 2, 0);
-    fanGeo.rotateX(-Math.PI / 2);
-    this.disposables.push(fanGeo);
-
-    const topConfigs = [
-      {
-        origin: new THREE.Vector3(-8.0, 11.2, -4.3),
-        target: new THREE.Vector3(-1.0, 2.0, 22.0),
-      },
-      {
-        origin: new THREE.Vector3(8.0, 11.2, -4.3),
-        target: new THREE.Vector3(1.0, 2.0, 22.0),
-      },
+    // 3. Mount 3 Stations at the Top of the YouTube Screen (Screen top is Y ~ 10.5 to 11.2, Z ~ -4.0)
+    const stationPositions = [
+      new THREE.Vector3(-5.5, 11.1, -4.0), // Station 0: Top-Left
+      new THREE.Vector3(0.0, 11.4, -4.0),  // Station 1: Top-Center
+      new THREE.Vector3(5.5, 11.1, -4.0),  // Station 2: Top-Right
     ];
 
-    for (let k = 0; k < topConfigs.length; k++) {
-      const cfg = topConfigs[k];
-      const mGroup = new THREE.Group();
-      mGroup.position.copy(cfg.origin);
+    this.stations = [];
 
-      const chassis = new THREE.Mesh(chassisGeo, chassisMat);
-      mGroup.add(chassis);
+    // Each station projects 8 razor-sharp beams pointing downwards into stage and crowd
+    const beamsPerStation = 8;
 
-      const lensMat = new THREE.MeshBasicMaterial({
-        color: 0x00ffff,
+    for (let s = 0; s < stationPositions.length; s++) {
+      const origin = stationPositions[s];
+
+      // Clean pin-point dot nozzle
+      const dotMat = new THREE.MeshBasicMaterial({
+        color: 0xff3366,
         transparent: true,
         opacity: 0.9,
       });
-      this.disposables.push(lensMat);
-      const lens = new THREE.Mesh(lensGeo, lensMat);
-      lens.position.set(0, 0, 0.36);
-      mGroup.add(lens);
+      this.disposables.push(dotMat);
 
-      const beamGroup = new THREE.Group();
+      const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+      dotMesh.position.copy(origin);
+      this.group.add(dotMesh);
 
-      const bCoreMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.FrontSide,
-      });
-      this.disposables.push(bCoreMat);
-      const bCore = new THREE.Mesh(coreGeo, bCoreMat);
-      beamGroup.add(bCore);
+      const stationBeams: TopLaserBeam[] = [];
 
-      const bSheathMat = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        transparent: true,
-        opacity: 0.35,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.FrontSide,
-      });
-      this.disposables.push(bSheathMat);
-      const bSheath = new THREE.Mesh(sheathGeo, bSheathMat);
-      beamGroup.add(bSheath);
+      for (let b = 0; b < beamsPerStation; b++) {
+        const beamGroup = new THREE.Group();
 
-      const fanMat = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        transparent: true,
-        opacity: 0.22,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.FrontSide,
-      });
-      this.disposables.push(fanMat);
-      const fanMesh = new THREE.Mesh(fanGeo, fanMat);
-      fanMesh.position.set(0, 0, 0.36);
-      mGroup.add(fanMesh);
+        // Inner core material
+        const coreMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        this.disposables.push(coreMat);
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        beamGroup.add(coreMesh);
 
-      this.group.add(mGroup);
-      this.group.add(beamGroup);
+        // Outer volumetric sheath material
+        const sheathMat = new THREE.MeshBasicMaterial({
+          color: 0xff3366,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        this.disposables.push(sheathMat);
+        const sheathMesh = new THREE.Mesh(sheathGeo, sheathMat);
+        beamGroup.add(sheathMesh);
 
-      this.topBassMachines.push({
-        group: mGroup,
-        chassisMesh: chassis,
-        lensMesh: lens,
-        beamGroup,
-        coreMesh: bCore,
-        sheathMesh: bSheath,
-        fanMesh,
-        origin: cfg.origin,
-        target: cfg.target,
-        currentTarget: cfg.target.clone(),
+        this.group.add(beamGroup);
+
+        // Base angles: downward facing (elevation < 0 towards stage floor and audience)
+        const t = b / (beamsPerStation - 1); // 0 to 1
+        const azimuthOffset = (s === 0 ? -0.3 : s === 2 ? 0.3 : 0.0);
+        const baseAzimuth = (t - 0.5) * 1.2 + azimuthOffset;
+        const baseElevation = THREE.MathUtils.degToRad(-18 - Math.sin(t * Math.PI) * 14);
+
+        stationBeams.push({
+          group: beamGroup,
+          coreMesh,
+          sheathMesh,
+          stationIdx: s,
+          rayIdx: b,
+          baseAzimuth,
+          baseElevation,
+        });
+      }
+
+      this.stations.push({
+        origin,
+        dotMesh,
+        dotMat,
+        beams: stationBeams,
       });
     }
   }
 
-  private createFanRay(
-    origin: THREE.Vector3,
-    azimuth: number,
-    elevation: number,
-    station: 'left' | 'right' | 'center',
-    rayIndex: number,
-    coreGeo: THREE.BufferGeometry,
-    sheathGeo: THREE.BufferGeometry
-  ): void {
-    const meshGroup = new THREE.Group();
-
-    // Razor-bright white/cyan laser core
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.FrontSide,
-    });
-    this.disposables.push(coreMat);
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    meshGroup.add(coreMesh);
-
-    // Electric cyan/blue volumetric laser sheath
-    const sheathMat = new THREE.MeshBasicMaterial({
-      color: 0x00d8ff,
-      transparent: true,
-      opacity: 0.38,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.FrontSide,
-    });
-    this.disposables.push(sheathMat);
-    const sheathMesh = new THREE.Mesh(sheathGeo, sheathMat);
-    meshGroup.add(sheathMesh);
-
-    this.group.add(meshGroup);
-
-    this.stadiumRays.push({
-      meshGroup,
-      coreMesh,
-      sheathMesh,
-      origin: origin.clone(),
-      baseAzimuth: azimuth,
-      baseElevation: elevation,
-      currentEndpoint: new THREE.Vector3(),
-      station,
-      rayIndex,
-    });
-  }
-
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds, palette, directorState, routingConfig } = context;
-
-    // Time advances strictly during active playback. Freezes when paused!
-    this.internalTime += deltaSeconds;
-    const time = this.internalTime;
+    const { features, deltaSeconds, palette, routingConfig, directorState } = context;
 
     const isLasersEnabled =
       (routingConfig?.enabledEffects?.lasers ?? true) &&
       (directorState?.allowedEffects?.lasers ?? true);
 
     if (!isLasersEnabled) {
-      for (const ray of this.stadiumRays) {
-        (ray.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (ray.sheathMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      for (const m of this.topBassMachines) {
-        (m.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (m.sheathMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (m.fanMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      (this.leftStationFlare.material as THREE.MeshBasicMaterial).opacity = 0;
-      (this.rightStationFlare.material as THREE.MeshBasicMaterial).opacity = 0;
-      (this.centerStationFlare.material as THREE.MeshBasicMaterial).opacity = 0;
+      this.setAllLasersVisible(false);
       return;
     }
 
-    const laserDensity = routingConfig?.laserDensity ?? 1.0;
-    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
-    const instSpeedMult = routingConfig?.instrumentalMovementSpeed ?? 1.0;
+    // High intensity gating: activated strictly during high intensity music parts
+    // (festival drops, buildup climaxes, high global intensity or intense acoustic energy)
+    const globalInt = features.globalIntensity ?? 0;
+    const isHighIntensity =
+      features.isDrop ||
+      globalInt > 0.44 ||
+      (features.rms > 0.42 && features.bass > 0.38) ||
+      directorState?.currentSection === 'drop' ||
+      directorState?.currentSection === 'buildup';
 
-    // Instrumental Stem & Activity driving the Cathedral Fan Lasers
-    const instStem = features.stems.instruments;
-    const instActivity = features.instrumentalActivity ?? instStem;
-    const combinedInstEnergy = Math.max(0, Math.min(1.0, instActivity * 0.7 + instStem * 0.5));
+    // Smoothly fade lasers in/out based on high-intensity gating
+    const targetOpacity = isHighIntensity ? 1.0 : 0.0;
+    this.currentBeamOpacity += (targetOpacity - this.currentBeamOpacity) * (deltaSeconds > 0 ? deltaSeconds * 6.0 : 1.0);
 
-    // Movement speed increases proportionally with instrumental section frequency & activity
-    const instrumentalSpeed = (0.75 + combinedInstEnergy * 3.8) * instSpeedMult;
+    if (this.currentBeamOpacity < 0.01) {
+      this.setAllLasersVisible(false);
+      return;
+    }
+
+    // 1. High frequency instrument driver:
+    // Manipulate 360-degree direction and speed based on instrument frequency & rapid changes
+    const instStem = features.stems.instruments || 0;
+    const highFreqContent = (features.highMid * 0.45 + features.treble * 0.55);
+    const instSpeedMultiplier = routingConfig?.instrumentalMovementSpeed ?? 1.0;
+    const dynamicInstFrequency = Math.max(instStem, highFreqContent, features.instrumentalActivity || 0);
+
+    // 360-degree rotation speed increases with instrumental high frequency
+    const rotationRate = (2.2 + dynamicInstFrequency * 6.5) * instSpeedMultiplier;
     if (deltaSeconds > 0) {
-      this.instrumentalSweepPhase += deltaSeconds * instrumentalSpeed;
-    }
-    const sweepPhase = this.instrumentalSweepPhase;
-
-    // Fan spread expansion: when instrumental energy is high, the fan spreads wider across the stadium
-    const fanSpreadMultiplier = 1.0 + combinedInstEnergy * 0.35;
-
-    // Scissor oscillation angles driven by instruments
-    const scissorSweep = Math.sin(sweepPhase) * 0.16 * fanSpreadMultiplier;
-    const elevationOscillation = Math.cos(sweepPhase * 0.8) * 0.08 * fanSpreadMultiplier;
-
-    // Beam colors: razor cyan-white core with vivid electric blue / palette accents
-    const primaryCol = new THREE.Color(palette.primary);
-    const cyanCol = new THREE.Color(0x00f0ff);
-    const whiteCol = new THREE.Color(0xffffff);
-
-    // Beam beam reach into the stadium
-    const beamDistance = 48.0;
-
-    // -------------------------------------------------------------
-    // 1. UPDATE ARENA CATHEDRAL FAN RAYS
-    // -------------------------------------------------------------
-    const activeRayCount = Math.max(8, Math.min(this.stadiumRays.length, Math.round(this.stadiumRays.length * Math.min(1.0, laserDensity))));
-
-    for (let i = 0; i < this.stadiumRays.length; i++) {
-      const ray = this.stadiumRays[i];
-
-      if (i >= activeRayCount) {
-        (ray.coreMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (ray.sheathMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        continue;
-      }
-
-      // Compute modulated azimuth & elevation for straight beam
-      let azimuth = ray.baseAzimuth;
-      let elevation = ray.baseElevation;
-
-      if (ray.station === 'left') {
-        azimuth += scissorSweep;
-        elevation += elevationOscillation;
-      } else if (ray.station === 'right') {
-        azimuth -= scissorSweep;
-        elevation += elevationOscillation;
-      } else {
-        azimuth += Math.sin(sweepPhase * 1.4 + ray.rayIndex) * 0.12;
-        elevation += Math.cos(sweepPhase * 1.2) * 0.06;
-      }
-
-      // Convert spherical angles to straight 3D Cartesian endpoint
-      // cos(elevation) is radius in XZ plane, sin(elevation) is Y
-      const cosElev = Math.cos(elevation);
-      const sinElev = Math.sin(elevation);
-      const endX = ray.origin.x + Math.sin(azimuth) * cosElev * beamDistance;
-      const endY = ray.origin.y + sinElev * beamDistance;
-      const endZ = ray.origin.z + Math.cos(azimuth) * cosElev * beamDistance;
-
-      ray.currentEndpoint.set(endX, endY, endZ);
-
-      // Position straight beam cylinder between origin and endpoint
-      const midpoint = new THREE.Vector3().addVectors(ray.origin, ray.currentEndpoint).multiplyScalar(0.5);
-      const dist = ray.origin.distanceTo(ray.currentEndpoint);
-
-      ray.meshGroup.position.copy(midpoint);
-      ray.meshGroup.lookAt(ray.currentEndpoint);
-
-      // Razor thinness scaled by quality and instrumental intensity
-      const beamThickness = (0.35 + combinedInstEnergy * 0.25) * Math.min(1.0, laserDensity);
-      ray.meshGroup.scale.set(beamThickness, beamThickness, dist);
-
-      // Shading and intensity
-      const coreMat = ray.coreMesh.material as THREE.MeshBasicMaterial;
-      coreMat.color.copy(whiteCol).lerp(cyanCol, 0.2);
-      coreMat.opacity = Math.min(0.95 * maxBri, (0.55 + combinedInstEnergy * 0.40) * maxBri);
-
-      const sheathMat = ray.sheathMesh.material as THREE.MeshBasicMaterial;
-      sheathMat.color.copy(cyanCol).lerp(primaryCol, (i % 4) / 4);
-      sheathMat.opacity = Math.min(0.42 * maxBri, (0.18 + combinedInstEnergy * 0.24) * maxBri);
+      this.internalTime += deltaSeconds;
+      this.currentSweepAngle += deltaSeconds * rotationRate;
     }
 
-    // Emitter station flares pulsing with instrumental energy
-    const flareOpacity = Math.min(0.95 * maxBri, (0.50 + combinedInstEnergy * 0.45) * maxBri);
-    (this.leftStationFlare.material as THREE.MeshBasicMaterial).opacity = flareOpacity;
-    (this.rightStationFlare.material as THREE.MeshBasicMaterial).opacity = flareOpacity;
-    (this.centerStationFlare.material as THREE.MeshBasicMaterial).opacity = flareOpacity;
+    // 2. Compute Opposite (Complementary) Color of the Stage Palette
+    // Palette primary hue inverted by 180° (h + 0.5) % 1.0
+    const hsl = { h: 0, s: 0, l: 0 };
+    const baseColor = new THREE.Color(palette.primary);
+    baseColor.getHSL(hsl);
 
-    const flareScale = 1.0 + combinedInstEnergy * 0.5;
-    this.leftStationFlare.scale.set(flareScale, flareScale, flareScale);
-    this.rightStationFlare.scale.set(flareScale, flareScale, flareScale);
-    this.centerStationFlare.scale.set(flareScale, flareScale, flareScale);
+    const oppositeHue = (hsl.h + 0.5) % 1.0;
+    const oppositeLaserColor = new THREE.Color().setHSL(oppositeHue, 1.0, 0.55);
+    const oppositeCoreColor = new THREE.Color().setHSL(oppositeHue, 0.35, 0.95);
 
-    // -------------------------------------------------------------
-    // 2. TWO TOP-OF-SCREEN BASS LASER MACHINES (WINDOW COVERAGE)
-    // -------------------------------------------------------------
-    const bassStem = features.stems.bass;
-    const bassFactor = Math.max(0, Math.min(1.0, bassStem * 1.1 + (features.subBass || 0) * 0.9));
-    const bassPulse = Math.pow(bassFactor, 1.3);
-    const bassStrobe = Math.sin(time * (24.0 + bassFactor * 20.0)) * 0.15 + 0.85;
+    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+    const laserDensity = routingConfig?.laserDensity ?? 1.0;
 
-    for (let k = 0; k < this.topBassMachines.length; k++) {
-      const machine = this.topBassMachines[k];
+    // 3. Update each of the 3 top stations and their 360° downward throwing beams
+    for (let s = 0; s < this.stations.length; s++) {
+      const station = this.stations[s];
 
-      const target = machine.target.clone();
-      if (bassFactor > 0.4 && deltaSeconds > 0) {
-        target.x += (Math.random() - 0.5) * 0.4 * bassFactor;
-        target.y += (Math.random() - 0.5) * 0.3 * bassFactor;
+      // Update nozzle dot diode
+      station.dotMat.color.copy(oppositeLaserColor);
+      station.dotMat.opacity = this.currentBeamOpacity * 0.95 * maxBri;
+      station.dotMesh.visible = this.currentBeamOpacity > 0.05;
+
+      const stationPhase = (s - 1) * 0.8; // -0.8, 0.0, +0.8
+
+      for (let b = 0; b < station.beams.length; b++) {
+        const beam = station.beams[b];
+
+        if (b > Math.round(station.beams.length * laserDensity)) {
+          beam.group.visible = false;
+          continue;
+        }
+        beam.group.visible = true;
+
+        // 360-degree conical sweep direction based on instrumental high frequency
+        const beamOrbitAngle = this.currentSweepAngle + stationPhase + (b / station.beams.length) * Math.PI * 2;
+        const conicalSpread = 0.28 + dynamicInstFrequency * 0.55;
+
+        // Conical 360° deflection vector
+        const coneX = Math.sin(beamOrbitAngle) * conicalSpread * 14.0;
+        const coneY = Math.cos(beamOrbitAngle) * conicalSpread * 7.0;
+
+        // Downward target thrown into stage floor and audience
+        // Screen top is at Y ~ 11.2, Z ~ -4.0. Target is down at Y ~ -0.8 to 2.2, Z ~ 12 to 24
+        const targetX = (s - 1) * 6.0 + Math.sin(beam.baseAzimuth) * 16.0 + coneX;
+        const targetY = -0.5 + Math.sin(beam.baseElevation) * 8.0 + coneY * 0.5;
+        const targetZ = 16.0 + (b % 3) * 4.0 + Math.cos(beamOrbitAngle) * 3.0;
+
+        const target = new THREE.Vector3(targetX, targetY, targetZ);
+
+        // Position cylinder between origin and target
+        const distance = station.origin.distanceTo(target);
+        beam.group.position.copy(station.origin);
+        beam.group.lookAt(target);
+
+        // Scale beam length to reach target, expanding thickness slightly on high transients
+        const beamThickness = 1.0 + dynamicInstFrequency * 0.35;
+        beam.coreMesh.scale.set(beamThickness, beamThickness, distance);
+        beam.sheathMesh.scale.set(beamThickness, beamThickness, distance);
+
+        // Position meshes so their center is half distance forward along +Z
+        beam.coreMesh.position.set(0, 0, distance / 2);
+        beam.sheathMesh.position.set(0, 0, distance / 2);
+
+        // Apply Opposite Colors & Intensity
+        const coreMat = beam.coreMesh.material as THREE.MeshBasicMaterial;
+        coreMat.color.copy(oppositeCoreColor);
+        coreMat.opacity = this.currentBeamOpacity * (0.55 + dynamicInstFrequency * 0.45) * maxBri;
+
+        const sheathMat = beam.sheathMesh.material as THREE.MeshBasicMaterial;
+        sheathMat.color.copy(oppositeLaserColor);
+        sheathMat.opacity = this.currentBeamOpacity * (0.20 + dynamicInstFrequency * 0.35) * maxBri;
       }
-      if (deltaSeconds > 0) {
-        machine.currentTarget.lerp(target, deltaSeconds * 12.0);
+    }
+  }
+
+  private setAllLasersVisible(visible: boolean): void {
+    for (const station of this.stations) {
+      station.dotMesh.visible = visible;
+      for (const beam of station.beams) {
+        beam.group.visible = visible;
       }
-
-      machine.group.lookAt(machine.currentTarget);
-
-      const dist = machine.origin.distanceTo(machine.currentTarget);
-      const midpoint = new THREE.Vector3().addVectors(machine.origin, machine.currentTarget).multiplyScalar(0.5);
-
-      machine.beamGroup.position.copy(midpoint);
-      machine.beamGroup.lookAt(machine.currentTarget);
-
-      const bassThickness = (0.32 + bassPulse * 0.38) * Math.min(1.0, laserDensity);
-      machine.beamGroup.scale.set(bassThickness, bassThickness, dist);
-
-      const fanSpread = (1.0 + bassPulse * 0.9) * bassStrobe;
-      machine.fanMesh.scale.set(fanSpread, 1.0, fanSpread);
-
-      const bassLaserCol = new THREE.Color(palette.accent || 0x00f0ff);
-
-      const coreMat = machine.coreMesh.material as THREE.MeshBasicMaterial;
-      coreMat.color.copy(whiteCol).lerp(bassLaserCol, 0.25);
-      coreMat.opacity = Math.min(0.95 * maxBri, (0.45 + bassPulse * 0.55) * bassStrobe * maxBri);
-
-      const sheathMat = machine.sheathMesh.material as THREE.MeshBasicMaterial;
-      sheathMat.color.copy(bassLaserCol);
-      sheathMat.opacity = Math.min(0.40 * maxBri, (0.16 + bassPulse * 0.35) * bassStrobe * maxBri);
-
-      const fanMat = machine.fanMesh.material as THREE.MeshBasicMaterial;
-      fanMat.color.copy(bassLaserCol);
-      fanMat.opacity = Math.min(0.32 * maxBri, (0.08 + bassPulse * 0.28) * bassStrobe * maxBri);
-
-      const lensMat = machine.lensMesh.material as THREE.MeshBasicMaterial;
-      lensMat.color.copy(bassLaserCol);
-      lensMat.opacity = Math.min(0.95 * maxBri, (0.6 + bassPulse * 0.4) * maxBri);
     }
   }
 }

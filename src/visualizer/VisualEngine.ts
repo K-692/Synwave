@@ -33,8 +33,6 @@ import { COLOR_PALETTES } from './palettes';
 import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
 import { ThinLasersEffect } from './effects/ThinLasersEffect';
-import { FireShootersEffect } from './effects/FireShootersEffect';
-import { ShockwaveRingEffect } from './effects/ShockwaveRingEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
 
@@ -48,12 +46,7 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   {
     id: 'stadium-mainstage',
     name: 'MAINSTAGE FESTIVAL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers', 'fire-shooters', 'shockwave-rings'],
-  },
-  {
-    id: 'pyro-drop-frenzy',
-    name: 'MAINSTAGE DROP FRENZY',
-    activeEffectIds: ['stage-structure', 'fire-shooters', 'thin-lasers', 'stage-lights', 'shockwave-rings'],
+    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers'],
   },
   {
     id: 'laser-cathedral',
@@ -179,9 +172,7 @@ export class VisualEngine {
     this.effects = [
       new StageStructureEffect(), // Solid rectangular LED screen, box truss, crowd silhouette
       new StageLightsEffect(),     // 16 Moving-head volumetric lights thrown forward towards camera
-      new ThinLasersEffect(),      // 28 Razor-thin lasers thrown forward towards camera & audience
-      new FireShootersEffect(),    // 8 Front & flank flame blasters (Kick STEM activated)
-      new ShockwaveRingEffect(),   // Bass stage floor shockwave ripples
+      new ThinLasersEffect(),      // 360° High-Intensity lasers mounted at top of screen facing downward
     ];
 
     const context = this.createEffectContext(
@@ -522,10 +513,14 @@ export class VisualEngine {
     // Always look directly at the center of the solid rectangular concert stage screen
     this.camera.lookAt(0, 4.4, -4.5);
 
-    // Dynamic FOV punch on kicks/drops
+    // Dynamic FOV zoom punch driven strictly by isolated deep sub-bass (20-100Hz)
+    // Filters out mid-range frequencies and general kick harmonics entirely
+    const subBassVal = features.subBass || 0;
+    const subBassGate = Math.max(0, subBassVal - 0.28) / 0.72;
+    const subBassPunch = Math.pow(subBassGate, 1.8) * 3.5;
     const fovPunch = routingConfig.reducedFlash || !this.isPlaying
       ? 0
-      : (features.isDrop ? 3.5 : (features.isKick ? (features.kickIntensity || 0.8) * 2.5 : 0));
+      : (features.isDrop ? 3.5 : subBassPunch);
     const desiredFov = 60 + fovPunch;
     this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * (this.isPlaying ? rawDelta * 14.0 : 1.0);
     this.camera.fov = this.cameraTargetFov;
