@@ -1092,8 +1092,8 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 4. **Unified Concurrent Development Runner (`start.sh`, `package.json`):**
    - Engineered an automated, unified execution script `start.sh` and npm workflow (`npm start` / `npm run dev`) that concurrently launches the Python Audio Intelligence Microservice (`shazam_server.py` on port 8765) and the Vite Frontend Development Server (port 5173).
    - Automatically detects and activates virtual environments (`.venv` or `venv`), verifies and resolves Python microservice dependencies, and manages child PIDs with a POSIX signal trap (`cleanup` on `INT`, `TERM`, `EXIT`) to guarantee clean termination of both servers without orphaned zombie processes on port 8765.
-5. **Showcase Demo Media Integration & Attribution (`README.md`, `demo/IMG_6569.mov`):**
-   - Embedded high-definition demonstration video `demo/IMG_6569.mov` into `README.md` with HTML5 `<video>` player support and fallback direct download link.
+5. **Showcase Demo Media Integration & Attribution (`README.md`, `demo/demo.mp4`):**
+   - Embedded high-definition demonstration video `demo/demo.mp4` directly into `README.md` preceding the Community Contributors section, enabling inline browser playback and controls without external tab redirection.
    - Formally documented audio and visual attribution for *Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]* ([@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)) in the showcase header and third-party attribution tables.
 
 ---
@@ -1107,7 +1107,7 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 - **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
 - **Laser Drop Activation:** 5-tier resilient gate combining windowed envelope followers ($W=1.5\text{s}$), pre-computed continuous drop sections with downbeat snapping, real-time audio surges, and 0.8s drop-hold bridging ensures lasers reliably trigger on EVERY song at the drop.
 - **Screen Flash Strobe:** Strictly manipulated by audio kick transients with sub-millisecond onset precision, zero interference from metronome clock ticks, and dynamic opacity scaling via `kickSensitivity`.
-- **Media Showcase & Documentation:** Embedded `demo/IMG_6569.mov` with complete credits to Abandoned (@AbandonedOfficial).
+- **Media Showcase & Documentation:** Embedded `demo/demo.mp4` with complete credits to Abandoned (@AbandonedOfficial).
 - **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
 
 

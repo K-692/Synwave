@@ -22,6 +22,24 @@
 
 ---
 
+## 🎬 Live Demo Preview
+
+<div align="center">
+  <video src="demo/demo.mp4" controls="controls" width="100%" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 240, 255, 0.25);">
+    <source src="demo/demo.mp4" type="video/mp4">
+    <source src="https://github.com/K-692/Synwave/raw/main/demo/demo.mp4" type="video/mp4">
+  </video>
+</div>
+
+> [!NOTE]
+> ### 🎵 Music & Visual Attribution
+> **Audio & Visual Demo Showcase:**  
+> - **Song & Music Video:** [Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]](https://www.youtube.com/@AbandonedOfficial)  
+> - **Creator / Channel:** [Abandoned (@AbandonedOfficial)](https://www.youtube.com/@AbandonedOfficial)  
+> - *Full music and visual credit to **Abandoned** for the audio composition and official music video featured in this demonstration.*
+
+---
+
 > [!IMPORTANT]
 > ### 💬 Note to Potential Contributors & Community
 > **Synwave is an evolving open-source project, and I know it still has bugs and areas that need improvement. Contributions, bug reports, suggestions, and pull requests are very welcome. Help me fix the existing issues and turn Synwave into a polished, reliable product!**
@@ -45,26 +63,6 @@
 - [🐛 Known Issues & Roadmap](#-known-issues--roadmap)
 - [🤝 How to Contribute](#-how-to-contribute)
 - [📄 License](#-license)
-
----
-
-## 🎬 Live Demo Preview
-
-<div align="center">
-  <video src="demo/IMG_6569.mov" controls="controls" width="100%" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 240, 255, 0.25);">
-    Your browser does not support the video tag.
-  </video>
-  <p>
-    <em>▶️ If your browser cannot stream the embedded video directly, you can view or download it here: <a href="demo/IMG_6569.mov"><strong><code>demo/IMG_6569.mov</code></strong></a></em>
-  </p>
-</div>
-
-> [!NOTE]
-> ### 🎵 Music & Visual Attribution
-> **Audio & Visual Demo Showcase:**  
-> - **Song & Music Video:** [Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]](https://www.youtube.com/@AbandonedOfficial)  
-> - **Creator / Channel:** [Abandoned (@AbandonedOfficial)](https://www.youtube.com/@AbandonedOfficial)  
-> - *Full music and visual credit to **Abandoned** for the audio composition and official music video featured in this demonstration.*
 
 ---
 
@@ -495,7 +493,7 @@ All third-party libraries incorporated into Synwave are free and open-source sof
 
 | Asset / File | Title & Description | Creator / Channel | Attribution & Links |
 |---|---|---|---|
-| [`demo/IMG_6569.mov`](demo/IMG_6569.mov) | **Destroyer Of Worlds (Oppenheimer Remix)** [Music Video] | [Abandoned](https://www.youtube.com/@AbandonedOfficial) | Official YouTube Channel: [@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)<br>Music composition and official music video rights belong to Abandoned. Used with credit for non-commercial open-source visualization demonstration. |
+| [`demo/demo.mp4`](demo/demo.mp4) | **Destroyer Of Worlds (Oppenheimer Remix)** [Music Video] | [Abandoned](https://www.youtube.com/@AbandonedOfficial) | Official YouTube Channel: [@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)<br>Music composition and official music video rights belong to Abandoned. Used with credit for non-commercial open-source visualization demonstration. |
 
 ---
 
