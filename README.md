@@ -30,6 +30,7 @@
 
 ## 📑 Table of Contents
 
+- [🎬 Live Demo Preview](#-live-demo-preview)
 - [🌟 Project Overview](#-project-overview)
 - [🏗️ Architectural Block Diagram](#️-architectural-block-diagram)
   - [System Flow Diagram (Mermaid)](#system-flow-diagram-mermaid)
@@ -44,6 +45,26 @@
 - [🐛 Known Issues & Roadmap](#-known-issues--roadmap)
 - [🤝 How to Contribute](#-how-to-contribute)
 - [📄 License](#-license)
+
+---
+
+## 🎬 Live Demo Preview
+
+<div align="center">
+  <video src="demo/IMG_6569.mov" controls="controls" width="100%" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 240, 255, 0.25);">
+    Your browser does not support the video tag.
+  </video>
+  <p>
+    <em>▶️ If your browser cannot stream the embedded video directly, you can view or download it here: <a href="demo/IMG_6569.mov"><strong><code>demo/IMG_6569.mov</code></strong></a></em>
+  </p>
+</div>
+
+> [!NOTE]
+> ### 🎵 Music & Visual Attribution
+> **Audio & Visual Demo Showcase:**  
+> - **Song & Music Video:** [Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]](https://www.youtube.com/@AbandonedOfficial)  
+> - **Creator / Channel:** [Abandoned (@AbandonedOfficial)](https://www.youtube.com/@AbandonedOfficial)  
+> - *Full music and visual credit to **Abandoned** for the audio composition and official music video featured in this demonstration.*
 
 ---
 
@@ -344,22 +365,42 @@ You can configure the key in either of two ways:
 
 ### Step 5: Start the Development Servers
 
-Open two terminal windows (or run in background):
+#### Option A: Unified Launcher (Recommended — Single Command)
 
-#### Terminal 1 — Start Python Audio Intelligence Microservice:
+Run the unified startup script that launches both the Python audio intelligence microservice and the Vite frontend dev server with one command and automatic graceful shutdown (`Ctrl+C`):
+
+```bash
+# Using the executable shell script
+./start.sh
+
+# Or via npm
+npm start
+# (or npm run dev)
+```
+
+- **Frontend:** `http://localhost:5173`
+- **Python Audio Microservice:** `http://127.0.0.1:8765`
+
+Open **`http://localhost:5173`** in your browser.
+
+---
+
+#### Option B: Separate Terminal Windows (Manual Alternative)
+
+If you prefer running services in separate terminals:
+
+**Terminal 1 — Python Microservice:**
 ```bash
 source .venv/bin/activate
 python3 shazam_server.py
 ```
-*The microservice will start on `http://127.0.0.1:8765`.*
+*Microservice starts on `http://127.0.0.1:8765`.*
 
-#### Terminal 2 — Start Frontend Vite Development Server:
+**Terminal 2 — Vite Frontend Server:**
 ```bash
-npm run dev
+npm run dev:frontend
 ```
-*Vite will start on `http://localhost:5173`.*
-
-Open **`http://localhost:5173`** in your browser.
+*Frontend starts on `http://localhost:5173`.*
 
 ---
 
@@ -449,6 +490,12 @@ All third-party libraries incorporated into Synwave are free and open-source sof
 | `certifi` | `^2024.0.0` | [MPL-2.0](https://github.com/certifi/python-certifi/blob/master/LICENSE) | Kenneth Reitz & Mozilla | [certifi/python-certifi](https://github.com/certifi/python-certifi) |
 | `aiofiles` | `^23.2.0` | [Apache-2.0](https://github.com/Tinche/aiofiles/blob/master/LICENSE) | Tin Tvrtković & aiofiles Contributors | [Tinche/aiofiles](https://github.com/Tinche/aiofiles) |
 | `python-multipart` | `^0.0.12` | [Apache-2.0](https://github.com/Kludex/python-multipart/blob/master/LICENSE.txt) | Andrew Chen Wang & Kludex | [Kludex/python-multipart](https://github.com/Kludex/python-multipart) |
+
+### 🎬 Demonstration Media & Audio Attribution
+
+| Asset / File | Title & Description | Creator / Channel | Attribution & Links |
+|---|---|---|---|
+| [`demo/IMG_6569.mov`](demo/IMG_6569.mov) | **Destroyer Of Worlds (Oppenheimer Remix)** [Music Video] | [Abandoned](https://www.youtube.com/@AbandonedOfficial) | Official YouTube Channel: [@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)<br>Music composition and official music video rights belong to Abandoned. Used with credit for non-commercial open-source visualization demonstration. |
 
 ---
 

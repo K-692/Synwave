@@ -5,8 +5,10 @@
   "description": "Synwave — Open-source procedural audio-reactive music visualizer and local audio player",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "shazam": "source .venv/bin/activate && python3 shazam_server.py",
+    "start": "bash start.sh",
+    "dev": "bash start.sh",
+    "dev:frontend": "vite",
+    "dev:shazam": "source .venv/bin/activate && python3 shazam_server.py",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
