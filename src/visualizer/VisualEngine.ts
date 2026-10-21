@@ -115,6 +115,8 @@ export class VisualEngine {
   private currentFlashBg = 'radial-gradient(circle at center, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.80) 25%, rgba(255,255,255,0.45) 60%, rgba(255,255,255,0.06) 100%)';
   private flashSequenceStep = 0; // 0: Compulsory White (#FFFFFF), 1, 2, ... Song Palette Colors
   private wasKickLastFrame = false;
+  private prevKickStem = 0;
+  private screenShakeImpulse = 0;
   private lastKickTimestamp = 0;
   private hasDispatchedZeroFlash = true;
   private cachedFlashColors: string[] | null = null;
@@ -603,11 +605,21 @@ export class VisualEngine {
     const shakeMult = routingConfig.screenShakeIntensity ?? 1.0;
     if (shakeMult > 0 && !routingConfig.reducedFlash && this.isPlaying) {
       const kickPower = Math.max(features.stems.kick, features.isKick ? (features.kickIntensity || 1.0) : 0);
-      if (kickPower > 0.22) {
-        const shakePx = Math.pow(kickPower, 1.4) * 16.0 * shakeMult;
-        kickShakeX = (Math.random() - 0.5) * 2 * shakePx;
-        kickShakeY = (Math.random() - 0.5) * 2 * shakePx;
+      if (kickPower > 0.16) {
+        const impulse = Math.pow(Math.min(1.0, kickPower), 1.25) * 22.0 * shakeMult;
+        if (impulse > this.screenShakeImpulse) {
+          this.screenShakeImpulse = impulse;
+        }
       }
+    }
+
+    if (this.screenShakeImpulse > 0.15) {
+      kickShakeX = (Math.random() - 0.5) * 2 * this.screenShakeImpulse;
+      kickShakeY = (Math.random() - 0.5) * 2 * this.screenShakeImpulse;
+      // Exponential decay over ~80-120ms (decay rate 16.0)
+      this.screenShakeImpulse = Math.max(0, this.screenShakeImpulse - (this.screenShakeImpulse * rawDelta * 16.0));
+    } else {
+      this.screenShakeImpulse = 0;
     }
 
     // Audio-synchronized kick shake for the YouTube iframe (pixel displacement only)
@@ -645,18 +657,20 @@ export class VisualEngine {
     } else {
       // Audio-reactivity: Screen flash is strictly manipulated by kick transients (no beat grid clock ticks)
       const timeSinceLastKick = trackTimeSeconds - this.lastKickTimestamp;
-      const isKickOnset = features.isKick && !this.wasKickLastFrame;
+      const isKickTransientRise = features.stems.kick > 0.38 && features.stems.kick > this.prevKickStem * 1.20;
+      const isKickOnset = (features.isKick && !this.wasKickLastFrame) || isKickTransientRise;
       this.wasKickLastFrame = Boolean(features.isKick);
+      this.prevKickStem = features.stems.kick;
 
-      // Lockout of 100ms prevents double-triggering across a single kick's decay while supporting up to 600 BPM rolls.
+      // Lockout of 90ms prevents double-triggering across a single kick's decay while supporting up to 660 BPM rolls.
       // Negative delta handling accounts for user scrubbing/seeking backward.
-      const isKickLockoutCleared = timeSinceLastKick > 0.10 || timeSinceLastKick < 0 || this.lastKickTimestamp === 0;
+      const isKickLockoutCleared = timeSinceLastKick > 0.09 || timeSinceLastKick < 0 || this.lastKickTimestamp === 0;
       const kickSens = routingConfig.kickSensitivity ?? 1.0;
       const rawKickPower = Math.max(features.kickIntensity, features.stems?.kick ?? 0);
       const kickVal = rawKickPower * kickSens;
 
       // Strictly triggered by kick onset and sufficient kick transient energy
-      const isTransientKick = isKickOnset && isKickLockoutCleared && kickVal > 0.16;
+      const isTransientKick = isKickOnset && isKickLockoutCleared && kickVal > 0.13;
 
       if (isTransientKick) {
         this.lastKickTimestamp = trackTimeSeconds;

@@ -492,10 +492,10 @@ export class AudioEngine {
       precomputedGlobalIntensity = sampled.globalIntensity;
 
       // True transient kick onset detection (avoids holding isKick true continuously during sustained drum sections)
-      const isKickTransientSpike = sampled.kick > 0.38 && sampled.kick > this.currentKickStem * 1.20;
+      const isKickTransientSpike = sampled.kick > 0.35 && sampled.kick > this.currentKickStem * 1.15;
       if (sampled.isKickOnset || isKickTransientSpike) {
         isKick = true;
-        kickIntensity = Math.max(kickIntensity, sampled.kickIntensity, sampled.kick);
+        kickIntensity = Math.max(kickIntensity, sampled.kickIntensity || 0.8, sampled.kick);
       }
     } else {
       stems = StemSeparationService.extractRealtimeStems(
@@ -515,8 +515,8 @@ export class AudioEngine {
     return {
       timeSeconds: currentTime,
       rms: precomputedGlobalIntensity > 0 ? (this.smoothedRms * 0.3 + precomputedGlobalIntensity * 0.7) : this.smoothedRms,
-      bass: this.demucsStems ? stems.bass : this.smoothedBass,
-      subBass: this.demucsStems ? stems.bass : this.smoothedSubBass,
+      bass: this.demucsStems ? Math.max(stems.bass, this.smoothedBass * 0.85) : this.smoothedBass,
+      subBass: this.demucsStems ? Math.max(stems.bass, this.smoothedSubBass * 0.85) : this.smoothedSubBass,
       lowMid: this.smoothedLowMid,
       highMid: this.smoothedHighMid,
       treble: this.smoothedTreble,

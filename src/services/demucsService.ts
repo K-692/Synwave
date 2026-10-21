@@ -427,7 +427,7 @@ export function sampleStemValues(
   isKickOnset: boolean;
   kickIntensity: number;
 } {
-  if (!data || !data.stems || data.fps <= 0) {
+  if (!data) {
     return {
       kick: 0,
       bass: 0,
@@ -440,7 +440,25 @@ export function sampleStemValues(
     };
   }
 
-  const samplePos = timeSeconds * data.fps;
+  // Support both nested data.stems ({ drums, bass, ... }) and flat structure
+  const rawStems = data.stems || (data as unknown as { drums?: number[]; bass?: number[]; instruments?: number[]; vocals?: number[] });
+  const stemsDict = rawStems && ('drums' in rawStems || 'bass' in rawStems) ? rawStems : null;
+
+  if (!stemsDict) {
+    return {
+      kick: 0,
+      bass: 0,
+      instruments: 0,
+      vocals: 0,
+      instrumentalActivity: 0,
+      globalIntensity: 0,
+      isKickOnset: false,
+      kickIntensity: 0,
+    };
+  }
+
+  const fps = typeof data.fps === 'number' && data.fps > 0 ? data.fps : 25;
+  const samplePos = Math.max(0, timeSeconds * fps);
   const i0 = Math.floor(samplePos);
   const i1 = i0 + 1;
   const frac = samplePos - i0;
@@ -454,20 +472,20 @@ export function sampleStemValues(
     return v0 + (v1 - v0) * frac;
   };
 
-  const kick = sampleArray(data.stems.drums);
-  const bass = sampleArray(data.stems.bass);
-  const instruments = sampleArray(data.stems.instruments);
-  const vocals = sampleArray(data.stems.vocals);
+  const kick = sampleArray(stemsDict.drums);
+  const bass = sampleArray(stemsDict.bass);
+  const instruments = sampleArray(stemsDict.instruments);
+  const vocals = sampleArray(stemsDict.vocals);
   const instrumentalActivity = sampleArray(data.instrumentalActivity);
   const globalIntensity = sampleArray(data.globalIntensity);
 
-  // Check if precisely at kick onset (window aligned with exact transient arrival: -15ms to +45ms)
+  // Check if precisely at kick onset (window aligned with exact transient arrival: -15ms to +50ms)
   let isKickOnset = false;
   let kickIntensity = 0;
   if (data.kickEvents && data.kickEvents.length > 0) {
     for (const event of data.kickEvents) {
       const dt = timeSeconds - event.time;
-      if (dt >= -0.015 && dt <= 0.048) {
+      if (dt >= -0.015 && dt <= 0.052) {
         isKickOnset = true;
         kickIntensity = event.intensity;
         break;
@@ -476,9 +494,9 @@ export function sampleStemValues(
   } else if (data.kickOnsets && data.kickOnsets.length > 0) {
     for (const onset of data.kickOnsets) {
       const dt = timeSeconds - onset;
-      if (dt >= -0.015 && dt <= 0.048) {
+      if (dt >= -0.015 && dt <= 0.052) {
         isKickOnset = true;
-        kickIntensity = kick;
+        kickIntensity = Math.max(0.75, kick);
         break;
       }
     }

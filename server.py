@@ -166,12 +166,34 @@ async def process_youtube(
     # ---------------------------------------------------------
     # 1. Ultra-fast Cache Hit Check (<10ms)
     # ---------------------------------------------------------
-    if wav_path.exists() and stems_path.exists() and meta_path.exists():
+    cached_stems = None
+    if stems_path.exists():
         try:
             with open(stems_path, "r") as sf:
-                stems_data = json.load(sf)
-            with open(meta_path, "r") as mf:
-                meta_data = json.load(mf)
+                cached_stems = json.load(sf)
+        except Exception:
+            pass
+    if not cached_stems:
+        try:
+            from demucs_service import get_demucs_service
+            cached_stems = get_demucs_service().get_cached_result(file_hash=unique_id, song_key=canonical_url)
+        except Exception:
+            pass
+
+    if wav_path.exists() and cached_stems and cached_stems.get("stems"):
+        try:
+            meta_data = {}
+            if meta_path.exists():
+                try:
+                    with open(meta_path, "r") as mf:
+                        meta_data = json.load(mf)
+                except Exception:
+                    pass
+
+            title = meta_data.get("title") or f"YouTube Video ({video_id})"
+            artist = meta_data.get("artist") or meta_data.get("uploader") or "YouTube Stage"
+            thumbnail = meta_data.get("thumbnailUrl") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+            duration = meta_data.get("duration", cached_stems.get("durationSeconds", 0))
 
             print(f"[Server] Cache HIT for YouTube link: {canonical_url} (ID: {video_id})")
             return {
@@ -180,20 +202,20 @@ async def process_youtube(
                 "youtubeUrl": canonical_url,
                 "videoId": video_id,
                 "uniqueId": unique_id,
-                "title": meta_data.get("title", f"YouTube Video ({video_id})"),
-                "artist": meta_data.get("artist") or meta_data.get("uploader", "YouTube Creator"),
-                "durationSeconds": meta_data.get("duration", stems_data.get("durationSeconds", 0)),
-                "thumbnailUrl": meta_data.get("thumbnailUrl") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
+                "title": title,
+                "artist": artist,
+                "durationSeconds": duration,
+                "thumbnailUrl": thumbnail,
                 "audioUrl": f"http://127.0.0.1:8765/api/audio/{video_id}",
-                "stems": stems_data.get("stems", {}),
-                "kickEvents": stems_data.get("kickEvents", []),
-                "kickOnsets": stems_data.get("kickOnsets", []),
-                "instrumentalActivity": stems_data.get("instrumentalActivity", []),
-                "globalIntensity": stems_data.get("globalIntensity", []),
-                "averageAmplitude": stems_data.get("averageAmplitude", 0.3),
-                "aboveAverageSections": stems_data.get("aboveAverageSections", []),
-                "triStemDropSections": stems_data.get("triStemDropSections", []),
-                "demucsBpm": stems_data.get("demucsBpm", {}),
+                "stems": cached_stems,  # Full DemucsStemData with fps, envelopes, kick events, BPM
+                "kickEvents": cached_stems.get("kickEvents", []),
+                "kickOnsets": cached_stems.get("kickOnsets", []),
+                "instrumentalActivity": cached_stems.get("instrumentalActivity", []),
+                "globalIntensity": cached_stems.get("globalIntensity", []),
+                "averageAmplitude": cached_stems.get("averageAmplitude", 0.3),
+                "aboveAverageSections": cached_stems.get("aboveAverageSections", []),
+                "triStemDropSections": cached_stems.get("triStemDropSections", []),
+                "demucsBpm": cached_stems.get("demucsBpm", {}),
             }
         except Exception as e:
             print(f"[Server] Cache read warning: {e}. Re-processing audio.")
@@ -285,6 +307,28 @@ async def process_youtube(
             detail=f"Demucs stem separation failed: {stems_result.get('error', 'Unknown error')}",
         )
 
+    # Write meta cache and direct stems alias for instant future cache hits
+    try:
+        with open(meta_path, "w") as mf:
+            json.dump({
+                "title": title,
+                "artist": uploader,
+                "uploader": uploader,
+                "duration": duration,
+                "thumbnailUrl": thumbnail,
+                "videoId": video_id,
+                "url": canonical_url,
+            }, mf, indent=2)
+    except Exception as e:
+        print(f"[Server] Meta save note: {e}")
+
+    try:
+        if not stems_path.exists():
+            with open(stems_path, "w") as sf:
+                json.dump(stems_result, sf)
+    except Exception as e:
+        print(f"[Server] Stems alias save note: {e}")
+
     # Update index.json to map aliases
     index = load_cache_index()
     index[raw_url] = unique_id
@@ -305,7 +349,7 @@ async def process_youtube(
         "durationSeconds": stems_result.get("durationSeconds", duration),
         "thumbnailUrl": thumbnail,
         "audioUrl": f"http://127.0.0.1:8765/api/audio/{video_id}",
-        "stems": stems_result.get("stems", {}),
+        "stems": stems_result,  # Complete DemucsStemData with fps, envelopes, kickEvents, BPM
         "kickEvents": stems_result.get("kickEvents", []),
         "kickOnsets": stems_result.get("kickOnsets", []),
         "instrumentalActivity": stems_result.get("instrumentalActivity", []),
@@ -320,6 +364,7 @@ async def process_youtube(
 async def get_audio_stream(video_id: str):
     """
     Serves the extracted high-fidelity WAV audio file for browser Web Audio API playback.
+    Includes explicit CORS headers for MediaElementAudioSourceNode compatibility.
     """
     clean_id = video_id.strip()
     wav_path = AUDIO_CACHE_DIR / f"yt_{clean_id}.wav"
@@ -342,6 +387,9 @@ async def get_audio_stream(video_id: str):
         headers={
             "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=31536000, immutable",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
         },
     )
 

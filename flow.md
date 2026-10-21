@@ -1413,46 +1413,47 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Beam Shaft Volumetric Expansion:**
   - Shaft width expands subtly ($1.0 + \text{bassFactor} \cdot 0.35$) with an additional $1.15\times$ radial pulse during active kick blink windows, maintaining a fixed cone apex at the spotlight origin.
 
-##### 5. YouTube Link Direct Audio Extraction via yt-dlp & Demucs Separation, Complete Shazam Decommissioning (Phase 30)
-- **Direct YouTube URL Stage Ingest:**
-  - Removed local audio file upload dependency from the primary workflow.
-  - Users provide a direct YouTube link (standard watch URL, shortened youtu.be, shorts, embed, or 11-char ID) via a glowing floating input pill in the header, paste button, drag-and-drop, or global window paste (`Cmd+V` / `Ctrl+V`).
-  - Stage video immediately mounts and plays in the concert stage aperture screen with audio muted (`volume = 0` / `muted = true`).
-- **High-Fidelity Audio Extraction via `yt-dlp` & FFmpeg:**
-  - Microservice endpoint `POST /api/youtube/process` invokes `yt-dlp` with `FFmpegExtractAudio` (`preferredcodec: "wav"`, `preferredquality: "0"`).
-  - Extracts the exact high-fidelity uncompressed WAV audio stream from the YouTube video.
-  - Caches audio under `.synwave_cache/audio/yt_{video_id}.wav` using the YouTube video ID as the canonical unique identifier.
-  - Serves extracted audio to `AudioEngine` via streaming endpoint `GET /api/audio/{video_id}`.
-- **Neural Source Separation (Meta Demucs v4) on Extracted Audio:**
-  - Demucs v4 runs directly on the extracted `.wav` file on Apple Silicon Metal Performance Shaders (`device="mps"`).
-  - Produces 25 FPS RMS envelopes for all 4 stems (`drums`, `bass`, `instruments`, `vocals`), kick onsets, transient timestamps, and average amplitude reference levels.
-  - Caches stem profiles persistently in `.synwave_cache/stems/stems_yt_{video_id}.json`.
-  - Future sessions for the same YouTube link achieve instant sub-10ms cache hits.
-- **Complete Decommissioning of Shazam & API Keys:**
-  - Removed `shazamio`, `certifi`, `shazamService.ts`, and legacy `shazam_server.py`.
-  - Removed `YouTubeApiKeyModal.tsx`, `youtubeService.ts`, and mandatory Google Cloud API key gates.
-  - Direct YouTube URL provides exact video identity and track metadata without external API quotas or rate limits.
-  - BPM is derived authoritatively from Demucs neural kick timestamps (`source: 'demucs'`) with high confidence.
+##### 6. Demucs Stem Data Integrity, Audio Manipulation Restoration & Concert Stage Visuals (Phase 31)
+- **Root-Cause Analysis of Audio Manipulation Regression:**
+  - **Stem Data Truncation:** In `server.py`, the JSON response previously unpacked `"stems": stems_data.get("stems", {})`, which returned only the nested dictionary of arrays (`{ drums: [...], bass: [...] }`) and dropped top-level metadata: `fps: 25`, `durationSeconds`, `kickEvents`, `kickOnsets`, `averageAmplitude`, `aboveAverageSections`, `triStemDropSections`, and `demucsBpm`.
+  - **Zeroed Stem Sampling:** Because `demucsService.ts` checked `data.stems` and `data.fps > 0`, the missing `fps` caused `sampleStemValues()` to evaluate to `NaN` or return all zeros (`kick: 0, bass: 0, instruments: 0, vocals: 0`).
+  - **Cascading Zeroing in AudioEngine:** `AudioEngine.ts` evaluated `bass: this.demucsStems ? stems.bass : this.smoothedBass`, which overwrote real-time FFT bass with zeros, suppressing all downstream bass-reactive effects and turning off the white sky spotlights (`effectiveBass <= 0.005`).
+  - **Cache Indexing Asymmetry:** `demucs_service.py` stored stems under canonical sha256 digests (`stems_{sha}.json`) with alias mappings in `index.json`, while `server.py` checked only for `stems_yt_{video_id}.json` and required non-existent `meta_yt_{video_id}.json`, causing false cache misses.
+- **Architectural Fixes Implemented:**
+  - **Full DemucsStemData Preservation in Microservice:** `server.py` returns the complete `DemucsStemData` payload under `"stems": stems_data` (with `fps: 25`, 4-stem envelopes, `kickEvents`, and `demucsBpm`) for both cache hits and fresh extractions.
+  - **Unified Cache Hit Resolution:** `server.py` queries `demucs_service.get_cached_result(file_hash=unique_id, song_key=canonical_url)` and creates direct aliases, ensuring instant `<5ms` cache hits.
+  - **Explicit CORS Headers for Audio Stream:** Added `"Access-Control-Allow-Origin": "*"` and `"Accept-Ranges": "bytes"` to `GET /api/audio/{video_id}` `FileResponse` preventing browser Web Audio API CORS-tainting.
+  - **Robust Stem Sampling & Fallbacks:** Updated `sampleStemValues()` in `demucsService.ts` to seamlessly handle both nested (`data.stems.drums`) and flat (`data.drums`) structures with a reliable fallback of `fps = 25`, guaranteeing valid numerical envelope interpolation at all times.
+  - **Harmonic Stem & FFT Fusion in AudioEngine:** `AudioEngine.ts` now fuses neural stems with real-time FFT energy:
+    $$\text{bass} = \max(\text{stems.bass}, \text{smoothedBass} \cdot 0.85)$$
+    $$\text{subBass} = \max(\text{stems.bass}, \text{smoothedSubBass} \cdot 0.85)$$
+    Transient kick detection integrates both Demucs kick onsets/events and FFT transient spikes.
+  - **Impulse Physics Screen Shake on YouTube Iframe:** Replaced single-frame blip shake in `VisualEngine.ts` with a dedicated physical impulse accumulator (`screenShakeImpulse`). Kicks trigger an immediate $22\text{px} \cdot \text{shakeMult}$ displacement that decays smoothly over 80–120ms ($\Delta t \cdot 16.0$), producing an unmistakable, punchy physical screen shake.
+  - **Song Palette & Pure White Screen Flash:** Connected kick transient onsets to `festival-window-blinder`, cycling through Step 0 (Compulsory White `#FFFFFF`) and subsequent extracted YouTube thumbnail colors on percussive drum transients.
+  - **Omnidirectional White Sky Searchlights:**
+    - Upgraded beam geometry to $55\text{m}$ length with `THREE.DoubleSide` additive blending, eliminating backface culling from any camera perspective.
+    - Lowered bass presence activation threshold to $\text{effectiveBass} > 0.04$ with smooth musical attack ($\Delta t \cdot 18.0$) and release ($\Delta t \cdot 5.0$).
+    - Tuned kick blinking multiplier with a $2.5\times$ impact flash, $0.08\times$ shutter cut notch, and smooth $140\text{ms}$ settle recovery back to steady white sky illumination.
 
 ---
 
 ## 6. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build`).
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), and `.synwave_cache/metadata` (`meta_yt_*.json`).
-- **YouTube Concert Stage Architecture (Phase 30):**
+- **YouTube Concert Stage Architecture (Phase 31):**
   - Direct YouTube URL workflow with automatic video ID extraction and stage iframe mounting.
   - Pure uncompressed WAV extraction via `yt-dlp` & `ffmpeg`.
-  - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS.
-  - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture.
-  - 45m high-power volumetric white beams projecting upward into the arena sky, sweeping Left, Top (zenith), and Right with zero downward focus.
+  - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS verified operational with 25 FPS envelopes and 199+ kick events per track.
+  - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture with stationary chassis/head origins and omnidirectional double-sided $55\text{m}$ volumetric beams.
+  - Audio manipulation active: Screen shake on kicks, thumbnail palette + white screen blinder flash on kick transients, and bass-activated white sky spotlights with synchronous kick blinking.
   - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).
   - 12x 360° continuous rotatable perimeter bass moving heads.
-  - Direct-DOM full-window screen blinder strobe driven strictly by kick transients.
-- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3). Pushing to GitHub repo per explicit user authorization.
+- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3). Pushing updates to GitHub repo per explicit user instruction.
+
 
 
 

@@ -23,6 +23,7 @@ import { StemSeparationLoader } from './components/StemSeparationLoader';
 import { separateAudioWithDemucs, getTrackFingerprint } from './services/demucsService';
 import { resolveTrackBpm, mapBpmToSpotlightCount } from './services/tempoService';
 import type {
+  DemucsStemData,
   QualityPreset,
   RepeatMode,
   StageProfile,
@@ -660,6 +661,23 @@ export const App: React.FC = () => {
         hash |= 0;
       }
 
+      // Build authoritative Demucs stem data object ensuring envelopes, fps and kick events are fully populated
+      const fullDemucsStems: DemucsStemData | undefined = (result.stems && (result.stems.stems || (result.stems as unknown as { drums?: number[] }).drums))
+        ? {
+            fps: result.stems.fps || (result as unknown as { fps?: number }).fps || 25,
+            durationSeconds: result.stems.durationSeconds || result.durationSeconds || result.duration || 0,
+            stems: result.stems.stems || (result.stems as unknown as DemucsStemData['stems']),
+            kickEvents: result.stems.kickEvents || result.kickEvents || [],
+            kickOnsets: result.stems.kickOnsets || result.kickOnsets || [],
+            instrumentalActivity: result.stems.instrumentalActivity || result.instrumentalActivity || [],
+            globalIntensity: result.stems.globalIntensity || result.globalIntensity || [],
+            demucsBpm: result.stems.demucsBpm || result.demucsBpm,
+            averageAmplitude: result.stems.averageAmplitude || result.averageAmplitude,
+            aboveAverageSections: result.stems.aboveAverageSections || result.aboveAverageSections || [],
+            triStemDropSections: result.stems.triStemDropSections || result.triStemDropSections || [],
+          }
+        : undefined;
+
       const track: TrackRecord = {
         id: trackId,
         name: `${result.title}.wav`,
@@ -674,7 +692,7 @@ export const App: React.FC = () => {
         seed: Math.abs(hash),
         youtubeVideoId: videoId,
         youtubeUrl: rawUrl,
-        demucsStems: result.stems || undefined,
+        demucsStems: fullDemucsStems,
       };
 
       setTracks([track]);

@@ -388,8 +388,8 @@ export class StageLightsEffect extends BaseEffect {
 
     // 3. White Stage Sky Spotlights Flanking the Left & Right Corners of YouTube Screen
     // Shoots long, powerful white volumetric beams into the sky/zenith (never focusing downward)
-    const skyConeLength = 45;
-    const skyConeGeo = new THREE.ConeGeometry(2.2, skyConeLength, 18, 1, true);
+    const skyConeLength = 55;
+    const skyConeGeo = new THREE.ConeGeometry(2.4, skyConeLength, 18, 1, true);
     skyConeGeo.translate(0, -skyConeLength / 2, 0);
     skyConeGeo.rotateX(-Math.PI / 2);
     this.disposables.push(skyConeGeo);
@@ -450,14 +450,14 @@ export class StageLightsEffect extends BaseEffect {
       lensMesh.position.set(0, 0, 0);
       headGroup.add(lensMesh);
 
-      // High-intensity white volumetric beam cone projecting into the sky (apex at 0, 0, 0)
+      // High-intensity white volumetric beam cone projecting into the sky (apex at 0, 0, 0, DoubleSide for omnidirectional visibility)
       const coneMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.FrontSide,
+        side: THREE.DoubleSide,
       });
       this.disposables.push(coneMat);
       const coneMesh = new THREE.Mesh(skyConeGeo, coneMat);
@@ -938,14 +938,14 @@ export class StageLightsEffect extends BaseEffect {
     // - Bass Presence: Turned ON when bass is present; turns OFF when bass is absent.
     // - Kick Blinking: Blinks in tight synchronization with kick/drum hits (strike flash -> shutter cut -> recovery).
 
-    // 3a. Bass presence evaluation (Turns ON when bass > 0.08)
+    // 3a. Bass presence evaluation (Turns ON when bass > 0.04)
     const effectiveBass = Math.max(
       features.stems.bass,
       features.bass || 0,
       (features.subBass || 0) * 0.90
     );
-    const targetBassPresence = effectiveBass > 0.08
-      ? Math.min(1.0, (effectiveBass - 0.08) / 0.22)
+    const targetBassPresence = effectiveBass > 0.04
+      ? Math.min(1.0, (effectiveBass - 0.04) / 0.18)
       : 0.0;
 
     if (deltaSeconds > 0) {
@@ -959,8 +959,8 @@ export class StageLightsEffect extends BaseEffect {
     }
 
     // 3b. Kick drum hit detection and blink synchronization
-    const kickDuration = 0.13; // 130ms concert blink cycle
-    if (features.isKick || (features.stems.kick > 0.50 && this.kickBlinkTimer <= 0.03)) {
+    const kickDuration = 0.14; // 140ms concert blink cycle
+    if (features.isKick || (features.stems.kick > 0.38 && this.kickBlinkTimer <= 0.03)) {
       this.kickBlinkTimer = kickDuration;
     }
 
@@ -972,15 +972,15 @@ export class StageLightsEffect extends BaseEffect {
     if (this.kickBlinkTimer > 0) {
       const elapsedKick = kickDuration - this.kickBlinkTimer;
       if (elapsedKick < 0.035) {
-        // Phase 1 (0-35ms): Instant kick impact strike flash (2.4x burst)
-        blinkMultiplier = 2.4;
+        // Phase 1 (0-35ms): Instant kick impact strike flash (2.5x burst)
+        blinkMultiplier = 2.5;
       } else if (elapsedKick < 0.075) {
-        // Phase 2 (35-75ms): Sharp concert shutter blink cut (0.10x notch)
-        blinkMultiplier = 0.10;
+        // Phase 2 (35-75ms): Sharp concert shutter blink cut (0.08x notch)
+        blinkMultiplier = 0.08;
       } else {
-        // Phase 3 (75-130ms): Smooth recovery back to steady bass illumination
-        const recovery = (elapsedKick - 0.075) / (0.130 - 0.075);
-        blinkMultiplier = 0.10 + 0.90 * recovery;
+        // Phase 3 (75-140ms): Smooth recovery back to steady bass illumination
+        const recovery = (elapsedKick - 0.075) / (0.140 - 0.075);
+        blinkMultiplier = 0.08 + 0.92 * recovery;
       }
     }
 
@@ -1043,11 +1043,11 @@ export class StageLightsEffect extends BaseEffect {
       }
 
       // Pure white concert searchlight optics (activated by bass, blinking on kick drum hits)
-      const rawLensOpacity = (0.82 + instStem * 0.16 + (features.isDrop ? 0.10 : 0)) * bassDrive;
-      const rawConeOpacity = (0.26 + instStem * 0.18 + (features.isDrop ? 0.10 : 0)) * bassDrive;
+      const rawLensOpacity = (0.88 + instStem * 0.16 + (features.isDrop ? 0.10 : 0)) * bassDrive;
+      const rawConeOpacity = (0.36 + instStem * 0.20 + (features.isDrop ? 0.10 : 0)) * bassDrive;
 
-      lensMat.opacity = Math.min(1.0, Math.min(0.98 * maxBri, rawLensOpacity * blinkMultiplier));
-      coneMat.opacity = Math.min(0.85, Math.min(0.55 * maxBri, rawConeOpacity * blinkMultiplier));
+      lensMat.opacity = Math.min(1.0, Math.min(0.99 * maxBri, rawLensOpacity * blinkMultiplier));
+      coneMat.opacity = Math.min(0.90, Math.min(0.68 * maxBri, rawConeOpacity * blinkMultiplier));
 
       // Volumetric beam width expands subtly with bass & kick hits (origin remains 100% fixed)
       const skyBeamScale = (1.0 + bassFactor * 0.35 * bassBeamMult) * (this.kickBlinkTimer > 0 ? 1.15 : 1.0);
