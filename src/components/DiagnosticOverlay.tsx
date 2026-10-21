@@ -32,7 +32,7 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
   const [features, setFeatures] = useState<AudioFeatures | null>(null);
   const [directorState, setDirectorState] = useState<ShowDirectorState | null>(null);
   const [activeProfile, setActiveProfile] = useState(RoutingStore.getInstance().getActiveProfile());
-  const [cacheStatus, setCacheStatus] = useState<{ exists: boolean; shazamCount: number; stemsCount: number; isOnline: boolean } | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<{ exists: boolean; audioTracksCount: number; stemsCount: number; isOnline: boolean } | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
 
   const frameCountRef = useRef(0);
@@ -49,19 +49,17 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
     fetch('http://127.0.0.1:8765/api/cache/info')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setCacheStatus({
-            exists: data.exists,
-            shazamCount: data.shazamCount,
-            stemsCount: data.stemsCount,
-            isOnline: true,
-          });
-        }
+        setCacheStatus({
+          exists: true,
+          audioTracksCount: data.audioTracksCount || 0,
+          stemsCount: data.stemsCount || 0,
+          isOnline: true,
+        });
       })
       .catch(() => {
         setCacheStatus({
           exists: false,
-          shazamCount: 0,
+          audioTracksCount: 0,
           stemsCount: 0,
           isOnline: false,
         });
@@ -120,8 +118,8 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
           <div className="metric-row">
             <span className="metric-name">BPM PROVENANCE</span>
             <span className="metric-value">
-              {features.bpmSource === 'shazamio' && <span style={{ color: '#34d399', fontWeight: 700 }}>SHAZAMIO [VERIFIED]</span>}
               {features.bpmSource === 'demucs' && <span style={{ color: '#22d3ee', fontWeight: 700 }}>DEMUCS [KICKS]</span>}
+              {features.bpmSource === 'manual' && <span style={{ color: '#a78bfa', fontWeight: 700 }}>MANUAL</span>}
               {(!features.bpmSource || features.bpmSource === 'unavailable') && <span style={{ color: '#fbbf24' }}>UNAVAILABLE</span>}
             </span>
           </div>
@@ -291,8 +289,8 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
             <span className="metric-name">DISK STORE</span>
             <span className="metric-value highlight" style={{ color: cacheStatus?.isOnline ? '#34d399' : '#f59e0b' }}>
               {cacheStatus?.isOnline
-                ? `.synwave_cache (${cacheStatus.stemsCount} stems, ${cacheStatus.shazamCount} shazam)`
-                : 'OFFLINE (Browser Cache Active)'}
+                ? `.synwave_cache (${cacheStatus.audioTracksCount} audio, ${cacheStatus.stemsCount} stems)`
+                : 'OFFLINE (Microservice Offline)'}
             </span>
           </div>
           <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
@@ -312,10 +310,10 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
               onClick={async () => {
                 setIsClearingCache(true);
                 await clearAllSynwaveCaches();
-                setCacheStatus({ exists: true, shazamCount: 0, stemsCount: 0, isOnline: true });
+                setCacheStatus({ exists: true, audioTracksCount: 0, stemsCount: 0, isOnline: true });
                 setIsClearingCache(false);
               }}
-              title="Purge .synwave_cache on disk, IndexedDB stems, and localStorage recognition"
+              title="Purge .synwave_cache on disk and IndexedDB stems"
             >
               {isClearingCache ? 'PURGING...' : 'PURGE ALL CACHES'}
             </button>

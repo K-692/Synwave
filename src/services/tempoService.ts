@@ -8,7 +8,7 @@
  * 4. Per-track caching to prevent redundant API and audio analysis calls
  */
 
-export type BpmSource = 'shazamio' | 'demucs' | 'unavailable';
+export type BpmSource = 'demucs' | 'manual' | 'unavailable';
 
 export interface BpmResolution {
   bpm: number | null;
@@ -198,43 +198,28 @@ export function calculateBpmFromKickOnsets(onsets: number[]): BpmResolution {
  */
 export function resolveTrackBpm(
   trackKey: string,
-  shazamResult?: { bpm?: number | null; bpmSource?: string | null } | null,
+  _unused?: unknown,
   demucsStems?: {
     kickOnsets?: number[];
     kickEvents?: { time: number; intensity: number }[];
     demucsBpm?: { bpm?: number | null; confidence?: number; source?: string };
   } | null
 ): BpmResolution {
-  // 1. Prioritize verified ShazamIO BPM if explicitly present and within [50, 240]
-  if (shazamResult && typeof shazamResult.bpm === 'number' && !isNaN(shazamResult.bpm)) {
-    const rawBpm = shazamResult.bpm;
-    if (rawBpm >= 50.0 && rawBpm <= 240.0) {
-      const verifiedResolution: BpmResolution = {
-        bpm: Math.round(rawBpm * 10) / 10,
-        source: 'shazamio',
-        confidence: 1.0,
-        isVerified: true,
-      };
-      setCachedTrackBpm(trackKey, verifiedResolution);
-      return verifiedResolution;
-    }
-  }
-
-  // 2. Check local track cache
+  // 1. Check local track cache
   const cached = getCachedTrackBpm(trackKey);
-  if (cached && (cached.source === 'shazamio' || (cached.source === 'demucs' && cached.bpm))) {
+  if (cached && cached.source === 'demucs' && cached.bpm) {
     return cached;
   }
 
-  // 3. Demucs-based fallback using kick timestamps
+  // 2. Demucs-based resolution using kick timestamps
   if (demucsStems) {
     // If pre-computed by Python microservice
     if (demucsStems.demucsBpm && typeof demucsStems.demucsBpm.bpm === 'number') {
       const demucsResolution: BpmResolution = {
         bpm: demucsStems.demucsBpm.bpm,
         source: (demucsStems.demucsBpm.source as BpmSource) || 'demucs',
-        confidence: demucsStems.demucsBpm.confidence ?? 0.65,
-        isVerified: false,
+        confidence: demucsStems.demucsBpm.confidence ?? 0.75,
+        isVerified: true,
       };
       setCachedTrackBpm(trackKey, demucsResolution);
       return demucsResolution;
@@ -249,13 +234,13 @@ export function resolveTrackBpm(
     }
   }
 
-  // 4. Neither source is currently available
+  // 3. Fallback state
   const unavailableResolution: BpmResolution = {
     bpm: null,
     source: 'unavailable',
     confidence: 0.0,
     isVerified: false,
-    reason: 'Waiting for ShazamIO recognition or Demucs stem extraction.',
+    reason: 'Waiting for Demucs neural stem extraction.',
   };
   return unavailableResolution;
 }

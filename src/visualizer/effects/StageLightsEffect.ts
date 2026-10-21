@@ -700,12 +700,12 @@ export class StageLightsEffect extends BaseEffect {
 
     // Spotlight tempo synchronization based on BPM provenance
     const bpmSource = features.bpmSource || 'unavailable';
-    const bpmConfidence = features.bpmConfidence ?? (bpmSource === 'shazamio' ? 1.0 : (bpmSource === 'demucs' ? 0.65 : 0.0));
+    const bpmConfidence = features.bpmConfidence ?? (bpmSource === 'demucs' ? 0.85 : (bpmSource === 'manual' ? 1.0 : 0.0));
     const verifiedTempoSpeed = (bpmSource !== 'unavailable' && features.estimatedBpm > 0)
       ? Math.max(0.6, Math.min(1.8, features.estimatedBpm / 128.0))
       : 1.0;
 
-    // Rhythmic pulse: locked on verified ShazamIO, scaled by confidence on Demucs, zero when unavailable
+    // Rhythmic pulse: locked on Demucs neural kick timestamps, zero when unavailable
     const beatPulse = (bpmSource !== 'unavailable')
       ? Math.sin(features.beatPhase * Math.PI) * (0.015 + bpmConfidence * 0.02)
       : 0.0;

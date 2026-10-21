@@ -15,7 +15,7 @@
   [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
   <p align="center">
-    A stadium-scale music festival concert simulator that orchestrates real-time, procedural 3D audiovisual performances. Powered by Meta Demucs v4 neural 4-stem source separation, Apple Silicon Metal Performance Shaders (MPS), Shazam acoustic recognition, synchronized YouTube 4K stage video playback, and intelligent concert lighting choreography.
+    A stadium-scale music festival concert simulator that orchestrates real-time, procedural 3D audiovisual performances. Powered by direct YouTube link ingest, high-fidelity audio extraction via <code>yt-dlp</code> and <code>ffmpeg</code>, Meta Demucs v4 neural 4-stem source separation on Apple Silicon Metal Performance Shaders (MPS), synchronized stage video playback, and intelligent concert lighting choreography.
   </p>
 
 </div>
@@ -52,7 +52,6 @@ https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
 - [✨ Key Features](#-key-features)
 - [⌨️ Controls & Keyboard Shortcuts](#-controls--keyboard-shortcuts)
 - [🚀 Installation & Development Setup](#-installation--development-setup)
-- [🔑 YouTube Data API v3 Configuration](#-youtube-data-api-v3-configuration)
 - [🛠️ Technologies & Official Repositories](#️-technologies--official-repositories)
 - [📜 Third-Party Libraries, Licenses & Attribution](#-third-party-libraries-licenses--attribution)
 - [🐛 Known Issues & Roadmap](#-known-issues--roadmap)
@@ -63,16 +62,17 @@ https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
 
 ## 🌟 Project Overview
 
-**Synwave** transforms any local audio file into a stadium-scale **procedural concert experience**. Rather than drawing simple 2D FFT spectrogram bars or unanchored wandering particles, Synwave acts as an **autonomous concert lighting designer and stage director**.
+**Synwave** transforms any YouTube link into a stadium-scale **procedural concert experience**. Rather than drawing simple 2D FFT spectrogram bars or unanchored wandering particles, Synwave acts as an **autonomous concert lighting designer and stage director**.
 
 It places the user in the **front-row audience** facing a colossal festival stage modeled after real-world arena spectacles (Ultra Music Festival, Tomorrowland, EDC).
 
-When an audio file is loaded, Synwave executes an acoustic intelligence pipeline:
-1. **Acoustic Fingerprinting & Track Resolution:** Resolves song identity, artist, and album via **ShazamIO** in `< 1.5s` and caches the match.
-2. **Neural Source Separation (Meta Demucs v4):** Isolates the audio into 4 discrete acoustic stems (`drums`, `bass`, `instruments`, `vocals`) accelerated by Apple Silicon MPS hardware.
-3. **Tri-STEM Peak Drop Pinpointing:** Identifies the precise climactic segments where drums, bass, and instruments simultaneously exceed their track averages.
-4. **Synchronized 4K Stage Video:** Resolves the official music video via **YouTube Data API v3**, hosting it inside an aperture screen driven by the lossless local audio clock.
+When a YouTube link is submitted, Synwave executes an acoustic intelligence pipeline:
+1. **Direct YouTube Stage Video Mounting:** Loads and displays the YouTube video on the stage aperture screen with audio muted (`volume = 0`).
+2. **High-Fidelity Audio Extraction (`yt-dlp` & `ffmpeg`):** Downloads and converts the uncompressed high-fidelity audio stream to WAV on the local microservice.
+3. **Neural Source Separation (Meta Demucs v4):** Isolates the audio into 4 discrete acoustic stems (`drums`, `bass`, `instruments`, `vocals`) accelerated by Apple Silicon MPS hardware.
+4. **Tri-STEM Peak Drop Pinpointing:** Identifies the precise climactic segments where drums, bass, and instruments simultaneously exceed their track averages.
 5. **Procedural 3D Stage Choreography:** Directs moving-head spotlights, dual corner sky-reaching white searchlights, a 360° perimeter bass rig, camera sub-bass FOV zooms, and vertical-sync full-window blinder washes.
+6. **Sub-10ms Persistent Cache:** Stores extracted audio and separated stem envelopes under `.synwave_cache` keyed uniquely by the YouTube link.
 
 ---
 
@@ -84,27 +84,27 @@ Synwave is structured into a four-tier decoupled architecture separating acousti
 
 ```mermaid
 flowchart TD
-    subgraph INGEST["1. INGEST & ACOUSTIC INTELLIGENCE LAYER"]
-        A["Local Audio File\n(MP3, WAV, FLAC, M4A)"] --> B["SHA-256 Fingerprint Generator"]
-        B --> C{"3-Tier STEM Cache"}
-        C -->|"Hit (< 10ms)"| D["Decoded Stem Data Store"]
+    subgraph INGEST["1. INGEST & AUDIO EXTRACTION LAYER"]
+        A["YouTube URL\n(Watch, Shorts, youtu.be)"] --> B["Video ID Extractor & Unique Key"]
+        B --> C{"Cache Store (.synwave_cache)"}
+        C -->|"Hit (< 10ms)"| D["Cached WAV & Stem Store"]
         C -->|"Miss"| E["FastAPI Daemon (:8765)"]
         
         subgraph DAEMON["Python Microservice (Apple Silicon MPS / CUDA)"]
-            E --> F["ShazamIO Recognition Engine"]
-            E --> G["Meta Demucs v4 (htdemucs)"]
+            E --> F["yt-dlp + FFmpeg Audio Extractor\n(Best Audio -> 44.1kHz WAV)"]
+            F --> G["Meta Demucs v4 (htdemucs)"]
             G --> H["4-Stem Isolation\n(Drums, Bass, Inst, Vocals)"]
             H --> I["25 FPS RMS Envelopes &\nStatic Track Averages"]
             H --> J["Kick Comb Filter & Transient Onsets"]
         end
         
-        F --> K["Track Identity (Title, Artist, BPM)"]
+        F --> K["High-Fidelity Audio Stream (/api/audio)"]
         I --> D
         J --> D
     end
 
     subgraph ANALYSIS["2. REAL-TIME FEATURE & DROP PINPOINTING ENGINE"]
-        A --> L["Web Audio API AudioContext"]
+        K --> L["Web Audio API AudioContext"]
         L --> M["Master Hardware Audio Clock (t)"]
         L --> N["AnalyserNode (2048 FFT)"]
         
@@ -114,16 +114,16 @@ flowchart TD
         N --> Q["Sub-Bass Filter\n(20 - 100 Hz)"]
         N --> R["Transient Kick Edge Detector\n(40 - 150 Hz, 180ms Lockout)"]
         N --> S["Mid-Range Spectral Engine\n(250 Hz - 4 kHz: Centroid, Flux, Dispersion)"]
-        D --> T["BeatGrid & Phrase Engine"]
+        D --> T["BeatGrid & Phrase Engine (Demucs Kick Intervals)"]
     end
 
     subgraph DIRECTOR["3. STAGE DIRECTOR & CHOREOGRAPHY PIPELINE"]
-        K --> U["YouTube Data API v3"]
-        U --> V["Official Stage Video ID & Thumbnail Palette"]
+        B --> U["Stage Screen Aperture (Muted)"]
+        B --> V["Thumbnail Color Palette Extractor"]
         V --> W["flashColorUtils: Direct Palette Normalization"]
         
         P & S & W --> X["Dual Corner White Sky Spotlights\n(Left & Right Stage Flanks, Zenith Skyward Sweeps)"]
-        T & K --> Y["Symmetrical BPM Moving-Head Lights\n(2 to 12 Fixtures, Monotonic 70-160 BPM)"]
+        T --> Y["Symmetrical BPM Moving-Head Lights\n(2 to 12 Fixtures, Monotonic 70-160 BPM)"]
         Q --> Z["Audience Camera FOV Punch\n(60° to 63.5° Dynamic Zoom)"]
         R --> AA["YouTube Iframe Screen Shake\n(Isolated Kick Transform)"]
         R & P & W --> AB["Direct-DOM Full-Window Blinder\n(0.96 Peak Opacity, Compulsory White + Palette)"]
@@ -247,12 +247,14 @@ flowchart TD
   Climactic visuals activate exclusively during true musical drops where Drums, Bass, and Instruments simultaneously exceed track averages, staying cleanly off during intros, verses, and breakdowns.
 - **Full-Window Screen Flash Blinder:**
   High-intensity $100\text{vw} \times 100\text{vh}$ blinder wash with 0.96 peak opacity, direct DOM mutation, and compulsory pure white downbeats cycling through song palette colors.
+- **Direct YouTube Link Stage Ingest:**
+  Provide any YouTube URL (via input pill, paste button, or `Cmd+V`). Synwave directly mounts the video on the concert screen while extracting lossless audio.
 - **High-Precision Audio-Video Drift Synchronization:**
   A 100ms continuous monitoring loop locks the YouTube stage video to the master Web Audio clock, snapping buffered video into lip-sync and percussive phase.
 - **3-Tier Persistent STEM Cache:**
-  Subsequent plays of analyzed songs load in **`< 10ms`** from Memory, IndexedDB, or local disk, eliminating redundant neural compute.
-- **Shazam-First Track Recognition:**
-  Acoustic fingerprinting resolves track title and artist in `< 1.5s` before neural separation, displaying verified metadata throughout the loading experience.
+  Subsequent plays of analyzed songs load in **`< 10ms`** from Memory, IndexedDB, or local disk under `.synwave_cache`, eliminating redundant neural compute.
+- **Zero API Key Requirement:**
+  By directly providing the YouTube link, no Google Cloud API keys, quotas, or rate-limiting apply.
 - **Clean Stage Video Aperture:**
   The YouTube concert screen is completely free of text overlays, status badges, or forced closed captions (`cc_load_policy: 0`).
 - **Dual-Layer Audio Impact:**
@@ -290,10 +292,10 @@ Ensure you have the following installed on your machine:
 - **Node.js**: v18.0.0 or later (v20+ recommended)
 - **npm**: v9.0.0 or later
 - **Python**: v3.10, v3.11, or v3.12 (with `venv` support)
+- **ffmpeg**: Required for audio extraction (`brew install ffmpeg` on macOS)
 - **macOS / Linux / Windows**:
   - *macOS (Apple Silicon M1/M2/M3/M4)*: Supported with native Metal Performance Shaders (MPS) hardware acceleration.
   - *Windows / Linux*: Supported with NVIDIA CUDA or CPU fallback.
-- **ffmpeg** *(recommended)*: For broader local audio format decoding.
 
 ---
 
@@ -316,7 +318,7 @@ npm install
 
 ### Step 3: Set Up Python Microservice Virtual Environment
 
-Synwave uses a local FastAPI microservice for Shazam acoustic fingerprinting and Meta Demucs neural stem separation.
+Synwave uses a local FastAPI microservice for `yt-dlp` audio extraction and Meta Demucs neural stem separation.
 
 ```bash
 # 1. Create a dedicated Python virtual environment
@@ -337,27 +339,7 @@ pip install -r requirements.txt
 
 ---
 
-### Step 4: Configure Your YouTube Data API v3 Key
-
-Synwave requires a Google Cloud YouTube Data API v3 key to search and synchronize official stage videos.
-
-You can configure the key in either of two ways:
-1. **Via Environment File (Recommended for Development):**
-   ```bash
-   cp .env.example .env
-   ```
-   Open `.env` in your text editor and paste your key:
-   ```env
-   VITE_YOUTUBE_API_KEY=AIzaSy...
-   ```
-2. **Via In-App Startup Gate:**
-   Launch the app without a key, and Synwave will present the interactive startup gate modal where you can paste and validate your key directly.
-
-*(See [YouTube Data API v3 Configuration](#-youtube-data-api-v3-configuration) below for a 2-minute setup guide).*
-
----
-
-### Step 5: Start the Development Servers
+### Step 4: Start the Development Servers
 
 #### Option A: Unified Launcher (Recommended — Single Command)
 
@@ -412,26 +394,6 @@ npm run lint
 
 ---
 
-## 🔑 YouTube Data API v3 Configuration
-
-### How to Get a Free YouTube API Key (2 Minutes)
-
-Google Cloud provides **10,000 free quota units per day** for YouTube Data API v3 per project without requiring billing:
-
-1. Visit the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (e.g., `Synwave-Visualizer`).
-3. Navigate to **APIs & Services > Library**, search for **YouTube Data API v3**, and click **Enable**.
-4. Navigate to **APIs & Services > Credentials**, click **Create Credentials > API key**.
-5. Copy the generated API key (format starts with `AIzaSy...`).
-6. Paste the key into Synwave's startup modal or your `.env` file.
-
-### Quota Consumption & Limitations
-
-- **Lightweight Key Validation:** Synwave verifies keys via `videoCategories.list`, which costs only **1 unit**.
-- **Track Video Search:** Resolving a song name to its official YouTube video costs **100 units** per unique track query (`search.list`).
-- **Embed Restrictions:** Some official music videos may have third-party embedding disabled by rights holders or may be geo-restricted. If an iframe fails to embed, Synwave maintains full 3D procedural lighting and local audio playback.
-- **Browser Autoplay Policies:** Browsers prevent unmuted audio autoplay. Synwave complies by setting YouTube video volume strictly to 0 and driving audio exclusively through Web Audio API.
-
 ---
 
 ## 🛠️ Technologies & Official Repositories
@@ -440,16 +402,16 @@ Google Cloud provides **10,000 free quota units per day** for YouTube Data API v
 |---|---|---|
 | **React 19** | Modern UI components, hooks, reactive state management | [facebook/react](https://github.com/facebook/react) |
 | **Three.js (r186)** | 3D scene graph, procedural geometry, lighting shaders, WebGL2 | [mrdoob/three.js](https://github.com/mrdoob/three.js) |
+| **yt-dlp** | High-speed audio extraction and stream resolution from YouTube URLs | [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp) |
+| **FFmpeg** | High-fidelity audio stream decoding and conversion to uncompressed WAV | [FFmpeg/FFmpeg](https://ffmpeg.org/) |
 | **Meta Demucs v4** | Neural music source separation (Hybrid Transformer HTDemucs) | [adefossez/demucs](https://github.com/adefossez/demucs) |
 | **PyTorch** | Deep learning runtime with Apple Silicon MPS acceleration | [pytorch/pytorch](https://github.com/pytorch/pytorch) |
-| **ShazamIO** | Asynchronous song recognition & acoustic fingerprinting | [shazamio/ShazamIO](https://github.com/shazamio/ShazamIO) |
-| **FastAPI** | High-performance Python microservice handling AI tasks | [fastapi/fastapi](https://github.com/fastapi/fastapi) |
+| **FastAPI** | High-performance Python microservice handling audio extraction and AI tasks | [fastapi/fastapi](https://github.com/fastapi/fastapi) |
 | **Uvicorn** | Lightning-fast ASGI web server implementation | [encode/uvicorn](https://github.com/encode/uvicorn) |
 | **TypeScript** | Type safety, rigorous interfaces, and compile-time correctness | [microsoft/TypeScript](https://github.com/microsoft/TypeScript) |
 | **Vite** | Next-generation frontend tooling and HMR dev server | [vitejs/vite](https://github.com/vitejs/vite) |
 | **Lucide Icons** | Minimalist modern icon set for controls and navigation | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |
 | **Web Audio API** | Hardware-synchronized audio clock, multi-band FFT analyser | [W3C Web Audio API Spec](https://www.w3.org/TR/webaudio/) |
-| **YouTube Data API v3** | Official music video search, thumbnail color palettes, metadata | [Google YouTube Data API](https://developers.google.com/youtube/v3) |
 
 ---
 

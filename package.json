@@ -8,7 +8,7 @@
     "start": "bash start.sh",
     "dev": "bash start.sh",
     "dev:frontend": "vite",
-    "dev:shazam": "source .venv/bin/activate && python3 shazam_server.py",
+    "dev:server": "source .venv/bin/activate && python3 server.py",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

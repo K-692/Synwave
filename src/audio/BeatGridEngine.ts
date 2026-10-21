@@ -11,7 +11,7 @@
 
 import type { BeatGridState } from '../types';
 
-export type BpmSource = 'shazamio' | 'demucs' | 'unavailable';
+export type BpmSource = 'demucs' | 'manual' | 'unavailable';
 
 export class BeatGridEngine {
   private bpm = 120.0;
@@ -64,7 +64,7 @@ export class BeatGridEngine {
         if (parsed.bpm && parsed.bpm >= 50 && parsed.bpm <= 240) {
           this.bpm = parsed.bpm;
           this.bpmSource = parsed.bpmSource || 'demucs';
-          this.confidence = parsed.confidence ?? (this.bpmSource === 'shazamio' ? 1.0 : 0.65);
+          this.confidence = parsed.confidence ?? (this.bpmSource === 'manual' ? 1.0 : 0.85);
           this.isUserCalibrated = !!parsed.isUserCalibrated;
           return;
         }
@@ -76,8 +76,8 @@ export class BeatGridEngine {
     if (preAnalyzedBpm && preAnalyzedBpm >= 50 && preAnalyzedBpm <= 240 && source !== 'unavailable') {
       this.bpm = preAnalyzedBpm;
       this.bpmSource = source || 'demucs';
-      this.confidence = confidence ?? (this.bpmSource === 'shazamio' ? 1.0 : 0.65);
-      this.isUserCalibrated = this.bpmSource === 'shazamio';
+      this.confidence = confidence ?? (this.bpmSource === 'manual' ? 1.0 : 0.85);
+      this.isUserCalibrated = this.bpmSource === 'manual';
     } else {
       this.bpm = preAnalyzedBpm || 120;
       this.bpmSource = 'unavailable';

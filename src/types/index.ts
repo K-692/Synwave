@@ -69,7 +69,7 @@ export interface AudioFeatures {
   instrumentalActivity?: number; // Pre-processed instrumental activity & transient speed (0.0 to 1.0)
   globalIntensity?: number;      // Pre-processed overall track acoustic energy (0.0 to 1.0)
   estimatedBpm: number;      // Current tempo / BPM (or fallback)
-  bpmSource?: 'shazamio' | 'demucs' | 'unavailable'; // Strict provenance of tempo value
+  bpmSource?: 'demucs' | 'manual' | 'unavailable'; // Strict provenance of tempo value
   bpmConfidence?: number;    // 0.0 to 1.0 confidence in tempo value
   beatIndex: number;         // Monotonic beat counter
   barIndex: number;          // Bar index (1 to 4/8 in current phrase)
@@ -122,7 +122,7 @@ export interface AudioVisualRoutingConfig {
 
 export interface BeatGridState {
   bpm: number;
-  bpmSource?: 'shazamio' | 'demucs' | 'unavailable';
+  bpmSource?: 'demucs' | 'manual' | 'unavailable';
   beatIndex: number;
   barIndex: number;
   beatPhase: number;
@@ -248,29 +248,12 @@ export interface TrackAnalysis {
   };
 }
 
-export type RecognitionStatus =
+export type PipelineStatus =
   | 'unscanned'
-  | 'recognizing'
-  | 'recognized'
-  | 'unrecognized'
+  | 'extracting'
+  | 'ready'
   | 'failed'
   | 'cached';
-
-export interface ShazamMatchMetadata {
-  success: boolean;
-  title?: string;
-  artist?: string;
-  album?: string;
-  genre?: string;
-  coverArt?: string;
-  query?: string;
-  shazamKey?: string;
-  bpm?: number | null;
-  bpmSource?: 'shazamio' | null;
-  bpmConfidence?: number | null;
-  cached?: boolean;
-  error?: string;
-}
 
 export interface TrackRecord {
   id: string;
@@ -280,21 +263,21 @@ export interface TrackRecord {
   album: string;
   duration: number;
   url: string;
-  sizeBytes: number;
+  sizeBytes?: number;
   file?: File;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
   analysisStatus: AnalysisStatus;
   analysis?: TrackAnalysis;
   demucsStems?: DemucsStemData;
   bpm?: number | null;
-  bpmSource?: 'shazamio' | 'demucs' | 'unavailable';
+  bpmSource?: 'demucs' | 'manual' | 'unavailable';
   bpmConfidence?: number;
   producer?: string;
   releaseDate?: string;
   description?: string;
-  youtubeVideoId?: string;
   seed: number; // Deterministic random seed for this track
-  recognitionStatus?: RecognitionStatus;
-  shazamMatch?: ShazamMatchMetadata;
+  recognitionStatus?: PipelineStatus;
 }
 
 export interface VisualEffectContext {

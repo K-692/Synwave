@@ -178,7 +178,7 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
                     <span className="track-item-meta">
                       <Clock size={11} /> {formatDuration(track.duration)}
                     </span>
-                    {track.sizeBytes > 0 && (
+                    {typeof track.sizeBytes === 'number' && track.sizeBytes > 0 && (
                       <>
                         <span className="track-item-dot">•</span>
                         <span className="track-item-meta">

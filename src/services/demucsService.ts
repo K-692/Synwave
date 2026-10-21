@@ -1,5 +1,11 @@
 import type { DemucsStemData } from '../types';
-import { getTrackFingerprint } from './shazamService';
+
+export function getTrackFingerprint(fileOrPath: File | string): string {
+  if (typeof fileOrPath === 'string') {
+    return `fp-${fileOrPath}`;
+  }
+  return `fp-${fileOrPath.name}-${fileOrPath.size}-${fileOrPath.lastModified}`;
+}
 
 export interface StemSeparationResult {
   success: boolean;
@@ -267,9 +273,9 @@ export async function clearAllSynwaveCaches(): Promise<{ success: boolean; messa
   // 2. Clear browser IndexedDB stems
   await clearIndexedDBStems();
 
-  // 3. Clear browser Shazam and BPM local storage
+  // 3. Clear browser BPM local storage
   try {
-    localStorage.removeItem('synwave_shazam_cache_v2');
+    localStorage.removeItem('synwave_shazam_cache_v2'); // Clean up any legacy items
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);

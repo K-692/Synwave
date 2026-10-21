@@ -1413,17 +1413,40 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Beam Shaft Volumetric Expansion:**
   - Shaft width expands subtly ($1.0 + \text{bassFactor} \cdot 0.35$) with an additional $1.15\times$ radial pulse during active kick blink windows, maintaining a fixed cone apex at the spotlight origin.
 
+##### 5. YouTube Link Direct Audio Extraction via yt-dlp & Demucs Separation, Complete Shazam Decommissioning (Phase 30)
+- **Direct YouTube URL Stage Ingest:**
+  - Removed local audio file upload dependency from the primary workflow.
+  - Users provide a direct YouTube link (standard watch URL, shortened youtu.be, shorts, embed, or 11-char ID) via a glowing floating input pill in the header, paste button, drag-and-drop, or global window paste (`Cmd+V` / `Ctrl+V`).
+  - Stage video immediately mounts and plays in the concert stage aperture screen with audio muted (`volume = 0` / `muted = true`).
+- **High-Fidelity Audio Extraction via `yt-dlp` & FFmpeg:**
+  - Microservice endpoint `POST /api/youtube/process` invokes `yt-dlp` with `FFmpegExtractAudio` (`preferredcodec: "wav"`, `preferredquality: "0"`).
+  - Extracts the exact high-fidelity uncompressed WAV audio stream from the YouTube video.
+  - Caches audio under `.synwave_cache/audio/yt_{video_id}.wav` using the YouTube video ID as the canonical unique identifier.
+  - Serves extracted audio to `AudioEngine` via streaming endpoint `GET /api/audio/{video_id}`.
+- **Neural Source Separation (Meta Demucs v4) on Extracted Audio:**
+  - Demucs v4 runs directly on the extracted `.wav` file on Apple Silicon Metal Performance Shaders (`device="mps"`).
+  - Produces 25 FPS RMS envelopes for all 4 stems (`drums`, `bass`, `instruments`, `vocals`), kick onsets, transient timestamps, and average amplitude reference levels.
+  - Caches stem profiles persistently in `.synwave_cache/stems/stems_yt_{video_id}.json`.
+  - Future sessions for the same YouTube link achieve instant sub-10ms cache hits.
+- **Complete Decommissioning of Shazam & API Keys:**
+  - Removed `shazamio`, `certifi`, `shazamService.ts`, and legacy `shazam_server.py`.
+  - Removed `YouTubeApiKeyModal.tsx`, `youtubeService.ts`, and mandatory Google Cloud API key gates.
+  - Direct YouTube URL provides exact video identity and track metadata without external API quotas or rate limits.
+  - BPM is derived authoritatively from Demucs neural kick timestamps (`source: 'demucs'`) with high confidence.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
 
 - **TypeScript Compilation:** `npm run build` compiles with **0 errors and 0 warnings** (`tsc -b && vite build`).
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
-- **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice and Vite frontend with clean signal handling.
+- **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
-- **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
-- **Concert Stage Architecture (Phase 28):**
-  - All laser systems completely decommissioned.
+- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), and `.synwave_cache/metadata` (`meta_yt_*.json`).
+- **YouTube Concert Stage Architecture (Phase 30):**
+  - Direct YouTube URL workflow with automatic video ID extraction and stage iframe mounting.
+  - Pure uncompressed WAV extraction via `yt-dlp` & `ffmpeg`.
+  - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS.
   - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture.
   - 45m high-power volumetric white beams projecting upward into the arena sky, sweeping Left, Top (zenith), and Right with zero downward focus.
   - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).

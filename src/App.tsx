@@ -14,20 +14,16 @@ import { RoutingConsole } from './components/RoutingConsole';
 import { DiagnosticOverlay } from './components/DiagnosticOverlay';
 import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
 import { detectHardwareProfile } from './utils/hardwareDetector';
-import { identifyAudioWithShazam, getTrackFingerprint } from './services/shazamService';
 import {
-  searchYouTubeVideo,
-  getYouTubeApiKey,
-  validateYouTubeApiKey,
-} from './services/youtubeService';
-import { YouTubeApiKeyModal } from './components/YouTubeApiKeyModal';
+  processYouTubeUrl,
+  extractYouTubeVideoId,
+} from './services/youtubeAudioService';
 import { extractThumbnailColors } from './services/thumbnailColorService';
 import { StemSeparationLoader } from './components/StemSeparationLoader';
-import { separateAudioWithDemucs } from './services/demucsService';
+import { separateAudioWithDemucs, getTrackFingerprint } from './services/demucsService';
 import { resolveTrackBpm, mapBpmToSpotlightCount } from './services/tempoService';
 import type {
   QualityPreset,
-  RecognitionStatus,
   RepeatMode,
   StageProfile,
   TrackRecord,
@@ -124,7 +120,7 @@ export const App: React.FC = () => {
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isSeparatingStems, setIsSeparatingStems] = useState<boolean>(false);
   const [separationStatus, setSeparationStatus] = useState<string>('');
-  const [stemLoaderPhase, setStemLoaderPhase] = useState<'recognizing' | 'extracting'>('extracting');
+  const [stemLoaderPhase, setStemLoaderPhase] = useState<'extracting' | 'extracting_audio' | 'extracting_stems'>('extracting');
   const [stemLoaderTitle, setStemLoaderTitle] = useState<string>('');
   const [stemLoaderArtist, setStemLoaderArtist] = useState<string>('');
 
@@ -150,50 +146,6 @@ export const App: React.FC = () => {
     isBothMediaReadyRef.current = isBothMediaReady;
   }, [isAudioReady, isVideoReady, isVideoLoading, isSeparatingStems, hasPlaybackStarted, isBothMediaReady]);
 
-  // YouTube Data API v3 Startup Verification Gate State
-  const [apiGateStatus, setApiGateStatus] = useState<'checking' | 'validating' | 'gated' | 'ready'>('checking');
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
-  const [keyValidationError, setKeyValidationError] = useState<string | undefined>(undefined);
-
-  // Startup YouTube Data API Key Verification Gate
-  useEffect(() => {
-    let isCancelled = false;
-
-    const runStartupKeyGate = async () => {
-      const existingKey = getYouTubeApiKey();
-      if (!existingKey) {
-        // Missing key: block main app and require setup modal
-        if (!isCancelled) {
-          setApiGateStatus('gated');
-          setIsKeyModalOpen(true);
-        }
-        return;
-      }
-
-      // Existing key: validate with lightweight 1-unit request
-      if (!isCancelled) {
-        setApiGateStatus('validating');
-      }
-
-      const result = await validateYouTubeApiKey(existingKey);
-      if (isCancelled) return;
-
-      if (result.isValid) {
-        setApiGateStatus('ready');
-      } else {
-        // Validation failed (invalid, quota exhausted, restricted, network)
-        setApiGateStatus('gated');
-        setKeyValidationError(result.errorMessage || 'Configured YouTube API Key could not be validated.');
-        setIsKeyModalOpen(true);
-      }
-    };
-
-    runStartupKeyGate();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   // Subscribe to RoutingStore profile and config changes
   useEffect(() => {
@@ -493,8 +445,8 @@ export const App: React.FC = () => {
 
       if (audioEngineRef.current) {
         audioEngineRef.current.setTrackAnalysis(track.analysis || null);
-        // Resolve BPM with priority: ShazamIO verified -> Demucs kick intervals -> unavailable
-        const resolvedBpm = resolveTrackBpm(track.id, track.shazamMatch || null, track.demucsStems);
+        // Resolve BPM with priority: Demucs kick intervals -> unavailable
+        const resolvedBpm = resolveTrackBpm(track.id, null, track.demucsStems);
         track.bpm = resolvedBpm.bpm;
         track.bpmSource = resolvedBpm.source;
         track.bpmConfidence = resolvedBpm.confidence;
@@ -517,38 +469,8 @@ export const App: React.FC = () => {
         // Load Demucs neural stems (from cache or track record)
         if (track.demucsStems) {
           audioEngineRef.current.setDemucsStems(track.demucsStems);
-        } else {
-          // Sequential pipeline: ShazamIO recognition first as a prerequisite, then Demucs
+        } else if (track.file || track.url) {
           (async () => {
-            let match = track.shazamMatch;
-            if (!match && track.recognitionStatus !== 'recognized') {
-              match = await identifyAudioWithShazam(track.file || track.url, {
-                songTitle: track.title,
-                songArtist: track.artist,
-              });
-              if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-              if (match.success && match.title) {
-                track.title = match.title;
-                track.artist = match.artist || track.artist;
-                track.recognitionStatus = match.cached ? 'cached' : 'recognized';
-                track.shazamMatch = match;
-                setCurrentTrack((prev) =>
-                  prev && prev.id === pipelineTrackId
-                    ? {
-                        ...prev,
-                        title: track.title,
-                        artist: track.artist,
-                        recognitionStatus: track.recognitionStatus,
-                        shazamMatch: match,
-                      }
-                    : prev
-                );
-                visualEngineRef.current?.setTrackInfo(track.title, track.artist);
-              } else {
-                track.recognitionStatus = match.error ? 'failed' : 'unrecognized';
-              }
-            }
-
             const stems = await separateAudioWithDemucs(track.file || track.url, {
               fingerprint: getTrackFingerprint(track.file || track.url),
               songTitle: track.title,
@@ -559,7 +481,7 @@ export const App: React.FC = () => {
               track.demucsStems = stems;
               audioEngineRef.current?.setDemucsStems(stems);
               // Re-resolve BPM now that Demucs kick stems are available
-              const updatedBpm = resolveTrackBpm(track.id, match, stems);
+              const updatedBpm = resolveTrackBpm(track.id, null, stems);
               if (updatedBpm.source !== 'unavailable') {
                 track.bpm = updatedBpm.bpm;
                 track.bpmSource = updatedBpm.source;
@@ -608,29 +530,9 @@ export const App: React.FC = () => {
     };
   }, [repeatMode, tracks, currentTrack]);
 
-  // Key configuration saved and validated
-  const handleKeySaved = useCallback((_validKey: string) => {
-    setApiGateStatus('ready');
-    setKeyValidationError(undefined);
-    setIsKeyModalOpen(false);
-
-    // If a track was already loaded without an active YouTube video, trigger search now
-    if (currentTrack && !currentVideoId) {
-      searchYouTubeVideo(`${currentTrack.title} ${currentTrack.artist}`).then((res) => {
-        if (res) {
-          setCurrentVideoId(res.videoId);
-          setCurrentVideoTitle(res.title);
-        }
-      });
-    }
-  }, [currentTrack, currentVideoId]);
 
   // 4. Transport Handlers
   const handlePlayPause = () => {
-    if (apiGateStatus !== 'ready') {
-      setIsKeyModalOpen(true);
-      return;
-    }
     if (!audioEngineRef.current) return;
     const isCurrentlyPlaying = audioEngineRef.current.isPlaying() || isPlaying;
     if (isCurrentlyPlaying) {
@@ -702,64 +604,21 @@ export const App: React.FC = () => {
     visualEngineRef.current?.setQuality(quality);
   };
 
-  // Ingest Selected Audio File from Header or Window Drag-and-Drop
-  const handleFilesSelected = async (fileList: FileList | File[]) => {
-    if (apiGateStatus !== 'ready') {
-      setIsKeyModalOpen(true);
+  // Ingest YouTube URL from Header, paste, or drop
+  const handleYouTubeUrlSubmit = useCallback(async (rawUrl: string) => {
+    const videoId = extractYouTubeVideoId(rawUrl);
+    if (!videoId) {
+      console.warn('[App] Invalid YouTube URL provided:', rawUrl);
       return;
     }
 
-    const filesArray = Array.from(fileList);
-    const audioFile = filesArray.find(
-      (f) => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i)
-    );
-
-    if (!audioFile) return;
-
-    let hash = 0;
-    for (let i = 0; i < audioFile.name.length; i++) {
-      hash = (hash << 5) - hash + audioFile.name.charCodeAt(i);
-      hash |= 0;
-    }
-
-    const baseName = audioFile.name.replace(/\.[^/.]+$/, '');
-    const parts = baseName.split(' - ');
-    const initialArtist = parts.length > 1 ? parts[0].trim() : 'Local Audio';
-    const initialTitle = parts.length > 1 ? parts.slice(1).join(' - ').trim() : baseName;
-
-    // =========================================================================
-    // Phase 13: 5-Step Sequential Pipeline
-    // 1. Load selected audio track & initialize safe fallback state
-    // 2. Run ShazamIO recognition (as a prerequisite before Demucs)
-    // 3. Resolve title and artist (update state & loader banner)
-    // 4. Extract Stage STEMs using Demucs (status: Extracting Stage STEMs — Track Title)
-    // 5. Complete analysis and unlock playback
-    // =========================================================================
-
-    // Step 1: Load selected audio track
-    const trackId = `local-${audioFile.name}-${audioFile.size}-${audioFile.lastModified}`;
+    const trackId = `yt-${videoId}`;
     const pipelineTrackId = trackId;
     activePipelineTrackIdRef.current = pipelineTrackId;
 
-    const track: TrackRecord = {
-      id: trackId,
-      name: audioFile.name,
-      title: initialTitle,
-      artist: initialArtist,
-      album: 'Local Audio',
-      duration: 0,
-      url: URL.createObjectURL(audioFile),
-      sizeBytes: audioFile.size,
-      file: audioFile,
-      analysisStatus: 'unscanned',
-      recognitionStatus: 'recognizing',
-      seed: Math.abs(hash),
-    };
-
-    setTracks([track]);
-    setCurrentTrack(track);
-    setCurrentVideoId(null);
-    setCurrentVideoTitle('');
+    // 1. Immediately mount video in YouTube stage player (muted)
+    setCurrentVideoId(videoId);
+    setCurrentVideoTitle('Loading Stage Feed...');
     setIsVideoReady(false);
     setIsVideoLoading(true);
     setIsAudioReady(false);
@@ -768,183 +627,123 @@ export const App: React.FC = () => {
     hasPlaybackStartedRef.current = false;
     setIsBottomBarVisible(false);
 
-    // Stop current playback while new track is prepared
+    // Stop current playback while new stage track is prepared
     audioEngineRef.current?.pause();
     visualEngineRef.current?.setIsPlaying(false);
     setIsPlaying(false);
 
-    // Step 2: Run ShazamIO recognition as a prerequisite for Demucs
+    // 2. Activate Stage STEMs & Audio Extraction Loader
     setIsSeparatingStems(true);
-    setStemLoaderPhase('recognizing');
-    setStemLoaderTitle(initialTitle);
-    setStemLoaderArtist(initialArtist);
-    setSeparationStatus('Recognizing track with ShazamIO...');
-
-    const fingerprint = getTrackFingerprint(audioFile);
-    let match = null;
-    try {
-      match = await identifyAudioWithShazam(audioFile, {
-        customFingerprint: fingerprint,
-        songTitle: initialTitle,
-        songArtist: initialArtist,
-      });
-    } catch (err) {
-      console.warn('[App] Shazam recognition error fallback:', err);
-      match = { success: false, error: (err as Error).message };
-    }
-
-    // Guard against race conditions when users rapidly switch tracks
-    if (activePipelineTrackIdRef.current !== pipelineTrackId) {
-      console.info(`[App] Stale recognition discarded for ${pipelineTrackId}`);
-      return;
-    }
-
-    // Step 3: Resolve title and artist
-    const isRecognized = Boolean(match && match.success && match.title);
-    const resolvedTitle = isRecognized ? (match!.title as string) : initialTitle;
-    const resolvedArtist = isRecognized ? (match!.artist || 'Unknown Artist') : initialArtist;
-    const recognitionStatus: RecognitionStatus = isRecognized
-      ? (match!.cached ? 'cached' : 'recognized')
-      : (match?.error ? 'failed' : 'unrecognized');
-
-    track.title = resolvedTitle;
-    track.artist = resolvedArtist;
-    track.recognitionStatus = recognitionStatus;
-    track.shazamMatch = match || undefined;
-    if (match?.album) {
-      track.album = match.album;
-    }
-
-    // Save matched song title, artist, track identifier, and recognition status in current track state
-    setCurrentTrack((prev) =>
-      prev && prev.id === pipelineTrackId
-        ? {
-            ...prev,
-            title: resolvedTitle,
-            artist: resolvedArtist,
-            album: track.album,
-            recognitionStatus,
-            shazamMatch: track.shazamMatch,
-          }
-        : prev
-    );
-    setTracks((prev) =>
-      prev.map((t) =>
-        t.id === pipelineTrackId
-          ? {
-              ...t,
-              title: resolvedTitle,
-              artist: resolvedArtist,
-              album: track.album,
-              recognitionStatus,
-              shazamMatch: track.shazamMatch,
-            }
-          : t
-      )
-    );
-    visualEngineRef.current?.setTrackInfo(resolvedTitle, resolvedArtist);
-
-    // Step 4: Extract Stage STEMs using Demucs with recognized track title in extraction status
     setStemLoaderPhase('extracting');
-    setStemLoaderTitle(resolvedTitle);
-    setStemLoaderArtist(resolvedArtist);
-    setSeparationStatus(`Extracting Stage STEMs — ${resolvedTitle}`);
+    setStemLoaderTitle(`YouTube Stage Feed (${videoId})`);
+    setStemLoaderArtist('Direct Audio Extraction');
+    setSeparationStatus('Extracting audio stream with yt-dlp & FFmpeg...');
 
-    let demucsStems = null;
     try {
-      demucsStems = await separateAudioWithDemucs(audioFile, {
-        fingerprint,
-        songTitle: resolvedTitle,
-        songArtist: resolvedArtist,
-        onProgress: (status) => {
-          if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-          setSeparationStatus(`Extracting Stage STEMs — ${resolvedTitle}${status ? ` (${status})` : ''}`);
-        },
+      const result = await processYouTubeUrl(rawUrl, (status) => {
+        if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+        setSeparationStatus(status);
       });
+
       if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-      if (demucsStems) {
-        track.demucsStems = demucsStems;
-        audioEngineRef.current?.setDemucsStems(demucsStems);
+
+      if (!result.success) {
+        console.error('[App] Failed to process YouTube audio:', result.error);
+        setSeparationStatus(`Failed: ${result.error || 'Audio extraction error'}`);
+        setIsSeparatingStems(false);
+        return;
       }
+
+      let hash = 0;
+      for (let i = 0; i < videoId.length; i++) {
+        hash = (hash << 5) - hash + videoId.charCodeAt(i);
+        hash |= 0;
+      }
+
+      const track: TrackRecord = {
+        id: trackId,
+        name: `${result.title}.wav`,
+        title: result.title,
+        artist: result.artist,
+        album: 'YouTube Concert Stage',
+        duration: result.duration || result.durationSeconds || 0,
+        url: result.audioUrl,
+        sizeBytes: 0,
+        analysisStatus: 'unscanned',
+        recognitionStatus: 'ready',
+        seed: Math.abs(hash),
+        youtubeVideoId: videoId,
+        youtubeUrl: rawUrl,
+        demucsStems: result.stems || undefined,
+      };
+
+      setTracks([track]);
+      setCurrentTrack(track);
+      setCurrentVideoTitle(result.title);
+      visualEngineRef.current?.setTrackInfo(result.title, result.artist);
+
+      // Resolve BPM from Demucs neural kick stems
+      const resolvedBpm = resolveTrackBpm(track.id, null, result.stems);
+      track.bpm = resolvedBpm.bpm;
+      track.bpmSource = resolvedBpm.source;
+      track.bpmConfidence = resolvedBpm.confidence;
+      if (audioEngineRef.current) {
+        audioEngineRef.current.setTrackBeatGrid(
+          track.id,
+          resolvedBpm.bpm ?? undefined,
+          resolvedBpm.confidence,
+          resolvedBpm.source
+        );
+      }
+      const routingCfg = RoutingStore.getInstance().getConfig();
+      if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
+        const count = mapBpmToSpotlightCount(
+          resolvedBpm.bpm,
+          routingCfg.minSpotlightCount,
+          routingCfg.maxSpotlightCount
+        );
+        visualEngineRef.current?.setSpotlightCount(count);
+        RoutingStore.getInstance().setSpotlightCount(count);
+      }
+
+      // Load extracted audio endpoint into AudioEngine
+      await loadTrack(track, false);
+      if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
+
+      setTimeout(() => {
+        if (activePipelineTrackIdRef.current === pipelineTrackId) {
+          setIsVideoLoading(false);
+          setIsVideoReady(true);
+        }
+      }, 3000);
     } catch (err) {
-      console.warn('[Demucs] Stem separation error:', err);
+      console.error('[App] Error processing YouTube URL:', err);
+      if (activePipelineTrackIdRef.current === pipelineTrackId) {
+        setSeparationStatus('Audio extraction failed. Check console.');
+      }
     } finally {
       if (activePipelineTrackIdRef.current === pipelineTrackId) {
         setIsSeparatingStems(false);
       }
     }
+  }, [loadTrack]);
 
-    if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-
-    // Step 5: Complete analysis and unlock playback
-    // Resolve BPM with verified ShazamIO priority, falling back to Demucs kick intervals
-    const resolvedBpm = resolveTrackBpm(track.id, match, track.demucsStems || demucsStems);
-    track.bpm = resolvedBpm.bpm;
-    track.bpmSource = resolvedBpm.source;
-    track.bpmConfidence = resolvedBpm.confidence;
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setTrackBeatGrid(
-        track.id,
-        resolvedBpm.bpm ?? undefined,
-        resolvedBpm.confidence,
-        resolvedBpm.source
-      );
-    }
-    const routingCfg = RoutingStore.getInstance().getConfig();
-    if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
-      const count = mapBpmToSpotlightCount(resolvedBpm.bpm, routingCfg.minSpotlightCount, routingCfg.maxSpotlightCount);
-      visualEngineRef.current?.setSpotlightCount(count);
-      RoutingStore.getInstance().setSpotlightCount(count);
-    }
-
-    // Load track into audio engine without autoplay (playback unlocks once media is ready)
-    await loadTrack(track, false);
-    if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-
-    // Query official YouTube video and metadata
-    try {
-      const searchQuery = (match && match.query) || `${resolvedTitle} ${resolvedArtist}`;
-      const ytResult = await searchYouTubeVideo(searchQuery);
-      if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
-
-      if (ytResult) {
-        setCurrentVideoId(ytResult.videoId);
-        setCurrentVideoTitle(ytResult.title);
-
-        setCurrentTrack((prev) =>
-          prev && prev.id === pipelineTrackId
-            ? {
-                ...prev,
-                title: ytResult.title,
-                artist: ytResult.channelTitle,
-                producer: ytResult.producer || 'Official Production',
-                releaseDate: ytResult.publishedAt || 'N/A',
-                description: ytResult.description || '',
-                youtubeVideoId: ytResult.videoId,
-              }
-            : prev
-        );
-
-        visualEngineRef.current?.setTrackInfo(ytResult.title, ytResult.channelTitle);
-
-        setTimeout(() => {
-          if (activePipelineTrackIdRef.current === pipelineTrackId) {
-            setIsVideoLoading(false);
-            setIsVideoReady(true);
-          }
-        }, 5000);
-      } else {
-        setIsVideoReady(true);
-        setIsVideoLoading(false);
+  // Global window paste handler to automatically capture YouTube links pasted anywhere
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
       }
-    } catch (err) {
-      console.warn('YouTube search fallback error:', err);
-      if (activePipelineTrackIdRef.current === pipelineTrackId) {
-        setIsVideoReady(true);
-        setIsVideoLoading(false);
+      const text = e.clipboardData?.getData('text');
+      if (text && (text.includes('youtube.com') || text.includes('youtu.be'))) {
+        e.preventDefault();
+        handleYouTubeUrlSubmit(text.trim());
       }
-    }
-  };
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [handleYouTubeUrlSubmit]);
 
   const handleToggleFullscreen = async () => {
     try {
@@ -1005,8 +804,6 @@ export const App: React.FC = () => {
   const isPlayingRef = useRef(isPlaying);
   const currentTimeRef = useRef(currentTime);
   const durationRef = useRef(duration);
-  const apiGateStatusRef = useRef(apiGateStatus);
-  const isKeyModalOpenRef = useRef(isKeyModalOpen);
   const handlePlayPauseRef = useRef(handlePlayPause);
   const handleToggleFullscreenRef = useRef(handleToggleFullscreen);
   const handleSeekRef = useRef(handleSeek);
@@ -1015,8 +812,6 @@ export const App: React.FC = () => {
     isPlayingRef.current = isPlaying;
     currentTimeRef.current = currentTime;
     durationRef.current = duration;
-    apiGateStatusRef.current = apiGateStatus;
-    isKeyModalOpenRef.current = isKeyModalOpen;
     handlePlayPauseRef.current = handlePlayPause;
     handleToggleFullscreenRef.current = handleToggleFullscreen;
     handleSeekRef.current = handleSeek;
@@ -1034,10 +829,6 @@ export const App: React.FC = () => {
       const isEditable = target.isContentEditable || target.getAttribute?.('contenteditable') === 'true';
 
       if (isInput || isEditable) {
-        return;
-      }
-
-      if (apiGateStatusRef.current !== 'ready' || isKeyModalOpenRef.current) {
         return;
       }
 
@@ -1104,8 +895,9 @@ export const App: React.FC = () => {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleFilesSelected(e.dataTransfer.files);
+        const text = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+        if (text && (text.includes('youtube.com') || text.includes('youtu.be'))) {
+          handleYouTubeUrlSubmit(text.trim());
         }
       }}
     >
@@ -1143,12 +935,11 @@ export const App: React.FC = () => {
         isDiagnosticOpen={isDiagnosticOpen}
         activeProfileName={STAGE_PROFILES[activeProfile]?.name}
         isVisible={isTopBarVisible}
+        isLoading={isSeparatingStems || isVideoLoading}
         onToggleRouting={() => setIsRoutingOpen((prev) => !prev)}
         onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
         onMouseEnter={() => setIsTopBarVisible(true)}
-        onFilesSelected={handleFilesSelected}
-        onOpenKeySettings={() => setIsKeyModalOpen(true)}
-        isKeyModalOpen={isKeyModalOpen}
+        onYouTubeUrlSubmit={handleYouTubeUrlSubmit}
       />
 
       {/* Audio-to-Visual Routing Console Modal */}
@@ -1209,35 +1000,6 @@ export const App: React.FC = () => {
         statusText={separationStatus}
         phase={stemLoaderPhase}
       />
-
-      {/* YouTube Data API Key Mandatory Startup Gate & Settings Modal */}
-      <YouTubeApiKeyModal
-        isOpen={isKeyModalOpen || apiGateStatus === 'gated'}
-        isMandatoryGate={apiGateStatus !== 'ready'}
-        initialError={keyValidationError}
-        onKeySaved={handleKeySaved}
-        onClose={() => {
-          if (apiGateStatus === 'ready') {
-            setIsKeyModalOpen(false);
-          }
-        }}
-      />
-
-      {/* Startup Credential Verification Splash */}
-      {apiGateStatus === 'validating' && (
-        <div className="synwave-startup-gate-overlay">
-          <div className="startup-gate-content">
-            <div className="startup-gate-logo">
-              <img src="/icon.png" alt="Synwave App Icon" className="startup-gate-logo-img" />
-              <div className="startup-gate-pulse" />
-            </div>
-            <h2 className="startup-gate-title">VERIFYING STAGE CREDENTIALS</h2>
-            <p className="startup-gate-subtitle">
-              Validating YouTube Data API key with Google Cloud...
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Bottom Transport Player Dock (Attached flush to window bottom, auto-hides) */}
       <PlayerControls

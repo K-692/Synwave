@@ -51,7 +51,7 @@ echo -e "${GREEN}[1/2] Activating Python virtual environment: ${VENV_PATH}${NC}"
 source "$VENV_PATH/bin/activate"
 
 # Check Python and dependencies
-if ! python3 -c "import fastapi, uvicorn, shazamio" 2>/dev/null; then
+if ! python3 -c "import fastapi, uvicorn, yt_dlp, demucs" 2>/dev/null; then
     echo -e "${YELLOW}[WARN] Required Python packages missing. Installing from requirements.txt...${NC}"
     pip install -r requirements.txt
 fi
@@ -77,8 +77,8 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 # Start Python Microservice
-echo -e "${GREEN}[2/2] Launching Python Audio Intelligence Microservice (port 8765)...${NC}"
-python3 shazam_server.py &
+echo -e "${GREEN}[2/2] Launching Python YouTube Audio & Demucs Microservice (port 8765)...${NC}"
+python3 server.py &
 PY_PID=$!
 
 # Brief pause to let python microservice initialize

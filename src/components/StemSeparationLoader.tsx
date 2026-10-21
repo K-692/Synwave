@@ -12,14 +12,14 @@ interface StemSeparationLoaderProps {
   songTitle?: string;
   songArtist?: string;
   statusText?: string;
-  phase?: 'recognizing' | 'extracting';
+  phase?: 'extracting_audio' | 'extracting_stems' | 'extracting';
 }
 
 export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
   isVisible,
   songTitle,
   songArtist,
-  statusText = 'Separating neural stems with Demucs HTDemucs...',
+  statusText = 'Extracting audio & separating neural stems with Demucs HTDemucs...',
   phase = 'extracting',
 }) => {
   const [dots, setDots] = useState('');
@@ -37,13 +37,13 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
   if (!isVisible) return null;
 
   const stems = [
-    { name: 'DRUMS / KICKS', desc: 'Kick blinders, flame cannons, screen shake', icon: Disc3, color: '#ff3366' },
-    { name: 'BASS / SUB', desc: '360° perimeter bass rig, stage floor wash', icon: Cpu, color: '#00f0ff' },
-    { name: 'INSTRUMENTS', desc: 'White sky searchlights, atmospheric fill lights', icon: Music, color: '#7928ca' },
-    { name: 'VOCALS', desc: 'Perimeter cross-stage scissor lights, screen glow', icon: Mic2, color: '#ffea00' },
+    { name: 'DRUMS / KICKS', desc: 'Kick blinders, screen shake, downbeat strobes', icon: Disc3, color: '#ff3366' },
+    { name: 'BASS / SUB', desc: '360° perimeter bass rig, stage floor wash, sky spotlight turn-on', icon: Cpu, color: '#00f0ff' },
+    { name: 'INSTRUMENTS', desc: 'White sky searchlights, tempo sweeps, fill lights', icon: Music, color: '#7928ca' },
+    { name: 'VOCALS', desc: 'Perimeter cross-stage scissor lights, screen ambient glow', icon: Mic2, color: '#ffea00' },
   ];
 
-  const isRecognizing = phase === 'recognizing';
+  const isAudioExtracting = phase === 'extracting_audio';
 
   return (
     <div className="demucs-loader-backdrop" role="dialog" aria-modal="true" aria-label="Audio Processing Status">
@@ -51,41 +51,35 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
         {/* Glow Header */}
         <div className="demucs-loader-header">
           <div className="demucs-badge">
-            {isRecognizing ? (
+            {isAudioExtracting ? (
               <>
                 <Radio size={14} className="neon-cyan-icon animate-pulse" />
-                <span>SHAZAMIO • ACOUSTIC FINGERPRINT RECOGNITION</span>
+                <span>YOUTUBE AUDIO EXTRACTION • YT-DLP & FFMPEG</span>
               </>
             ) : (
               <>
                 <Sparkles size={14} className="neon-cyan-icon" />
-                <span>DEMUCS v4 • NEURAL STEM SEPARATION</span>
+                <span>DEMUCS v4 • NEURAL 4-STEM SOURCE SEPARATION</span>
               </>
             )}
           </div>
 
           <h2 className="demucs-title">
-            {isRecognizing ? (
-              `IDENTIFYING TRACK WITH SHAZAMIO${dots}`
-            ) : songTitle ? (
+            {songTitle ? (
               `EXTRACTING STAGE STEMS — ${songTitle.toUpperCase()}${dots}`
             ) : (
-              `EXTRACTING STAGE STEMS${dots}`
+              `PROCESSING YOUTUBE STAGE AUDIO${dots}`
             )}
           </h2>
 
           <p className="demucs-subtitle">
-            {isRecognizing ? (
-              <span className="demucs-recognizing-hint">
-                Listening to acoustic waveform & resolving song metadata...
-              </span>
-            ) : songTitle ? (
+            {songTitle ? (
               <>
                 <span className="demucs-track-name">{songTitle}</span>
                 {songArtist && <span className="demucs-track-artist"> — {songArtist}</span>}
               </>
             ) : (
-              <span className="demucs-track-name">Preparing Demucs neural models</span>
+              <span className="demucs-track-name">{statusText}</span>
             )}
           </p>
         </div>
@@ -94,7 +88,7 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
         <div className="demucs-stems-grid">
           {stems.map((stem, idx) => {
             const Icon = stem.icon;
-            const isActive = isRecognizing ? true : activeStemIdx === idx;
+            const isActive = isAudioExtracting ? true : activeStemIdx === idx;
             return (
               <div
                 key={stem.name}

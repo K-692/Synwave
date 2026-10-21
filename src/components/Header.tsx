@@ -1,17 +1,17 @@
 /**
  * Synwave Floating Top Header Component
- * Floating navigation pill buttons directly on the 3D stage window (zero solid container background).
- * - Top Left: Permanent clean SYNWAVE logo (no audio name inside logo)
- * - Center Top: Centered Load Audio / Drop File button
- * - Top Right: Floating Console & Telemetry HUD Toggles
+ * Floating navigation pill buttons directly on the 3D stage window.
+ * - Top Left: Permanent clean SYNWAVE brand pill
+ * - Center Top: Floating YouTube link input & extraction trigger
+ * - Top Right: Floating Console & Telemetry HUD toggles
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
-  Key,
+  ArrowRight,
+  ClipboardPaste,
   SlidersHorizontal,
-  Upload,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -20,30 +20,51 @@ interface HeaderProps {
   isDiagnosticOpen?: boolean;
   activeProfileName?: string;
   isVisible: boolean;
+  isLoading?: boolean;
   onToggleRouting?: () => void;
   onToggleDiagnostic?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
-  onFilesSelected?: (files: FileList | File[]) => void;
-  onOpenKeySettings?: () => void;
-  isKeyModalOpen?: boolean;
+  onYouTubeUrlSubmit?: (url: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   isRoutingOpen = false,
   isDiagnosticOpen = false,
   isVisible,
+  isLoading = false,
   onToggleRouting,
   onToggleDiagnostic,
   onMouseEnter,
   onMouseLeave,
-  onFilesSelected,
-  onOpenKeySettings,
-  isKeyModalOpen = false,
+  onYouTubeUrlSubmit,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
   const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = urlInput.trim();
+    if (clean && onYouTubeUrlSubmit && !isLoading) {
+      onYouTubeUrlSubmit(clean);
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          setUrlInput(text.trim());
+          if (onYouTubeUrlSubmit && !isLoading) {
+            onYouTubeUrlSubmit(text.trim());
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+    }
+  };
 
   return (
     <header
@@ -51,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Top Left: Clean Synwave Logo Pill (Permanently visible; dims smoothly when menus hide) */}
+      {/* Top Left: Clean Synwave Logo Pill */}
       <div
         className={`header-brand floating-pill ${isMenuVisible ? 'full-opacity' : 'dimmed'}`}
         title="Synwave Procedural Concert Stage"
@@ -63,55 +84,58 @@ export const Header: React.FC<HeaderProps> = ({
         <span className="brand-title">SYNWAVE</span>
       </div>
 
-      {/* Center Top: Load Audio File Floating Pill (Auto-hides with upper menus) */}
-      {onFilesSelected && (
+      {/* Center Top: YouTube URL Input Floating Bar (Auto-hides with upper menus) */}
+      {onYouTubeUrlSubmit && (
         <div className={`header-center-loader-wrapper menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
-          <div
-            className={`header-audio-loader floating-pill ${isDragging ? 'drag-over' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDragging(false);
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                onFilesSelected(e.dataTransfer.files);
-              }
-            }}
-            title="Click to select or drag & drop audio file to pre-process & play"
+          <form
+            className="header-youtube-loader floating-pill"
+            onSubmit={handleSubmit}
+            title="Paste YouTube link to extract audio & run Demucs neural stage separation"
           >
+            <div className="header-yt-icon-wrapper" title="YouTube Audio & Video Sync">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="#FF0033" className="yt-icon-svg">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+            </div>
+
             <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  onFilesSelected(e.target.files);
-                }
-              }}
+              type="text"
+              className="header-youtube-input"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Paste YouTube Link (e.g. https://www.youtube.com/watch?v=...)"
+              disabled={isLoading}
+              spellCheck={false}
+              autoComplete="off"
             />
-            <Upload size={14} className="header-upload-icon neon-cyan-icon" />
-            <span className="header-upload-text">LOAD AUDIO / DROP FILE</span>
-          </div>
+
+            {Boolean(navigator.clipboard?.readText) && (
+              <button
+                type="button"
+                className="header-paste-btn"
+                onClick={handlePaste}
+                title="Paste from clipboard"
+                disabled={isLoading}
+              >
+                <ClipboardPaste size={14} />
+              </button>
+            )}
+
+            <button
+              type="submit"
+              className="header-youtube-btn"
+              disabled={!urlInput.trim() || isLoading}
+              title="Extract audio & run stage concert simulation"
+            >
+              <span>{isLoading ? 'SYNCING...' : 'SYNC STAGE'}</span>
+              <ArrowRight size={13} />
+            </button>
+          </form>
         </div>
       )}
 
-      {/* Top Right: Floating Drawer & Console Toggles (Auto-hides with upper menus) */}
+      {/* Top Right: Floating Console & Telemetry HUD Toggles */}
       <div className={`header-toggles floating-pill menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
-        {onOpenKeySettings && (
-          <button
-            className={`btn-icon ${isKeyModalOpen ? 'active' : ''}`}
-            onClick={onOpenKeySettings}
-            title="YouTube Data API Key & Validation Gate"
-          >
-            <Key size={18} />
-          </button>
-        )}
-
         {onToggleRouting && (
           <button
             className={`btn-icon ${isRoutingOpen ? 'active' : ''}`}

@@ -815,7 +815,7 @@ export class AudioEngine {
     trackId: string,
     preAnalyzedBpm?: number | null,
     confidence?: number,
-    source?: 'shazamio' | 'demucs' | 'unavailable'
+    source?: 'demucs' | 'manual' | 'unavailable'
   ): void {
     this.beatGridEngine.setTrack(trackId, preAnalyzedBpm, confidence, source);
   }

@@ -13,6 +13,5 @@ demucs>=4.0.1
 torch>=2.2.0
 numpy>=1.26.0
 
-# Song Acoustic Fingerprinting & Recognition
-shazamio>=0.8.0
-certifi>=2024.0.0
+# YouTube Audio Extraction & Streaming
+yt-dlp>=2024.0.0
