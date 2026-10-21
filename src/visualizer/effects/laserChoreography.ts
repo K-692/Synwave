@@ -42,6 +42,28 @@ export interface LaserBeamTrajectory {
   elevation: number; // Compatible vertical angle (radians)
 }
 
+export type LaserSemanticState =
+  | 'OFF'
+  | 'CINEMATIC_DIRECTIONAL'
+  | 'MELODIC_ANTHEM'
+  | 'BUILD_RISER'
+  | 'DROP_IMPACT'
+  | 'DROP_GROOVE'
+  | 'CLIMAX_OMNIDIRECTIONAL';
+
+export interface LaserChoreographyMetadata {
+  readonly id: number;
+  readonly name: string;
+  readonly primaryCategory: LaserSemanticState;
+  readonly compatibleCategories: readonly LaserSemanticState[];
+  readonly roleInFourBar: 'motif' | 'develop' | 'tension' | 'accent' | 'any';
+  readonly defaultDensity: number;       // 0.2 to 1.0 (recommended beam density)
+  readonly defaultSpeedScale: number;    // 0.3 to 2.5 (recommended sweep speed scale)
+  readonly beatGatedSupport: boolean;    // Supports rhythmic on-off pulses
+  readonly maxSpreadDegrees: number;     // Spatial aperture limit in degrees
+  readonly intendedUse: string;          // Human-readable concert lighting role
+}
+
 export interface LaserChoreography {
   readonly id: number;
   readonly name: string;
@@ -478,7 +500,376 @@ export const LASER_CHOREOGRAPHIES: LaserChoreography[] = [
 ];
 
 /**
- * Deterministically selects the next choreography using mid-range spectral features and kick triggers.
+ * Phase 2 — Authoritative Concert Lighting Choreography Metadata Table
+ * Classifies each of the 22 top-aperture laser trajectories according to its intended
+ * semantic use, musical state eligibility, four-bar phrase role, density, and dynamics.
+ */
+export const LASER_CHOREOGRAPHY_METADATA: readonly LaserChoreographyMetadata[] = [
+  // 0: Audience & Camera Fly-Through
+  {
+    id: 0,
+    name: 'Audience & Camera Fly-Through',
+    primaryCategory: 'CINEMATIC_DIRECTIONAL',
+    compatibleCategories: ['CINEMATIC_DIRECTIONAL', 'DROP_IMPACT'],
+    roleInFourBar: 'motif',
+    defaultDensity: 0.50,
+    defaultSpeedScale: 0.60,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 90,
+    intendedUse: 'A sparse forward projection with slow instrumental tracking; may also be used as a controlled drop accent.',
+  },
+  // 1: 360° Orbital Sphere Gimbal
+  {
+    id: 1,
+    name: '360° Orbital Sphere Gimbal',
+    primaryCategory: 'CLIMAX_OMNIDIRECTIONAL',
+    compatibleCategories: ['CLIMAX_OMNIDIRECTIONAL'],
+    roleInFourBar: 'accent',
+    defaultDensity: 1.0,
+    defaultSpeedScale: 1.80,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 360,
+    intendedUse: 'Full spatial movement, reserved for high-impact climax sections.',
+  },
+  // 2: Cathedral 3D Scissor Matrix
+  {
+    id: 2,
+    name: 'Cathedral 3D Scissor Matrix',
+    primaryCategory: 'DROP_GROOVE',
+    compatibleCategories: ['DROP_GROOVE'],
+    roleInFourBar: 'motif',
+    defaultDensity: 0.85,
+    defaultSpeedScale: 1.20,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 140,
+    intendedUse: 'Rhythmic crossing movements; vary the crossing direction at bar boundaries.',
+  },
+  // 3: Stadium 3D Skyward Dome
+  {
+    id: 3,
+    name: 'Stadium 3D Skyward Dome',
+    primaryCategory: 'BUILD_RISER',
+    compatibleCategories: ['BUILD_RISER'],
+    roleInFourBar: 'tension',
+    defaultDensity: 0.75,
+    defaultSpeedScale: 1.10,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 160,
+    intendedUse: 'Gradually broaden and raise the fan during a qualified buildup; may resolve into a drop pattern.',
+  },
+  // 4: Camera-Targeting Concentrated Burst
+  {
+    id: 4,
+    name: 'Camera-Targeting Concentrated Burst',
+    primaryCategory: 'DROP_IMPACT',
+    compatibleCategories: ['DROP_IMPACT'],
+    roleInFourBar: 'accent',
+    defaultDensity: 0.90,
+    defaultSpeedScale: 1.50,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 45,
+    intendedUse: 'Brief synchronized burst on a confirmed drop entrance or exceptional kick accent.',
+  },
+  // 5: 3D Vortex Tunnel
+  {
+    id: 5,
+    name: '3D Vortex Tunnel',
+    primaryCategory: 'DROP_GROOVE',
+    compatibleCategories: ['DROP_GROOVE'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.85,
+    defaultSpeedScale: 1.40,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 120,
+    intendedUse: 'Forward-facing tunnel movement for a sustained, high-energy drop.',
+  },
+  // 6: 360° Horizon & Zenith Rake
+  {
+    id: 6,
+    name: '360° Horizon & Zenith Rake',
+    primaryCategory: 'DROP_GROOVE',
+    compatibleCategories: ['DROP_GROOVE'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.80,
+    defaultSpeedScale: 1.30,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 240,
+    intendedUse: 'Controlled vertical sweeping; use phrase-aware changes rather than uncontrolled continuous rotation.',
+  },
+  // 7: Forward Auditorium Scissor Canopy
+  {
+    id: 7,
+    name: 'Forward Auditorium Scissor Canopy',
+    primaryCategory: 'MELODIC_ANTHEM',
+    compatibleCategories: ['MELODIC_ANTHEM'],
+    roleInFourBar: 'motif',
+    defaultDensity: 0.55,
+    defaultSpeedScale: 0.65,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 110,
+    intendedUse: 'Slow aerial canopy for spacious melodic passages; keep movement restrained.',
+  },
+  // 8: 3D Dual Helicoid Spiral
+  {
+    id: 8,
+    name: '3D Dual Helicoid Spiral',
+    primaryCategory: 'MELODIC_ANTHEM',
+    compatibleCategories: ['MELODIC_ANTHEM', 'DROP_GROOVE'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.65,
+    defaultSpeedScale: 0.80,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 130,
+    intendedUse: 'Slow spirals for sustained melodic motion; accelerate only in a confirmed drop.',
+  },
+  // 9: Full-Window Corner-to-Corner Slashes
+  {
+    id: 9,
+    name: 'Full-Window Corner-to-Corner Slashes',
+    primaryCategory: 'DROP_IMPACT',
+    compatibleCategories: ['DROP_IMPACT'],
+    roleInFourBar: 'accent',
+    defaultDensity: 0.90,
+    defaultSpeedScale: 1.60,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 180,
+    intendedUse: 'Use as a deliberate full-width accent, not as a persistent background effect.',
+  },
+  // 10: 360° Radial Starburst
+  {
+    id: 10,
+    name: '360° Radial Starburst',
+    primaryCategory: 'CLIMAX_OMNIDIRECTIONAL',
+    compatibleCategories: ['CLIMAX_OMNIDIRECTIONAL'],
+    roleInFourBar: 'accent',
+    defaultDensity: 1.0,
+    defaultSpeedScale: 2.00,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 360,
+    intendedUse: 'Reserve for major phrase accents and exceptional climaxes.',
+  },
+  // 11: Audience Ocean Scan
+  {
+    id: 11,
+    name: 'Audience Ocean Scan',
+    primaryCategory: 'CINEMATIC_DIRECTIONAL',
+    compatibleCategories: ['CINEMATIC_DIRECTIONAL'],
+    roleInFourBar: 'motif',
+    defaultDensity: 0.45,
+    defaultSpeedScale: 0.50,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 90,
+    intendedUse: 'Smooth horizontal movement tracking sustained instrumental energy.',
+  },
+  // 12: Skyward Crown Fan
+  {
+    id: 12,
+    name: 'Skyward Crown Fan',
+    primaryCategory: 'MELODIC_ANTHEM',
+    compatibleCategories: ['MELODIC_ANTHEM', 'BUILD_RISER'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.60,
+    defaultSpeedScale: 0.70,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 140,
+    intendedUse: 'Slow upward illumination for emotional lifts; expand only as tension rises.',
+  },
+  // 13: Camera Plane Slicer
+  {
+    id: 13,
+    name: 'Camera Plane Slicer',
+    primaryCategory: 'DROP_GROOVE',
+    compatibleCategories: ['DROP_GROOVE'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.80,
+    defaultSpeedScale: 1.30,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 150,
+    intendedUse: 'Use beat-indexed or kick-indexed sweeps; avoid unsynchronized oscillation.',
+  },
+  // 14: 3D Kinetic Hypercube
+  {
+    id: 14,
+    name: '3D Kinetic Hypercube',
+    primaryCategory: 'BUILD_RISER',
+    compatibleCategories: ['BUILD_RISER'],
+    roleInFourBar: 'tension',
+    defaultDensity: 0.70,
+    defaultSpeedScale: 1.20,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 150,
+    intendedUse: 'Geometric motion that increases progressively during a qualified build.',
+  },
+  // 15: 3D Sonic Sine Wave
+  {
+    id: 15,
+    name: '3D Sonic Sine Wave',
+    primaryCategory: 'CINEMATIC_DIRECTIONAL',
+    compatibleCategories: ['CINEMATIC_DIRECTIONAL'],
+    roleInFourBar: 'motif',
+    defaultDensity: 0.45,
+    defaultSpeedScale: 0.55,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 85,
+    intendedUse: 'A restrained, smooth waveform following instrumental motion and sustained upper-mid movement.',
+  },
+  // 16: 360° Conical Fan Sweep
+  {
+    id: 16,
+    name: '360° Conical Fan Sweep',
+    primaryCategory: 'CLIMAX_OMNIDIRECTIONAL',
+    compatibleCategories: ['CLIMAX_OMNIDIRECTIONAL'],
+    roleInFourBar: 'tension',
+    defaultDensity: 1.0,
+    defaultSpeedScale: 1.70,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 360,
+    intendedUse: 'A sweeping full-space transition reserved for a major drop or climax.',
+  },
+  // 17: Prism Split 3D
+  {
+    id: 17,
+    name: 'Prism Split 3D',
+    primaryCategory: 'BUILD_RISER',
+    compatibleCategories: ['BUILD_RISER', 'DROP_IMPACT'],
+    roleInFourBar: 'accent',
+    defaultDensity: 0.75,
+    defaultSpeedScale: 1.20,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 135,
+    intendedUse: 'Progress from a narrow focal beam to a wider array on an intentional transition.',
+  },
+  // 18: Aerial Crossing Grid
+  {
+    id: 18,
+    name: 'Aerial Crossing Grid',
+    primaryCategory: 'BUILD_RISER',
+    compatibleCategories: ['BUILD_RISER', 'DROP_GROOVE'],
+    roleInFourBar: 'develop',
+    defaultDensity: 0.80,
+    defaultSpeedScale: 1.10,
+    beatGatedSupport: true,
+    maxSpreadDegrees: 140,
+    intendedUse: 'Progressively expand the lattice during a build or synchronize it to bar-level drop choreography.',
+  },
+  // 19: 360° Waterfall & Geyser
+  {
+    id: 19,
+    name: '360° Waterfall & Geyser',
+    primaryCategory: 'CLIMAX_OMNIDIRECTIONAL',
+    compatibleCategories: ['CLIMAX_OMNIDIRECTIONAL'],
+    roleInFourBar: 'accent',
+    defaultDensity: 1.0,
+    defaultSpeedScale: 1.90,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 360,
+    intendedUse: 'Opposing vertical cascades for a major climax only.',
+  },
+  // 20: Forward Starlight Cascade
+  {
+    id: 20,
+    name: 'Forward Starlight Cascade',
+    primaryCategory: 'BUILD_RISER',
+    compatibleCategories: ['BUILD_RISER'],
+    roleInFourBar: 'tension',
+    defaultDensity: 0.65,
+    defaultSpeedScale: 0.90,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 120,
+    intendedUse: 'Restrained cascading motion approaching a drop; intensify late in the buildup.',
+  },
+  // 21: Climax 3D Omnidirectional Superfan
+  {
+    id: 21,
+    name: 'Climax 3D Omnidirectional Superfan',
+    primaryCategory: 'CLIMAX_OMNIDIRECTIONAL',
+    compatibleCategories: ['CLIMAX_OMNIDIRECTIONAL'],
+    roleInFourBar: 'accent',
+    defaultDensity: 1.0,
+    defaultSpeedScale: 2.20,
+    beatGatedSupport: false,
+    maxSpreadDegrees: 360,
+    intendedUse: 'The highest-impact pattern. Reserve it for exceptional climaxes, not every drop or every phrase.',
+  },
+];
+
+/**
+ * Retrieves choreography metadata by ID (0-21).
+ */
+export function getChoreographyMetadata(id: number): LaserChoreographyMetadata {
+  return LASER_CHOREOGRAPHY_METADATA[id] ?? LASER_CHOREOGRAPHY_METADATA[0];
+}
+
+/**
+ * Returns all pattern IDs permitted for a given semantic state.
+ */
+export function getPatternsForSemanticState(state: LaserSemanticState): number[] {
+  if (state === 'OFF') return [];
+  const matches: number[] = [];
+  for (const meta of LASER_CHOREOGRAPHY_METADATA) {
+    if (meta.primaryCategory === state || meta.compatibleCategories.includes(state)) {
+      matches.push(meta.id);
+    }
+  }
+  return matches.length > 0 ? matches : [0];
+}
+
+/**
+ * Selects an intentional choreography pattern for a four-bar sequence:
+ * - Bar 1: Motif establishment
+ * - Bar 2: Motif development / variation
+ * - Bar 3: Tension or movement acceleration
+ * - Bar 4: Phrase accent / impact resolution
+ */
+export function selectChoreographyForArc(
+  state: LaserSemanticState,
+  barInPhrase: number, // 1 to 4
+  trackSeed: number,
+  currentPatternId: number,
+  phraseIndex: number = 0
+): number {
+  if (state === 'OFF') return currentPatternId;
+
+  const permitted = getPatternsForSemanticState(state);
+  if (permitted.length === 0) return 0;
+  if (permitted.length === 1) return permitted[0];
+
+  // Map the desired 4-bar arc role
+  const targetRole: 'motif' | 'develop' | 'tension' | 'accent' =
+    barInPhrase === 1 ? 'motif' :
+    barInPhrase === 2 ? 'develop' :
+    barInPhrase === 3 ? 'tension' : 'accent';
+
+  // Filter candidates matching role if available, otherwise use all permitted
+  const roleCandidates = permitted.filter((id) => {
+    const meta = getChoreographyMetadata(id);
+    return meta.roleInFourBar === targetRole || meta.roleInFourBar === 'any';
+  });
+
+  const pool = roleCandidates.length > 0 ? roleCandidates : permitted;
+
+  // For cinematic and melodic states, retain consistency across the phrase
+  if (state === 'CINEMATIC_DIRECTIONAL' || state === 'MELODIC_ANTHEM') {
+    // Pick once per phrase using seed + phraseIndex
+    const seedHash = Math.abs(trackSeed * 31 + phraseIndex * 17);
+    return pool[seedHash % pool.length];
+  }
+
+  // For drops and builds, provide deterministic bar-by-bar progression
+  const seedHash = Math.abs(trackSeed * 37 + phraseIndex * 23 + barInPhrase * 11);
+  const selected = pool[seedHash % pool.length];
+
+  // If same pattern selected and alternate available in pool, pick adjacent for variation
+  if (selected === currentPatternId && pool.length > 1) {
+    const nextIdx = (pool.indexOf(selected) + 1) % pool.length;
+    return pool[nextIdx];
+  }
+
+  return selected;
+}
+
+/**
+ * Legacy compatibility: Deterministically selects the next choreography using mid-range spectral features.
  */
 export function selectNextLaserPattern(
   currentPatternId: number,
@@ -488,19 +879,15 @@ export function selectNextLaserPattern(
 ): number {
   const patternCount = LASER_CHOREOGRAPHIES.length; // 22 patterns
 
-  // Pick candidates that differ from current pattern
   const energyBand = midRangeEnergy > 0.65 ? 'high' : midRangeEnergy < 0.35 ? 'low' : 'mid';
   const centroidHigh = midSpectralCentroid > 0.55;
 
   let candidateOffset = 1;
   if (energyBand === 'high') {
-    // High energy: prefer dynamic fans, slashes, superfans, bursts, 360 orbital
     candidateOffset = 1 + (Math.abs(trackSeed + Math.round(midRangeEnergy * 100)) % 7);
   } else if (centroidHigh) {
-    // Bright mid-range: scissor, waterfall, skyward dome, vortex tunnel
     candidateOffset = 2 + (Math.abs(trackSeed + Math.round(midSpectralCentroid * 50)) % 5);
   } else {
-    // Calm / mellow: fly-through, ocean scan, starlight cascade
     candidateOffset = 1 + (Math.abs(trackSeed) % 3);
   }
 
@@ -511,3 +898,4 @@ export function selectNextLaserPattern(
 
   return nextId;
 }
+

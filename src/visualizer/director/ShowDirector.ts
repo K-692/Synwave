@@ -18,6 +18,7 @@ import type {
   TrackAnalysis,
 } from '../../types';
 import { RoutingStore } from './RoutingStore';
+import { LaserShowController } from './LaserShowController';
 
 export class ShowDirector {
   private currentSection: ShowSection = 'intro';
@@ -35,7 +36,9 @@ export class ShowDirector {
     trackDuration: number,
     features: AudioFeatures,
     beatGrid: BeatGridState,
-    analysis?: TrackAnalysis | null
+    analysis?: TrackAnalysis | null,
+    seed: number = 1337,
+    deltaSeconds: number = 0.016
   ): ShowDirectorState {
     const routingStore = RoutingStore.getInstance();
     const activeProfile: StageProfile = routingStore.getActiveProfile();
@@ -93,7 +96,7 @@ export class ShowDirector {
       }
     }
 
-    return {
+    const provisionalState: ShowDirectorState = {
       currentSection: this.currentSection,
       sectionProgress: Math.max(0, Math.min(1, this.sectionProgress)),
       activeProfile,
@@ -102,6 +105,19 @@ export class ShowDirector {
       intensityMultiplier: this.intensityMultiplier,
       beatGrid,
     };
+
+    // 3. Delegate Authoritative Laser Show Orchestration to LaserShowController
+    const laserDecision = LaserShowController.getInstance().update(
+      features,
+      deltaSeconds,
+      trackTimeSeconds,
+      seed,
+      routingConfig,
+      provisionalState
+    );
+    provisionalState.laserDecision = laserDecision;
+
+    return provisionalState;
   }
 
   private detectSection(
@@ -161,8 +177,8 @@ export class ShowDirector {
       return;
     }
 
-    // 3. Drop Detection
-    if (features.isDrop) {
+    // 3. Drop Detection (Real-time drop condition or precomputed continuous multi-stem drop)
+    if (features.isDrop || features.isTriStemDropActive) {
       this.currentSection = 'drop';
       this.dropCooldown = 15; // hold drop for at least 15 frames
       this.sectionProgress = 0.5;

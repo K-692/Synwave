@@ -17,11 +17,12 @@ import type { VisualEffectContext, ColorPalette } from '../../types';
 import { calculateStageDimensions } from '../stage/stageDimensions';
 import {
   LASER_CHOREOGRAPHIES,
-  selectNextLaserPattern,
   type LaserBeamParams,
 } from './laserChoreography';
 import { resolveLaserPaletteColors } from './laserColorUtils';
 import { RoutingStore } from '../director/RoutingStore';
+
+import { LaserShowController } from '../director/LaserShowController';
 
 interface TopLaserBeam {
   group: THREE.Group;
@@ -60,18 +61,10 @@ export class ThinLasersEffect extends BaseEffect {
   private compGlowColor2 = new THREE.Color(0x00dd66);
   private compHaloColor2 = new THREE.Color(0x00aa44);
 
-  // Phase 14: 22-Pattern Concert Laser Choreography Engine
-  private masterSweepAngle = 0;              // Synchronized master sweep angle shared across ALL beams
-  private activePatternId = 0;               // Currently active choreography ID (0 to 21)
-  private prevPatternId = 0;                 // Previous choreography ID for smooth blending
-  private transitionProgress = 1.0;          // 0.0 to 1.0 (1.0 = transition complete)
-  private patternTimer = 0;                  // Time elapsed in active pattern (seconds)
-  private lastMidCentroid = 0.5;             // Baseline mid-range spectral centroid
-  private lastMidDistribution = 0.5;         // Baseline upper vs lower mid energy balance
-  private lastMidFlux = 0.0;                 // Baseline mid-range spectral flux
-  private kickImpulseDecay = 0;              // Dynamic kick transient impulse with exponential decay
-  private lastPlaybackTime = 0;              // Playback clock tracker for seek detection
-  private dropHoldTimer = 0;                 // Musical phrase sustain hold to bridge off-beat gaps
+  // Authoritative Choreography State (Driven by LaserShowController)
+  private activePatternId = 0;
+  private prevPatternId = 0;
+  private transitionProgress = 1.0;
 
   public getActiveChoreographyName(): string {
     return LASER_CHOREOGRAPHIES[this.activePatternId]?.name || 'Concert Horizon Sweep';
@@ -283,7 +276,7 @@ export class ThinLasersEffect extends BaseEffect {
   }
 
   public update(context: VisualEffectContext): void {
-    const { features, deltaSeconds, palette, routingConfig, directorState } = context;
+    const { features, deltaSeconds, palette, routingConfig, directorState, trackTimeSeconds } = context;
 
     // Phase 17: Dynamically update laser colors whenever the palette changes.
     // Executed unconditionally BEFORE any pause/early-exit gates so that laser colors
@@ -292,118 +285,51 @@ export class ThinLasersEffect extends BaseEffect {
       this.updatePaletteColors(palette, context.seed || 1337);
     }
 
-    const isLasersEnabled =
-      (routingConfig?.enabledEffects?.lasers ?? true) &&
-      (directorState?.allowedEffects?.lasers ?? true);
+    // 1. Authoritative Laser Show Decision (Phase 3 & 8)
+    // Delegate state gating, drop confidence, and 4-bar phrase scheduling to LaserShowController
+    const laserController = LaserShowController.getInstance();
+    const decision = context.laserDecision || laserController.update(
+      features,
+      deltaSeconds,
+      trackTimeSeconds,
+      context.seed || 1337,
+      routingConfig,
+      directorState
+    );
 
-    // 1. Handle Playback Pauses (Task 8)
+    // 2. Handle Playback Pauses (Task 8)
     // When playback is paused (deltaSeconds <= 0), freeze all animations in place without resetting
     if (deltaSeconds <= 0) {
-      if (!isLasersEnabled) {
+      if (!decision.isPermitted) {
         this.setAllLasersVisible(false);
       }
       return;
     }
 
-    // 2. Handle Seeking & Track Changes (Task 8)
-    const currentTime = features.timeSeconds;
-    const timeDelta = currentTime - this.lastPlaybackTime;
-    if (Math.abs(timeDelta) > 0.5) {
-      // User seeked or track changed: reset instantaneous transient momentum
-      this.kickImpulseDecay = 0;
-      if (timeDelta < -2.0) {
-        // Track restarted or switched: reset choreography state
-        this.activePatternId = 0;
-        this.prevPatternId = 0;
-        this.transitionProgress = 1.0;
-        this.patternTimer = 0;
-        this.masterSweepAngle = 0;
-      }
-    }
-    this.lastPlaybackTime = currentTime;
+    // 3. Apply Decision State
+    this.activePatternId = decision.patternId;
+    this.prevPatternId = decision.prevPatternId;
+    this.transitionProgress = decision.transitionProgress;
+    this.currentBeamOpacity = decision.beamIntensity;
 
-    // 3. Audio-Aware Activation Gate: Pinpointed Drop Segments
-    // Comprehensive multi-tier drop detection ensuring lasers activate on EVERY song at the drop:
-    // - Tier 1: Continuous multi-stem drop sections (features.isTriStemDropActive)
-    // - Tier 2: Real-time drop condition detected in AudioEngine (features.isDrop)
-    // - Tier 3: Euphoric drop musical mood (features.mood === 'euphoric-drop')
-    // - Tier 4: Saturated dual-stem surge (kick and bass both heavily elevated above 0.40)
-    // - Tier 5: Above-average amplitude climax during active festival music mode
-    const isDropInstant =
-      Boolean(features.isTriStemDropActive) ||
-      Boolean(features.isDrop) ||
-      features.mood === 'euphoric-drop' ||
-      ((features.stems?.kick ?? 0) > 0.40 && (features.stems?.bass ?? 0) > 0.40) ||
-      (Boolean(features.isAboveAverageAmplitude) && features.musicMode === 'festival');
-
-    if (isDropInstant) {
-      this.dropHoldTimer = 0.80; // Sustain across 0.80s to seamlessly bridge rhythmic off-beat gaps between kick drum strikes
-    } else if (this.dropHoldTimer > 0) {
-      this.dropHoldTimer -= deltaSeconds;
-    }
-
-    const isEligible = isLasersEnabled && (isDropInstant || this.dropHoldTimer > 0);
-
-    // Instant on / off: High visual impact with zero lingering tail outside drop
-    this.currentBeamOpacity = isEligible ? 1.0 : 0.0;
-
-    if (this.currentBeamOpacity <= 0) {
+    if (!decision.isPermitted || this.currentBeamOpacity <= 0.001) {
       this.setAllLasersVisible(false);
       return;
     }
 
-    // 4. Mid-Range Spectral & Kick Transient Analysis (Tasks 2, 3, 4)
-    // Extract mid-range spectral features (250 Hz - 4 kHz band & instrumental stem)
+    // 4. Acoustic Parameters & Modulation (Phase 4)
     const midRangeEnergy = features.midRangeEnergy ?? 0.40;
     const midSpectralCentroid = features.midSpectralCentroid ?? 0.50;
     const midSpectralFlux = features.midSpectralFlux ?? 0.0;
     const midEnergyDistribution = features.midEnergyDistribution ?? 0.50;
 
-    // Decay kick impulse smoothly over ~160ms (reusing Demucs drum stem kick events)
-    const kickImpulse = features.isKick ? (features.kickIntensity * 0.45) : 0;
-    this.kickImpulseDecay = Math.max(kickImpulse, this.kickImpulseDecay * Math.max(0, 1 - deltaSeconds * 5.5));
-
-    // 5. Pattern Selection & Transition Engine Driven by Kicks and Mid-Range Spectral Characteristics (Task 5)
-    // BASS IS STRICTLY NOT USED as the pattern-selection driver.
-    this.patternTimer += deltaSeconds;
-
-    // Minimum dwell time of 3.5 seconds enforces musical phrase stability
-    if (this.patternTimer >= 3.5) {
-      const centroidDelta = Math.abs(midSpectralCentroid - this.lastMidCentroid);
-      const distributionDelta = Math.abs(midEnergyDistribution - this.lastMidDistribution);
-      const fluxDelta = Math.abs(midSpectralFlux - this.lastMidFlux);
-      const isMidSpectralShift = centroidDelta > 0.20 || distributionDelta > 0.22 || fluxDelta > 0.25 || midSpectralFlux > 0.35;
-      const isMusicalAnchorKick = features.isKick && (features.isBar || features.isPhrase || features.kickIntensity > 0.60);
-      const isMaxDwellExpired = this.patternTimer > 12.0 && features.isKick;
-
-      if ((isMidSpectralShift && features.isKick) || isMusicalAnchorKick || isMaxDwellExpired) {
-        this.prevPatternId = this.activePatternId;
-        this.activePatternId = selectNextLaserPattern(
-          this.activePatternId,
-          context.seed || 1337,
-          midRangeEnergy,
-          midSpectralCentroid
-        );
-        this.transitionProgress = 0.0;
-        this.patternTimer = 0.0;
-        this.lastMidCentroid = midSpectralCentroid;
-        this.lastMidDistribution = midEnergyDistribution;
-        this.lastMidFlux = midSpectralFlux;
-      }
-    }
-
-    // Advance smooth pattern transition (0.50s cubic hermite blend)
-    if (this.transitionProgress < 1.0) {
-      this.transitionProgress = Math.min(1.0, this.transitionProgress + deltaSeconds / 0.50);
-    }
-
-    // 6. Synchronized Movement Speed Driven by Instrumental Mid-Range Energy and Kick Transients
-    const instSpeedMultiplier = routingConfig?.instrumentalMovementSpeed ?? 1.0;
-    const sweepSpeed = (1.2 + midRangeEnergy * 1.6 + this.kickImpulseDecay * 1.4) * instSpeedMultiplier;
-    this.masterSweepAngle += deltaSeconds * sweepSpeed;
-
+    const masterAngle = laserController.getMasterAngle();
     const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
-    const laserDensity = routingConfig?.laserDensity ?? 1.0;
+    const userDensity = routingConfig?.laserDensity ?? 1.0;
+
+    // Laser width calibration from routing console and dynamic sub-bass punch
+    const userWidthScale = RoutingStore.getInstance().getConfig().laserBeamWidth ?? 1.0;
+    const beamThickness = userWidthScale * decision.beamThicknessMultiplier;
 
     const currentPattern = LASER_CHOREOGRAPHIES[this.activePatternId] || LASER_CHOREOGRAPHIES[0];
     const prevPattern = LASER_CHOREOGRAPHIES[this.prevPatternId] || LASER_CHOREOGRAPHIES[0];
@@ -411,18 +337,23 @@ export class ThinLasersEffect extends BaseEffect {
       ? this.transitionProgress * this.transitionProgress * (3 - 2 * this.transitionProgress)
       : 1.0;
 
-    // 7. Update Stations and All Synchronized Beams (Tasks 5, 6)
+    const effectiveDensity = Math.max(0.125, Math.min(1.0, decision.beamDensity * userDensity));
+
+    // 5. Update Stations and All Synchronized Beams
     for (let s = 0; s < this.stations.length; s++) {
       const station = this.stations[s];
+      const isStationActive = decision.activeStationMask[s];
 
       // Update nozzle dot diode
       station.dotMat.opacity = this.currentBeamOpacity * 0.95 * maxBri;
-      station.dotMesh.visible = this.currentBeamOpacity > 0.05;
+      station.dotMesh.visible = this.currentBeamOpacity > 0.02;
+
+      const activeBeamCount = Math.max(1, Math.round(station.beams.length * effectiveDensity));
 
       for (let b = 0; b < station.beams.length; b++) {
         const beam = station.beams[b];
 
-        if (b > Math.round(station.beams.length * laserDensity)) {
+        if (b >= activeBeamCount) {
           beam.group.visible = false;
           continue;
         }
@@ -432,30 +363,35 @@ export class ThinLasersEffect extends BaseEffect {
           stationIdx: s,
           rayIdx: b,
           totalBeams: station.beams.length,
-          masterAngle: this.masterSweepAngle,
+          masterAngle,
           midRangeEnergy,
           midSpectralCentroid,
           midSpectralFlux,
           midEnergyDistribution,
-          kickImpulse: this.kickImpulseDecay,
-          timeSeconds: currentTime,
+          kickImpulse: decision.pulseBrightness,
+          timeSeconds: trackTimeSeconds,
           seed: context.seed || 1337,
           stationOrigin: { x: station.origin.x, y: station.origin.y, z: station.origin.z },
         };
 
         const activeTraj = currentPattern.calculateTrajectory(beamParams);
         let targetX = activeTraj.targetX;
-        let targetY = activeTraj.targetY;
+        let targetY = activeTraj.targetY + decision.elevationBias;
         let targetZ = activeTraj.targetZ;
 
         if (this.transitionProgress < 1.0) {
           const prevTraj = prevPattern.calculateTrajectory(beamParams);
           targetX = prevTraj.targetX + (activeTraj.targetX - prevTraj.targetX) * blendFactor;
-          targetY = prevTraj.targetY + (activeTraj.targetY - prevTraj.targetY) * blendFactor;
+          targetY = (prevTraj.targetY + decision.elevationBias) + (activeTraj.targetY - prevTraj.targetY) * blendFactor;
           targetZ = prevTraj.targetZ + (activeTraj.targetZ - prevTraj.targetZ) * blendFactor;
         }
 
-        // 3D Unit direction vector from station origin to 360-degree trajectory target
+        // Bass-driven spatial spread expansion relative to station origin
+        if (decision.beamSpreadMultiplier !== 1.0) {
+          targetX = station.origin.x + (targetX - station.origin.x) * decision.beamSpreadMultiplier;
+        }
+
+        // 3D Unit direction vector from station origin to trajectory target
         const dir = new THREE.Vector3(
           targetX - station.origin.x,
           targetY - station.origin.y,
@@ -473,10 +409,6 @@ export class ThinLasersEffect extends BaseEffect {
         beam.group.position.copy(station.origin);
         beam.group.lookAt(lookTarget);
 
-        // Laser width calibration from routing console and dynamic punch
-        const userWidthScale = RoutingStore.getInstance().getConfig().laserBeamWidth ?? 1.0;
-        const dynamicExpansion = 1.0 + Math.min(0.25, midRangeEnergy * 0.15 + this.kickImpulseDecay * 0.20);
-        const beamThickness = userWidthScale * dynamicExpansion;
         beam.coreMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);
         beam.sheathMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);
         beam.haloMesh.scale.set(beamThickness, beamThickness, FULL_WINDOW_BEAM_LENGTH);
@@ -485,17 +417,21 @@ export class ThinLasersEffect extends BaseEffect {
         beam.sheathMesh.position.set(0, 0, FULL_WINDOW_BEAM_LENGTH / 2);
         beam.haloMesh.position.set(0, 0, FULL_WINDOW_BEAM_LENGTH / 2);
 
+        // Call-and-response station masking and beat-gated intensity modulation
+        const stationScale = isStationActive ? 1.0 : (decision.isBeatGated ? 0.22 : 1.0);
+        const gateScale = decision.isBeatGated ? decision.beatGateFactor : 1.0;
+
         // Core Material: intense glowing complementary neon color (zero white borders)
         const coreMat = beam.coreMesh.material as THREE.MeshBasicMaterial;
-        coreMat.opacity = this.currentBeamOpacity * (0.80 + this.kickImpulseDecay * 0.20) * maxBri;
+        coreMat.opacity = this.currentBeamOpacity * (0.80 + decision.pulseBrightness * 0.20) * gateScale * stationScale * maxBri;
 
         // Sheath Material: volumetric colored beam envelope
         const sheathMat = beam.sheathMesh.material as THREE.MeshBasicMaterial;
-        sheathMat.opacity = this.currentBeamOpacity * (0.32 + midRangeEnergy * 0.30) * maxBri;
+        sheathMat.opacity = this.currentBeamOpacity * (0.32 + midRangeEnergy * 0.25) * gateScale * stationScale * maxBri;
 
         // Halo Material: smooth radiant feathering without hard borders or silhouette outlines
         const haloMat = beam.haloMesh.material as THREE.MeshBasicMaterial;
-        haloMat.opacity = this.currentBeamOpacity * (0.12 + midRangeEnergy * 0.18) * maxBri;
+        haloMat.opacity = this.currentBeamOpacity * (0.12 + midRangeEnergy * 0.15) * gateScale * stationScale * maxBri;
       }
     }
   }

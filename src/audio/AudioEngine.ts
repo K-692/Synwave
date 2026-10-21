@@ -528,7 +528,7 @@ export class AudioEngine {
       isPhrase: beatGrid.isPhrase,
       frequencyData: this.frequencyData,
       timeDomainData: this.timeDomainData,
-      isAboveAverageAmplitude: this.isTriStemDropActive(currentTime),
+      isAboveAverageAmplitude: this.isTimestampAboveAverage(currentTime),
       isTriStemDropActive: this.isTriStemDropActive(currentTime),
       trackAverageAmplitude: this.trackAverageAmplitude,
       currentAmplitude: precomputedGlobalIntensity > 0 ? (this.smoothedRms * 0.3 + precomputedGlobalIntensity * 0.7) : this.smoothedRms,
@@ -777,7 +777,21 @@ export class AudioEngine {
   }
 
   public isTimestampAboveAverage(currentTime: number): boolean {
-    return this.isTriStemDropActive(currentTime);
+    // 1. Primary: Check pre-computed above-average sections from Demucs or TrackAnalysis
+    if (this.aboveAverageSections.length > 0) {
+      const inSection = this.aboveAverageSections.some(
+        (sec) => currentTime >= sec.startTime && currentTime <= sec.endTime
+      );
+      if (inSection) return true;
+    }
+
+    // 2. Secondary: Evaluate instantaneous RMS relative to calibrated full-track average
+    if (this.trackAverageAmplitude > 0) {
+      return this.smoothedRms >= this.trackAverageAmplitude * 1.05;
+    }
+
+    // 3. Fallback: Heuristic threshold when track-wide baseline is not yet computed
+    return this.smoothedRms > 0.38;
   }
 
   public setTrackBeatGrid(

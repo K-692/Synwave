@@ -134,6 +134,39 @@ export interface BeatGridState {
   confidence: number;
 }
 
+export type LaserSemanticState =
+  | 'OFF'
+  | 'CINEMATIC_DIRECTIONAL'
+  | 'MELODIC_ANTHEM'
+  | 'BUILD_RISER'
+  | 'DROP_IMPACT'
+  | 'DROP_GROOVE'
+  | 'CLIMAX_OMNIDIRECTIONAL';
+
+export interface LaserShowDecision {
+  isPermitted: boolean;
+  semanticState: LaserSemanticState;
+  patternId: number;
+  prevPatternId: number;
+  transitionProgress: number; // 0.0 to 1.0 (smooth blend)
+  activationReason: string;
+  confidence: number; // 0.0 to 1.0 drop/cue confidence score
+  movementSpeed: number; // continuous trajectory sweep speed
+  beamDensity: number; // fraction of active beams (0.15 to 1.0)
+  beamIntensity: number; // baseline beam opacity (0.0 to 1.0)
+  pulseBrightness: number; // kick transient accent opacity (0.0 to 1.0)
+  beamSpreadMultiplier: number; // spatial expansion from bass/drop
+  beamThicknessMultiplier: number; // volumetric expansion from bass punch
+  elevationBias: number; // upward tilt bias into sky dome during builds
+  activeStationMask: [boolean, boolean, boolean]; // [left, center, right] call-and-response
+  isBeatGated: boolean; // whether beat-synchronized on/off pulsing is active
+  beatGateFactor: number; // 0.25 to 1.0 multiplier for beat-gated profile
+  absoluteBarIndex: number; // monotonic bar index
+  barInPhrase: number; // 1 to 4 in 4-bar phrase arc
+  phraseIndex: number; // monotonic 4-bar phrase counter
+  timingConfidence: number; // 0.0 to 1.0 beat grid confidence
+}
+
 export interface ShowDirectorState {
   currentSection: ShowSection;
   sectionProgress: number; // 0.0 to 1.0
@@ -143,6 +176,7 @@ export interface ShowDirectorState {
   intensityMultiplier: number;
   beatGrid: BeatGridState;
   spotlightCount?: number;
+  laserDecision?: LaserShowDecision;
 }
 
 export interface KieStemSeparationRequest {
@@ -317,6 +351,7 @@ export interface VisualEffectContext {
   directorState?: ShowDirectorState;
   routingConfig?: AudioVisualRoutingConfig;
   hasVideo?: boolean;
+  laserDecision?: LaserShowDecision;
 }
 
 export interface VisualEffect {

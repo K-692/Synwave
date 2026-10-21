@@ -328,6 +328,7 @@ export class VisualEngine {
       directorState: directorState || this.currentDirectorState || undefined,
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
       hasVideo: this.hasActiveVideo,
+      laserDecision: directorState?.laserDecision || this.currentDirectorState?.laserDecision,
     };
   }
 
@@ -593,7 +594,9 @@ export class VisualEngine {
       this.trackDuration,
       features,
       beatGrid,
-      this.trackAnalysis
+      this.trackAnalysis,
+      this.trackSeed,
+      deltaSeconds
     );
     this.currentDirectorState = directorState;
 

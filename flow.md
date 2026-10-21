@@ -1096,6 +1096,89 @@ Implemented a strict, canonical single-file caching architecture with index tabl
    - Optimized demonstration video `demo/demo.mp4` to under 10MB (8.7MB) and uploaded to GitHub's native asset CDN (`user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0`), guaranteeing that GitHub's markdown parser directly displays the interactive HTML5 video player (play, pause, scrub, volume, fullscreen) without sanitization stripping.
    - Preserved full music and visual attribution for *Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]* ([@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)) in the showcase header and third-party attribution tables.
 
+
+### 5.23 Phase 24 — Professional Concert Laser Show Director Refactor
+
+#### 1. Problem Diagnosis & Mathematical Motivation
+1. **Permissive OR-Based Gating & Constant Laser Saturation:**
+   - Prior to this refactor, `ThinLasersEffect.ts` employed an overly permissive activation gate: any transient kick, elevated bass, euphoric-drop mood tag, or amplitude spike could activate the entire 3-station laser rig.
+   - Consequently, in energetic dance, EDM, or rock tracks, lasers remained persistently active across verses, intros, and buildups, stripping drops and climaxes of visual impact.
+2. **Feature Conflation & Amplitude Ambiguity:**
+   - In `AudioEngine.ts`, `isAboveAverageAmplitude` was hardcoded to return `this.isTriStemDropActive(currentTime)`. This created a circular confirmation loop where amplitude and multi-stem drops were identical boolean signals, undermining independent drop corroboration.
+3. **Absence of Musical Choreography Structure:**
+   - Choreography patterns switched based on arbitrary elapsed-time intervals (~14 seconds) or random transient events. Patterns flipped mid-bar or mid-beat without regard to musical motifs, phrase boundaries, or 4-bar arcs.
+   - All 22 trajectories in `laserChoreography.ts` were treated uniformly: full-360° omnidirectional superfans could trigger randomly during quiet melodic bridges, while restrained directional fans could trigger during peak drops.
+4. **Multi-Frame Downbeat Re-triggering:**
+   - In `BeatGridEngine`, `isBar` remains true for the entire duration where `beatPhase < 0.12` (~7 frames at 60 FPS). Without monotonic measure index tracking, bar-triggered state machines would attempt to advance or cycle patterns multiple times across consecutive frames of a single downbeat.
+5. **Architectural Divergence Between Laser Rigs:**
+   - `LaserBeamsEffect.ts` maintained an independent 14-second mode timer, unsynchronized rainbow color cycling, and local activation heuristics that conflicted directly with the top-aperture rig in `ThinLasersEffect.ts`.
+
+---
+
+#### 2. Architecture & Implementation Journey
+
+##### 1. Semantic Laser Implementation Labels & 22-Choreography Mapping (`laserChoreography.ts`)
+- Defined a typed semantic state model (`LaserSemanticState`):
+  - `OFF`: Complete rig blackout when no authorized musical cue exists.
+  - `CINEMATIC_DIRECTIONAL`: Restrained, sparse beams thrown in deliberate directions with slow instrumental tracking (e.g. *Audience Ocean Scan*, *3D Sonic Sine Wave*).
+  - `MELODIC_ANTHEM`: Spacious, slow aerial canopies for emotional or melodic choruses (e.g. *Forward Auditorium Scissor Canopy*, *Skyward Crown Fan*).
+  - `BUILD_RISER`: Progressive, tension-building upward fans and accelerating geometric lattices (e.g. *Stadium 3D Skyward Dome*, *3D Kinetic Hypercube*).
+  - `DROP_IMPACT`: High-impact transient bursts synchronized strictly to drop onsets or downbeat accents (e.g. *Camera-Targeting Concentrated Burst*, *Full-Window Slashes*).
+  - `DROP_GROOVE`: Sustained drop choreography with beat-synchronized pulses and bar-by-bar motif variations (e.g. *Cathedral Scissor Matrix*, *3D Vortex Tunnel*).
+  - `CLIMAX_OMNIDIRECTIONAL`: Maximum spatial coverage reserved exclusively for peak climaxes (e.g. *360° Radial Starburst*, *Climax Omnidirectional Superfan*).
+- Created `LASER_CHOREOGRAPHY_METADATA` establishing semantic class, 4-bar arc roles (`motif`, `development`, `tension`, `accent`), speed scaling, beam density, and elevation profiles for all 22 existing trajectories.
+- Implemented `selectChoreographyForArc()` enabling structured 4-bar phrase development using deterministic track-seeded selection within permitted families.
+
+##### 2. Decoupled Amplitude Feature Semantics (`AudioEngine.ts`)
+- Fixed `isTimestampAboveAverage(currentTime)` to evaluate precomputed `aboveAverageSections` and check RMS against calibrated `trackAverageAmplitude`.
+- Decoupled `isAboveAverageAmplitude` from `isTriStemDropActive`, restoring genuine multi-signal corroboration.
+
+##### 3. Hierarchical Activation Gate & Multi-Signal Drop Confidence (`LaserShowController.ts`)
+- Implemented a single authoritative decision engine enforcing strict hierarchical eligibility:
+  1. User laser routing enabled (`routingConfig.enabledEffects.lasers`).
+  2. Section director laser permission (`directorState.allowedEffects.lasers`).
+  3. Valid, active playback clock (clearing all pending cues and holds on pause/seek/track-change).
+  4. Section-level policy filtering (verses, intros, breakdowns, and outros default to `OFF`).
+- Formulated an auditable multi-signal Drop Confidence score $C_{\text{drop}} \in [0, 1]$:
+  $$C_{\text{drop}} = 0.35 \cdot S_{\text{demucs}} + 0.25 \cdot S_{\text{director}} + 0.15 \cdot S_{\text{stems}} + 0.10 \cdot S_{\text{transient}} + 0.05 \cdot S_{\text{downbeat}} + 0.10 \cdot S_{\text{intensity}}$$
+  where:
+  - $S_{\text{demucs}} = 1.0$ if precomputed multi-stem continuous drop active, else $0$.
+  - $S_{\text{director}} = 1.0$ if director section is `'drop'`, $0.4$ if late buildup, else $0$.
+  - $S_{\text{stems}} = \min(1.0, \frac{\text{kick} + \text{bass} + \text{inst}}{1.8})$.
+  - $S_{\text{transient}} = \min(1.0, \text{kickIntensity} \cdot 1.2)$ on active kick.
+  - $S_{\text{downbeat}} = 1.0$ if downbeat confirmed within beat confidence.
+  - $S_{\text{intensity}} = \text{dropIntensity}$.
+- Enforced Schmitt-trigger hysteresis ($C_{\text{drop}} \ge 0.60$ for activation; $C_{\text{drop}} < 0.38$ for release) with a $0.85\text{s}$ drop-hold decay timer to bridge syncopated kick pauses within active drops while cutting cleanly outside drop sections.
+
+##### 4. Melodic Anthem & Progressive Buildup Behaviors
+- **Melodic Anthem Candidate Detection:** Evaluates sustained instrumental activity ($\ge 0.45$), moderate energy, and absence of drop confirmation over multiple beats. Permitted patterns are restricted to restrained, slow directional fans without strobing or omnidirectional coverage.
+- **Buildup Tension Riser:** In late buildups ($sectionProgress \ge 0.45$ + rising HF trend), progressively ramps movement speed, raises upward beam elevation bias ($+8.5^\circ$), and scales beam density towards the drop entrance downbeat.
+
+##### 5. Beat-Grid-Aware 4-Bar Choreography Arc Scheduler
+- Replaced wall-clock timers with monotonic measure indexing:
+  $$\text{absoluteBarCounter} = \lfloor \text{beatIndex} / 4 \rfloor$$
+- Guarded bar transitions to execute strictly once per measure:
+  $$\text{canTransition} = \text{isBar} \land (\text{absoluteBarCounter} \ne \text{lastProcessedAbsoluteBar})$$
+- Arranged 4-bar phrase progression across distinct roles:
+  - **Bar 1 (Motif):** Establishes the visual theme with moderate spread.
+  - **Bar 2 (Develop):** Introduces geometric variations or alternate bank sweeping.
+  - **Bar 3 (Tension):** Increases trajectory speed, fan width, and elevation.
+  - **Bar 4 (Accent):** Delivers phrase accent or downbeat impact.
+- Applied smooth $350\text{ms}$ trajectory interpolation between pattern transitions.
+- Integrated low-confidence BPM fallback relying on physical kick transients with conservative, smoothly timed sweeping.
+
+##### 6. Deliberate Acoustic Modulation Engine
+- **Kick Impulse Envelope:** Fast attack with $140\text{ms}$ exponential decay modulating beam pulse brightness.
+- **Beat-Gated Call-and-Response:** In `DROP_GROOVE` mode, alternates active station masks (`[true, false, true]` vs `[false, true, false]`) on alternating beats, creating physical concert lighting dialogue.
+- **Sub-Bass Dynamics:** Modulates beam spread and beam thickness dynamically without altering choreography geometry.
+- **Instrumental Tracking:** Smoothly steers horizontal and vertical pan/tilt angles based on sustained upper-mid and instrument stem trajectories.
+
+##### 7. Unified Laser Architecture & Telemetry
+- Integrated `LaserShowController` into `ShowDirector.ts` and passed the resulting `LaserShowDecision` via `VisualEffectContext` in `VisualEngine.ts`.
+- Refactored `ThinLasersEffect.ts` and `LaserBeamsEffect.ts` as pure geometry renderers driven by the shared director decision.
+- Removed unsynchronized timers, independent rainbow color loops, and local activation gates from `LaserBeamsEffect.ts`, mapping perimeter modes (`Scissor Cross`, `Wide Horizon Fan`, `Liquid Sky`, `Drop Frenzy`) to semantic states using song-derived complementary color palettes.
+- Enhanced `DiagnosticOverlay.tsx` to display real-time laser state, cue reason, drop confidence %, 4-bar phrase arc stage, and active choreography metadata.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1105,10 +1188,16 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
-- **Laser Drop Activation:** 5-tier resilient gate combining windowed envelope followers ($W=1.5\text{s}$), pre-computed continuous drop sections with downbeat snapping, real-time audio surges, and 0.8s drop-hold bridging ensures lasers reliably trigger on EVERY song at the drop.
+- **Professional Concert Laser Director:** Authoritative single-controller system (`LaserShowController.ts`) featuring:
+  - 7 typed semantic states (`OFF`, `CINEMATIC_DIRECTIONAL`, `MELODIC_ANTHEM`, `BUILD_RISER`, `DROP_IMPACT`, `DROP_GROOVE`, `CLIMAX_OMNIDIRECTIONAL`).
+  - Strict hierarchical activation gating with auditable multi-signal drop confidence ($C_{\text{drop}}$) and Schmitt-trigger hysteresis ($0.60$ / $0.38$).
+  - Beat-grid-synchronized 4-bar choreography scheduler (Motif $\to$ Develop $\to$ Tension $\to$ Accent) with anti-flicker monotonic measure tracking.
+  - Decoupled acoustic modulation: fast kick impulse decay ($140\text{ms}$), alternating station call-and-response masks, sub-bass beam spread/thickness scaling, and instrumental trajectory steering.
+  - Coherent synchronization across top-aperture (`ThinLasersEffect.ts`) and perimeter (`LaserBeamsEffect.ts`) rigs using song-derived complementary palettes.
 - **Screen Flash Strobe:** Strictly manipulated by audio kick transients with sub-millisecond onset precision, zero interference from metronome clock ticks, and dynamic opacity scaling via `kickSensitivity`.
 - **Media Showcase & Documentation:** Embedded `demo/demo.mp4` with complete credits to Abandoned (@AbandonedOfficial).
 - **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
+
 
 
 

@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import { BaseEffect } from './BaseEffect';
 import type { VisualEffectContext } from '../../types';
+import { LaserShowController } from '../director/LaserShowController';
+import { resolveLaserPaletteColors } from './laserColorUtils';
 
 interface LaserFixture {
   group: THREE.Group;
@@ -27,7 +29,6 @@ export class LaserBeamsEffect extends BaseEffect {
 
   private fixtures: LaserFixture[] = [];
   private laserCount = 28;
-  private currentModeTimer = 0;
   private laserPattern = 0; // 0: Scissor Cross, 1: Wide Horizon Fan, 2: Liquid Sky, 3: Drop Frenzy
 
   public initialize(context: VisualEffectContext): void {
@@ -146,127 +147,147 @@ export class LaserBeamsEffect extends BaseEffect {
   public update(context: VisualEffectContext): void {
     if (!this.enabled || this.fixtures.length === 0) return;
 
-    const { features, deltaSeconds, trackTimeSeconds, palette } = context;
+    const { features, deltaSeconds, trackTimeSeconds, palette, routingConfig, directorState, seed } = context;
     const time = trackTimeSeconds;
 
-    // 1. Calm Mode Behavior: If calm/acoustic music (e.g. Aaloshyo), fade lasers out into gentle ambient glow
-    if (features.musicMode === 'calm') {
+    // Phase 7: Consume unified LaserShowController decision
+    const laserController = LaserShowController.getInstance();
+    const decision = context.laserDecision || laserController.update(
+      features,
+      deltaSeconds,
+      trackTimeSeconds,
+      seed || 1337,
+      routingConfig,
+      directorState
+    );
+
+    // If disabled or in OFF state, smoothly fade out perimeter lasers
+    if (!decision.isPermitted || decision.semanticState === 'OFF' || features.musicMode === 'calm') {
       for (const fix of this.fixtures) {
         const lineMat = fix.coreLine.material as THREE.LineBasicMaterial;
         const beamMat = fix.beamMesh.material as THREE.MeshBasicMaterial;
-        lineMat.opacity = Math.max(0, lineMat.opacity - deltaSeconds * 2.0);
-        beamMat.opacity = Math.max(0, beamMat.opacity - deltaSeconds * 2.0);
+        lineMat.opacity = Math.max(0, lineMat.opacity - deltaSeconds * 3.0);
+        beamMat.opacity = Math.max(0, beamMat.opacity - deltaSeconds * 3.0);
       }
       return;
     }
 
-    // 2. Festival Mode: Pattern switching every 14 seconds or immediately on DROP
-    this.currentModeTimer += deltaSeconds;
-    if (features.isDrop) {
-      this.laserPattern = 3; // Drop Frenzy Mode
-    } else if (this.currentModeTimer > 14.0) {
-      this.currentModeTimer = 0;
-      this.laserPattern = (this.laserPattern + 1) % 3;
+    // Freeze animation when paused
+    if (deltaSeconds <= 0) return;
+
+    // Map semantic state to perimeter mode:
+    // 0: Scissor Cross (DROP_GROOVE)
+    // 1: Wide Horizon Fan (CINEMATIC / MELODIC)
+    // 2: Liquid Sky (BUILD_RISER)
+    // 3: Drop Frenzy (DROP_IMPACT / CLIMAX)
+    switch (decision.semanticState) {
+      case 'CINEMATIC_DIRECTIONAL':
+      case 'MELODIC_ANTHEM':
+        this.laserPattern = 1; // Wide Horizon Fan
+        break;
+      case 'BUILD_RISER':
+        this.laserPattern = 2; // Liquid Sky ceiling sheet
+        break;
+      case 'DROP_IMPACT':
+      case 'CLIMAX_OMNIDIRECTIONAL':
+        this.laserPattern = 3; // Drop Frenzy
+        break;
+      case 'DROP_GROOVE':
+      default:
+        // Use Scissor Cross with bar-level direction variation or Wide Fan on bar 3
+        this.laserPattern = decision.barInPhrase === 3 ? 1 : 0;
+        break;
     }
 
-    const laserColor = new THREE.Color(palette.laserColor);
-    const primaryColor = new THREE.Color(palette.primary);
-    const secondaryColor = new THREE.Color(palette.secondary);
+    // Coherent palette colors derived from song palette
+    const resolvedColors = resolveLaserPaletteColors(palette, seed || 1337);
+    const laserColor = resolvedColors.core1;
+    const primaryColor = resolvedColors.core2;
     const whiteColor = new THREE.Color('#ffffff');
 
-    // Drop intensity multiplier
-    const dropMultiplier = features.isDrop ? 2.8 : 1.0;
-    const sweepSpeed = (features.isDrop ? 5.5 : 2.0) * (1 + features.rms * 0.8);
+    const sweepSpeed = decision.movementSpeed * (decision.semanticState === 'CLIMAX_OMNIDIRECTIONAL' ? 2.5 : 1.2);
+    const scissorDir = decision.barInPhrase % 2 === 0 ? 1 : -1;
 
     for (const fix of this.fixtures) {
       let targetRotY = fix.baseAngleY;
       let targetRotX = fix.baseAngleX;
-      let targetOpacity = 0.5 + features.rms * 0.45;
+      let targetOpacity = decision.beamIntensity * (0.60 + features.rms * 0.40);
 
-      // Drop strobe blinder effect
-      if (features.isDrop) {
-        // High-speed 16th-note strobing during dubstep drop
-        const strobePulse = Math.sin(time * 30.0 + fix.index * 1.2) > 0 ? 1.0 : 0.35;
-        targetOpacity = Math.min(1.0, (0.7 + features.bass * 0.3) * strobePulse);
-      } else if (features.isKick) {
-        targetOpacity = Math.min(1.0, targetOpacity + features.kickIntensity * 0.5);
+      // Beat-synchronized accents
+      if (decision.isBeatGated) {
+        targetOpacity *= decision.beatGateFactor;
+      }
+      if (decision.pulseBrightness > 0.1) {
+        targetOpacity = Math.min(1.0, targetOpacity + decision.pulseBrightness * 0.4);
       }
 
       // Pattern Motions:
       switch (this.laserPattern) {
         case 0: {
-          // Scissor Cross: Wing lasers and overhead lasers cross in razor X patterns
+          // Scissor Cross with bar-level direction flipping
           if (fix.type === 'left-wing') {
-            targetRotY = fix.baseAngleY + Math.sin(time * sweepSpeed + fix.index * 0.4) * 0.65;
+            targetRotY = fix.baseAngleY + Math.sin(time * sweepSpeed + fix.index * 0.4) * 0.65 * scissorDir;
             targetRotX = fix.baseAngleX + Math.cos(time * sweepSpeed * 0.7) * 0.3;
           } else if (fix.type === 'right-wing') {
-            targetRotY = fix.baseAngleY - Math.sin(time * sweepSpeed + fix.index * 0.4) * 0.65;
+            targetRotY = fix.baseAngleY - Math.sin(time * sweepSpeed + fix.index * 0.4) * 0.65 * scissorDir;
             targetRotX = fix.baseAngleX + Math.cos(time * sweepSpeed * 0.7) * 0.3;
           } else {
-            // Overhead scissor fan
             const dir = fix.index % 2 === 0 ? 1 : -1;
-            targetRotY = fix.baseAngleY + Math.sin(time * sweepSpeed + fix.index * 0.3) * 0.5 * dir;
+            targetRotY = fix.baseAngleY + Math.sin(time * sweepSpeed + fix.index * 0.3) * 0.5 * dir * scissorDir;
             targetRotX = fix.baseAngleX + Math.sin(time * 1.5) * 0.2;
           }
           break;
         }
 
         case 1: {
-          // Wide 180-degree Horizon Fan Sweep
-          const fanWave = Math.sin(time * sweepSpeed * 0.8 + fix.baseAngleY * 2.0);
-          targetRotY = fix.baseAngleY * (1.2 + Math.sin(time * 1.2) * 0.4);
-          targetRotX = fix.baseAngleX + fanWave * 0.35;
+          // Wide Horizon Fan
+          const fanWave = Math.sin(time * sweepSpeed * 0.6 + fix.baseAngleY * 2.0);
+          targetRotY = fix.baseAngleY * (1.2 + Math.sin(time * 1.0) * 0.3);
+          targetRotX = fix.baseAngleX + fanWave * 0.30;
           break;
         }
 
         case 2: {
-          // Liquid Sky: Razor-thin flat laser plane undulating with the live audio waveform
-          targetRotX = -0.05 + Math.sin(time * 2.5 + fix.baseAngleY * 4.0) * 0.12 * (1 + features.bass);
-          targetRotY = fix.baseAngleY * 1.35;
+          // Liquid Sky undulating ceiling plane
+          targetRotX = -0.05 + Math.sin(time * 2.0 + fix.baseAngleY * 3.5) * 0.10 * (1 + features.bass * 0.5);
+          targetRotY = fix.baseAngleY * 1.30;
           break;
         }
 
         case 3:
         default: {
-          // DROP FRENZY: Insane high-speed multi-axis concert explosion!
-          const chaosY = Math.sin(time * sweepSpeed * 1.2 + fix.index * 0.8) * 0.8;
-          const chaosX = Math.cos(time * sweepSpeed * 1.4 + fix.index * 0.5) * 0.45;
+          // Drop Frenzy: High-speed multi-axis concert explosion reserved for climax/impact
+          const chaosY = Math.sin(time * sweepSpeed * 1.1 + fix.index * 0.8) * 0.75;
+          const chaosX = Math.cos(time * sweepSpeed * 1.3 + fix.index * 0.5) * 0.40;
           targetRotY = fix.baseAngleY + chaosY;
           targetRotX = fix.baseAngleX + chaosX;
           break;
         }
       }
 
-      // Smooth rotation with high agility
-      const agility = deltaSeconds * (features.isDrop ? 18.0 : 9.0);
+      // Smooth rotation
+      const agility = deltaSeconds * (decision.semanticState === 'CLIMAX_OMNIDIRECTIONAL' ? 16.0 : 8.5);
       fix.group.rotation.y = this.lerp(fix.group.rotation.y, targetRotY, agility);
       fix.group.rotation.x = this.lerp(fix.group.rotation.x, targetRotX, agility);
 
-      // Color Strobes & Cycling
+      // Consistent Palette Colors
       const lineMat = fix.coreLine.material as THREE.LineBasicMaterial;
       const beamMat = fix.beamMesh.material as THREE.MeshBasicMaterial;
 
       let activeColor = fix.index % 2 === 0 ? laserColor : primaryColor;
-      if (features.isDrop) {
-        // In drops, cycle aggressively between electric cyan, laser pink, white, and secondary
-        const colorIdx = (Math.floor(time * 12.0) + fix.index) % 4;
-        if (colorIdx === 0) activeColor = whiteColor;
-        else if (colorIdx === 1) activeColor = laserColor;
-        else if (colorIdx === 2) activeColor = secondaryColor;
-        else activeColor = primaryColor;
-      } else if (features.isKick) {
-        // Flash to white/laser tint on kick
+      if (decision.pulseBrightness > 0.45) {
         activeColor = whiteColor;
       }
 
       lineMat.color.copy(activeColor);
       beamMat.color.copy(activeColor);
 
-      lineMat.opacity = Math.min(1.0, targetOpacity * this.intensity);
-      beamMat.opacity = Math.min(0.65, targetOpacity * 0.42 * this.intensity * dropMultiplier);
+      const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+      lineMat.opacity = Math.min(1.0, targetOpacity * this.intensity * maxBri);
+      beamMat.opacity = Math.min(0.60, targetOpacity * 0.38 * this.intensity * maxBri);
 
       // Volumetric beam scale pulses with bass
-      const beamScale = 1.0 + features.bass * 1.2 + (features.isKick ? 0.8 : 0);
+      const beamScale = decision.beamThicknessMultiplier * (1.0 + features.bass * 0.6);
       fix.beamMesh.scale.set(beamScale, 1.0, beamScale);
     }
   }
