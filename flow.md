@@ -1093,8 +1093,8 @@ Implemented a strict, canonical single-file caching architecture with index tabl
    - Engineered an automated, unified execution script `start.sh` and npm workflow (`npm start` / `npm run dev`) that concurrently launches the Python Audio Intelligence Microservice (`shazam_server.py` on port 8765) and the Vite Frontend Development Server (port 5173).
    - Automatically detects and activates virtual environments (`.venv` or `venv`), verifies and resolves Python microservice dependencies, and manages child PIDs with a POSIX signal trap (`cleanup` on `INT`, `TERM`, `EXIT`) to guarantee clean termination of both servers without orphaned zombie processes on port 8765.
 5. **Showcase Demo Media Integration & Attribution (`README.md`, `demo/demo.mp4`):**
-   - Embedded high-definition demonstration video `demo/demo.mp4` directly into `README.md` preceding the Community Contributors section, enabling inline browser playback and controls without external tab redirection.
-   - Formally documented audio and visual attribution for *Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]* ([@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)) in the showcase header and third-party attribution tables.
+   - Optimized demonstration video `demo/demo.mp4` to under 10MB (8.7MB) and uploaded to GitHub's native asset CDN (`user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0`), guaranteeing that GitHub's markdown parser directly displays the interactive HTML5 video player (play, pause, scrub, volume, fullscreen) without sanitization stripping.
+   - Preserved full music and visual attribution for *Abandoned - Destroyer Of Worlds (Oppenheimer Remix) [Music Video]* ([@AbandonedOfficial](https://www.youtube.com/@AbandonedOfficial)) in the showcase header and third-party attribution tables.
 
 ---
 

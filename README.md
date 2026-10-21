@@ -24,12 +24,7 @@
 
 ## 🎬 Live Demo Preview
 
-<div align="center">
-  <video src="demo/demo.mp4" controls="controls" width="100%" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 240, 255, 0.25);">
-    <source src="demo/demo.mp4" type="video/mp4">
-    <source src="https://github.com/K-692/Synwave/raw/main/demo/demo.mp4" type="video/mp4">
-  </video>
-</div>
+https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
 
 > [!NOTE]
 > ### 🎵 Music & Visual Attribution
