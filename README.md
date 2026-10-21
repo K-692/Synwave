@@ -72,7 +72,7 @@ When an audio file is loaded, Synwave executes an acoustic intelligence pipeline
 2. **Neural Source Separation (Meta Demucs v4):** Isolates the audio into 4 discrete acoustic stems (`drums`, `bass`, `instruments`, `vocals`) accelerated by Apple Silicon MPS hardware.
 3. **Tri-STEM Peak Drop Pinpointing:** Identifies the precise climactic segments where drums, bass, and instruments simultaneously exceed their track averages.
 4. **Synchronized 4K Stage Video:** Resolves the official music video via **YouTube Data API v3**, hosting it inside an aperture screen driven by the lossless local audio clock.
-5. **Procedural 3D Stage Choreography:** Directs moving-head spotlights, an expansive 22-pattern 360° laser choreography rig, camera sub-bass FOV zooms, and vertical-sync full-window blinder washes.
+5. **Procedural 3D Stage Choreography:** Directs moving-head spotlights, dual corner sky-reaching white searchlights, a 360° perimeter bass rig, camera sub-bass FOV zooms, and vertical-sync full-window blinder washes.
 
 ---
 
@@ -120,9 +120,9 @@ flowchart TD
     subgraph DIRECTOR["3. STAGE DIRECTOR & CHOREOGRAPHY PIPELINE"]
         K --> U["YouTube Data API v3"]
         U --> V["Official Stage Video ID & Thumbnail Palette"]
-        V --> W["laserColorUtils: Direct Palette Normalization"]
+        V --> W["flashColorUtils: Direct Palette Normalization"]
         
-        P & S & W --> X["22-Pattern 360° 3D Laser Engine\n(85m End-to-End Beams, Zenith to Pit)"]
+        P & S & W --> X["Dual Corner White Sky Spotlights\n(Left & Right Stage Flanks, Zenith Skyward Sweeps)"]
         T & K --> Y["Symmetrical BPM Moving-Head Lights\n(2 to 12 Fixtures, Monotonic 70-160 BPM)"]
         Q --> Z["Audience Camera FOV Punch\n(60° to 63.5° Dynamic Zoom)"]
         R --> AA["YouTube Iframe Screen Shake\n(Isolated Kick Transform)"]
@@ -171,22 +171,22 @@ flowchart TD
         ┌───────────────────────────────────┼───────────────────────────────────┐
         ▼                                   ▼                                   ▼
  [ Sub-Bass (20-100Hz) ]         [ Kick Transient (40-150Hz) ]       [ Mid-Range Spectral (250Hz-4kHz) ]
-   FOV Camera Punch (60°-63.5°)    Screen Shake & Blinder Trigger      22-Pattern 360° 3D Laser Engine
+   FOV Camera Punch (60°-63.5°)    Screen Shake & Blinder Trigger      White Sky Searchlights & Moving Heads
         │                                   │                                   │
         └───────────────────────────────────┼───────────────────────────────────┘
                                             │
                                             ▼
                            [ Show Director & Visual Engine ]
-                           • Authentic Multi-Color Laser Palette Mapping
-                           • 22-Pattern 360° 3D Concert Laser Choreographies
+                           • Dual Corner White Sky Searchlights (Upward Zenith Projection)
                            • Symmetrical BPM-Synchronized Moving Heads (2-12)
+                           • 12x 360° Continuous Rotatable Perimeter Bass Lights
                            • Full-Window Blinder Wash (0.96 Opacity, White + Song Colors)
                                             │
        ┌────────────────────────────────────┴───────────────────────────────────┐
        ▼                                                                        ▼
 [ Three.js r186 Scene Graph ]                                 [ YouTube 4K Stage Screen ]
 • Transparent WebGL2 Canvas (z: 2)                            • 16:9 Stage Aperture (z: 1)
-• 85m End-to-End Laser Rays (360° 3D)                         • Muted Video Playback (vol: 0)
+• 45m Skyward White Beams (Left, Zenith, Right)               • Muted Video Playback (vol: 0)
 • Stage Truss & Jumbotron Bezels                              • Master Clock Continuous Sync Loop
 • Billboard Dust & Atmosphere                                 • Zero Synwave Text Overlays
 ====================================================================================================
@@ -205,29 +205,29 @@ flowchart TD
   - **Tier 3 (Server Disk):** Cached JSON envelopes and recognition in `.synwave_cache/stems/{sha256}.json` and `.synwave_cache/shazam/{hash}.json`. The lightweight `/api/check-stems-cache` and `/api/check-shazam-cache` pre-flight endpoints bypass audio file re-uploads entirely.
 
 #### 2. Real-Time Feature & Drop Pinpointing Engine
-- **Pinpointed Tri-STEM Peak Drop Gate (`AudioEngine.ts`):** Lasers and climactic visuals are gated strictly by the song's true drop segment. A frame qualifies as a drop if and only if:
+- **Pinpointed Tri-STEM Peak Drop Gate (`AudioEngine.ts`):** Climactic visuals and drop sweeps are gated strictly by the song's true drop segment. A frame qualifies as a drop if and only if:
   $$D(t) > \bar{A}_D \;\land\; B(t) > \bar{A}_B \;\land\; I(t) > \bar{A}_I \;\land\; J(t) \ge \text{Threshold}$$
   This mathematical gate completely eliminates false activations during vocal buildups, quiet intros, and acoustic breakdowns.
 - **Isolated Sub-Bass Bandpass ($20-100\text{Hz}$):** Directly drives camera FOV zoom punch ($60^\circ \to 63.5^\circ$), physically vibrating the audience perspective without harmonic distortion from vocals or guitars.
 - **Transient Kick Detection ($40-150\text{Hz}$):** Comb-filtered kick detector with a 180ms refractory lockout drives 2D pixel displacement strictly on the YouTube stage screen element.
-- **Mid-Range Spectral Engine ($250\text{Hz}-4\text{kHz}$):** Computes mid-range spectral centroid ($C_{\text{mid}}$), spectral flux ($F_{\text{mid}}$), and dispersion ($D_{\text{mid}}$) fused with Demucs instrumental data to steer intelligent concert laser choreographies without bass interference.
+- **Mid-Range Spectral Engine ($250\text{Hz}-4\text{kHz}$):** Computes mid-range spectral centroid ($C_{\text{mid}}$), spectral flux ($F_{\text{mid}}$), and dispersion ($D_{\text{mid}}$) fused with Demucs instrumental data to steer intelligent concert spotlight choreographies without bass interference.
 
 #### 3. Stage Director & Visual Choreography Pipeline
-- **22-Pattern 360° 3D Laser Choreography Engine (`laserChoreography.ts`):** 
-  - Generates 3-dimensional spherical vectors projecting upward to the stadium zenith ($Y \in [14, 26]$), downward to the stage pit ($Y \in [-10, 0]$), across wide peripheral horizons ($X \in [-35, +35]$), and directly forward past the audience camera ($Z \in [0, 25]$).
-  - Normalizes rays to an 85-meter length (`FULL_WINDOW_BEAM_LENGTH = 85.0`), guaranteeing beams pierce from nozzle origins through and beyond the browser window boundaries.
-  - Features 22 distinct geometric choreographies (*Audience Scan Wave, Cathedral Scissor, Double-Helix Spiral, Stadium Fan, Rotating Pinwheel, Tunnel Perspective*, etc.) smoothly blended via Hermite cubic smoothstep curves ($0.50\text{s}$).
-- **Authentic Multi-Color Laser Palette Mapping (`laserColorUtils.ts`):**
-  - Songs featuring multiple vibrant colors map those exact hues directly to alternating laser stations (Tone 1 = Primary, Tone 2 = Secondary).
-  - Eliminates forced 180° opposite hue inversion, preserving authentic visual harmony with the song's album artwork and music video.
+- **Dual Corner White Sky Spotlights (`StageLightsEffect.ts`):**
+  - Two high-power concert searchlights mounted at the lower left and lower right corners of the YouTube iframe stage aperture.
+  - Projects 45-meter high-intensity volumetric white beam shafts (`#ffffff`) shooting into the arena ceiling and open sky ($Y \in [14, 25]$).
+  - Uses the same movement and tempo-synchronization logic as the colouring moving heads (`sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed`), but never focuses downward. Pan/tilt movements are strictly constrained to Left, Top (sky zenith), and Right sweeps.
+  - During drops, engages rapid crossing scissor sweeps across the zenith.
+- **12x 360° Continuous Rotatable Perimeter Bass Lights:**
+  - High-intensity moving heads framing the perimeter of the YouTube screen, driven continuously by bass stem energy and sub-bass frequencies.
 - **Symmetrical BPM Spotlights (`StageLightsEffect.ts`):** Symmetrically frames the YouTube screen across Top, Left, and Right fixtures, scaling dynamically from 2 to 12 fixtures based on detected BPM ($70-160\text{ BPM}$).
-- **Full-Window Screen Flash Blinder (`VisualEngine.ts`):**
+- **Full-Window Screen Flash Blinder (`flashColorUtils.ts` & `VisualEngine.ts`):**
   - Full-window elliptical radial gradient wash covering $100\text{vw} \times 100\text{vh}$ at `z-index: 15`.
   - Driven by direct DOM mutation on `#festival-window-blinder`, delivering vertical-sync accuracy without React component re-renders.
   - Synchronized with kick transients; compulsory pure white (`#FFFFFF`) on downbeats, cycling through song palette colors with white-hot filament cores.
 
 #### 4. Presentation & Hardware-Accelerated Rendering Layer
-- **Three.js r186 WebGL2 Canvas (`z-index: 2`):** Transparent canvas overlaying the stage video with additive volumetric laser blending, stage trusses, moving heads, and atmosphere dust.
+- **Three.js r186 WebGL2 Canvas (`z-index: 2`):** Transparent canvas overlaying the stage video with additive volumetric lighting, stage trusses, moving heads, and atmosphere dust.
 - **Synchronized 4K YouTube Stage Aperture (`z-index: 1`):**
   - Muted video playback (`volume = 0`) complying with browser autoplay policies while local lossless audio serves as the master clock.
   - Continuous 100ms drift monitor: if video drifts $> 140\text{ms}$ from master audio, micro-seeks snap the playhead back into phase.
@@ -238,12 +238,12 @@ flowchart TD
 
 ## ✨ Key Features
 
-- **22-Pattern 360° 3D Concert Laser Choreography:**
-  Three laser stations mounted above the stage fire 85-meter end-to-end beams across all 3 dimensions—zenith skyward sweeps, deck sweeps, wide stadium fans, and audience fly-throughs.
-- **Authentic Multi-Color Laser Palette Mapping:**
-  Multi-color songs directly use their authentic album colors across laser stations without forced 180° complementary inversion.
+- **Dual Corner White Sky Spotlights (Skyward Searchlights):**
+  Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen throwing 45m volumetric white beams into the sky, sweeping across Left, Top (zenith), and Right without ever focusing downward.
+- **360° Continuous Perimeter Bass Rig:**
+  12 perimeter moving heads directly modulated by neural bass stems executing continuous 360° sweeps around the stage aperture.
 - **Pinpointed Tri-STEM Peak Drop Activation:**
-  Lasers activate exclusively during true musical drops where Drums, Bass, and Instruments simultaneously exceed track averages, staying cleanly off during intros, verses, and breakdowns.
+  Climactic visuals activate exclusively during true musical drops where Drums, Bass, and Instruments simultaneously exceed track averages, staying cleanly off during intros, verses, and breakdowns.
 - **Full-Window Screen Flash Blinder:**
   High-intensity $100\text{vw} \times 100\text{vh}$ blinder wash with 0.96 peak opacity, direct DOM mutation, and compulsory pure white downbeats cycling through song palette colors.
 - **High-Precision Audio-Video Drift Synchronization:**
@@ -259,7 +259,7 @@ flowchart TD
 - **Symmetrical BPM-Scaled Moving Heads:**
   Moving-head spotlights scale dynamically from 2 to 12 fixtures framing the screen based on verified track tempo.
 - **Freeze-on-Pause Engine:**
-  Pausing playback instantly halts visual time accumulators (`deltaSeconds = 0`). Moving heads, beams, and lasers freeze in place without snapping.
+  Pausing playback instantly halts visual time accumulators (`deltaSeconds = 0`). Moving heads, perimeter lights, and white sky spotlights freeze in place without snapping.
 - **Interactive Routing Console & Telemetry HUD:**
   Press `C` for real-time calibration of shake, blinders, decay, and photosensitive safety mode. Press `D` for live FFT, stem energy, and MPS hardware telemetry.
 

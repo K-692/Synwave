@@ -38,8 +38,8 @@ export const StemSeparationLoader: React.FC<StemSeparationLoaderProps> = ({
 
   const stems = [
     { name: 'DRUMS / KICKS', desc: 'Kick blinders, flame cannons, screen shake', icon: Disc3, color: '#ff3366' },
-    { name: 'BASS / SUB', desc: 'Top bass laser machines, stage floor wash', icon: Cpu, color: '#00f0ff' },
-    { name: 'INSTRUMENTS', desc: 'Rig laser sweeps, atmospheric fill lights', icon: Music, color: '#7928ca' },
+    { name: 'BASS / SUB', desc: '360° perimeter bass rig, stage floor wash', icon: Cpu, color: '#00f0ff' },
+    { name: 'INSTRUMENTS', desc: 'White sky searchlights, atmospheric fill lights', icon: Music, color: '#7928ca' },
     { name: 'VOCALS', desc: 'Perimeter cross-stage scissor lights, screen glow', icon: Mic2, color: '#ffea00' },
   ];
 

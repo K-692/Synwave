@@ -6,13 +6,13 @@
  * - Fixed audience camera locked in front of the stage (NO mouse hovering movement)
  * - Solid rectangular Jumbotron LED screen displaying the song title and audio visualizer
  * - 16 Moving-head volumetric stage lights THROWN TOWARDS THE CAMERA & sweeping across stage
- * - 28 Razor-thin concert lasers THROWN TOWARDS THE CAMERA & audience
+ * - Dual corner high-intensity white spotlights projecting skyward searchlight beams
  * - 8 Pyro flame cannons flanking the screen and stage lip
  * - 4 High-velocity Cryo CO2 smoke cannons and rolling stage haze
  * - Dedicated STEM Separation Activation:
  *     - Kick STEM -> Kick flash lights (blinders) & pyro flame blasters
  *     - Bass STEM -> Moving-head light beam intensity & stage floor wash
- *     - Instrument STEM -> Razor-thin lasers & pan/tilt sweeps
+ *     - Instrument STEM -> White sky searchlights & pan/tilt sweeps
  *     - Vocal STEM -> Stage screen visual energy & cryo smoke plumes
  */
 
@@ -32,10 +32,9 @@ import type {
 import type { ExtractedStageColors } from '../services/thumbnailColorService';
 import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
-import { ThinLasersEffect } from './effects/ThinLasersEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
-import { resolveFlashPaletteColors } from './effects/laserColorUtils';
+import { resolveFlashPaletteColors } from './effects/flashColorUtils';
 
 export interface VisualSceneConfig {
   id: string;
@@ -47,12 +46,12 @@ const CONCERT_SCENES: VisualSceneConfig[] = [
   {
     id: 'stadium-mainstage',
     name: 'MAINSTAGE FESTIVAL',
-    activeEffectIds: ['stage-structure', 'stage-lights', 'thin-lasers'],
+    activeEffectIds: ['stage-structure', 'stage-lights'],
   },
   {
-    id: 'laser-cathedral',
-    name: 'MAINSTAGE LASER CATHEDRAL',
-    activeEffectIds: ['stage-structure', 'thin-lasers', 'stage-lights'],
+    id: 'mainstage-arena',
+    name: 'MAINSTAGE SKY ARENA',
+    activeEffectIds: ['stage-structure', 'stage-lights'],
   },
 ];
 
@@ -171,12 +170,10 @@ export class VisualEngine {
 
     const secHue = (primHue + 0.28) % 1.0;
     const accHue = (primHue + 0.55) % 1.0;
-    const compHue = (primHue + 0.50) % 1.0;
 
     const primColor = new THREE.Color().setHSL(primHue, primSat, primLight);
     const secColor = new THREE.Color().setHSL(secHue, primSat * 0.92, primLight * 0.95);
     const accColor = new THREE.Color().setHSL(accHue, 1.0, 0.60);
-    const laserColor = new THREE.Color().setHSL(compHue, 1.0, 0.55);
 
     return {
       id: `track-${seed}`,
@@ -186,7 +183,6 @@ export class VisualEngine {
       accent: `#${accColor.getHexString()}`,
       background: '#04060d',
       glow: `#${primColor.getHexString()}`,
-      laserColor: `#${laserColor.getHexString()}`,
       ambientColor: '#100a20',
     };
   }
@@ -247,8 +243,7 @@ export class VisualEngine {
     // Modular concert stage architecture (Zero revolving elements)
     this.effects = [
       new StageStructureEffect(), // Solid rectangular LED screen, box truss, crowd silhouette
-      new StageLightsEffect(),     // 16 Moving-head volumetric lights thrown forward towards camera
-      new ThinLasersEffect(),      // 360° High-Intensity lasers mounted at top of screen facing downward
+      new StageLightsEffect(),     // 16 Moving-head lights & dual white sky searchlights
     ];
 
     const context = this.createEffectContext(
@@ -328,7 +323,6 @@ export class VisualEngine {
       directorState: directorState || this.currentDirectorState || undefined,
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
       hasVideo: this.hasActiveVideo,
-      laserDecision: directorState?.laserDecision || this.currentDirectorState?.laserDecision,
     };
   }
 
@@ -383,12 +377,6 @@ export class VisualEngine {
     this.trackSignaturePalette = this.generateTrackSignaturePalette(seed, this.currentMood);
     this.targetPalette = { ...this.trackSignaturePalette };
     this.activePalette = { ...this.trackSignaturePalette };
-
-    // Immediately push new palette to laser system during track transition
-    const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
-    if (thinLasers) {
-      thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
-    }
 
     // Phase 18: Invalidate flash palette cache and reset flash state on track transition
     this.cachedFlashColors = null;
@@ -450,7 +438,6 @@ export class VisualEngine {
       secCol.lerp(targetSecCol, lerpRate);
       this.activePalette.secondary = `#${secCol.getHexString()}`;
 
-      this.activePalette.laserColor = this.activePalette.primary;
       if (this.targetPalette.spotlightColors) {
         this.activePalette.spotlightColors = [...this.targetPalette.spotlightColors];
       }
@@ -477,7 +464,6 @@ export class VisualEngine {
     secCol.lerp(targetSecCol, lerpRate);
     this.activePalette.secondary = `#${secCol.getHexString()}`;
 
-    this.activePalette.laserColor = this.activePalette.primary;
     if (this.targetPalette.spotlightColors) {
       this.activePalette.spotlightColors = [...this.targetPalette.spotlightColors];
     }
@@ -536,7 +522,7 @@ export class VisualEngine {
       if (sectionLabel.includes('DROP')) {
         this.switchScene('pyro-drop-frenzy');
       } else if (sectionLabel.includes('BUILD')) {
-        this.switchScene('laser-cathedral');
+        this.switchScene('mainstage-arena');
       } else {
         this.switchScene('stadium-mainstage');
       }
@@ -834,7 +820,6 @@ export class VisualEngine {
         accent: acc,
         background: '#04060d',
         glow: prim,
-        laserColor: prim,
         ambientColor: '#100a20',
         ...('spotlightColors' in extracted ? { spotlightColors: extracted.spotlightColors } : {}),
       };
@@ -842,12 +827,6 @@ export class VisualEngine {
 
       this.targetPalette = { ...customPal };
       this.activePalette = { ...customPal };
-    }
-
-    // Immediately propagate updated palette to lasers with deterministic track seed
-    const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
-    if (thinLasers) {
-      thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
     }
 
     // Phase 18: Invalidate flash palette cache and reset flash state
@@ -880,7 +859,6 @@ export class VisualEngine {
         accent: acc,
         background: '#04060d',
         glow: prim,
-        laserColor: prim,
         ambientColor: '#100a20',
         spotlightColors: colors,
       };
@@ -888,11 +866,6 @@ export class VisualEngine {
 
       this.targetPalette = { ...customPal };
       this.activePalette = { ...customPal };
-
-      const thinLasers = this.effects.find((e) => e.id === 'thin-lasers') as ThinLasersEffect | undefined;
-      if (thinLasers) {
-        thinLasers.updatePaletteColors(this.activePalette, this.trackSeed);
-      }
 
       // Phase 18: Invalidate flash palette cache and reset flash state
       this.cachedFlashColors = null;

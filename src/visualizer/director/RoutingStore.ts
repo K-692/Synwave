@@ -21,14 +21,12 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
     id: 'festival-mainstage',
     name: 'Festival Mainstage',
     subtitle: 'Ultra / Tomorrowland Stadium',
-    description: 'High-octane EDM arena with 360° downward instrument lasers, perimeter moving heads, and bass-reactive stage wash.',
+    description: 'High-octane EDM arena with dual corner white sky spotlights, perimeter moving heads, and bass-reactive stage wash.',
     accentColor: '#ff0055',
     defaultConfig: {
       kickSensitivity: 1.15,
       bassToBeamIntensity: 1.2,
       vocalToScreenGlow: 1.0,
-      laserDensity: 1.25,
-      laserBeamWidth: 1.0,
       spotlightCount: 3,
       minSpotlightCount: 1,
       maxSpotlightCount: 7,
@@ -46,14 +44,13 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       maxBrightnessLimit: 1.0,
       enabledEffects: {
         lights: true,
-        lasers: true,
       },
     },
   },
 };
 
-const STORAGE_KEY_CONFIG = 'synwave_routing_config_v4';
-const STORAGE_KEY_PROFILE = 'synwave_active_profile_v4';
+const STORAGE_KEY_CONFIG = 'synwave_routing_config_v5';
+const STORAGE_KEY_PROFILE = 'synwave_active_profile_v5';
 
 export class RoutingStore {
   private static instance: RoutingStore;

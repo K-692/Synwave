@@ -42,6 +42,17 @@ interface PerimeterBassLight {
   index: number;
 }
 
+interface WhiteSkySpotlight {
+  group: THREE.Group;
+  baseMesh: THREE.Mesh;
+  lensMesh: THREE.Mesh;
+  coneMesh: THREE.Mesh;
+  basePos: THREE.Vector3;
+  targetPos: THREE.Vector3;
+  currentTarget: THREE.Vector3;
+  corner: 'left' | 'right';
+}
+
 export class StageLightsEffect extends BaseEffect {
   readonly id = 'stage-lights';
   readonly name = 'Concert Moving Head Lights & 360° Perimeter Bass Beams';
@@ -61,6 +72,7 @@ export class StageLightsEffect extends BaseEffect {
 
   private fixtures: MovingHead[] = [];
   private perimeterBassLights: PerimeterBassLight[] = [];
+  private whiteSkySpotlights: WhiteSkySpotlight[] = [];
   private washLight1!: THREE.PointLight;
   private washLight2!: THREE.PointLight;
 
@@ -370,7 +382,97 @@ export class StageLightsEffect extends BaseEffect {
     // Align perimeter lights with current dimensions
     this.recalculatePerimeterPositions(this.currentDimensions);
 
-    // 3. Dynamic Stage Wash Point Lights (Tinted by Thumbnail Palette)
+    // 3. White Stage Sky Spotlights Flanking the Left & Right Corners of YouTube Screen
+    // Shoots long, powerful white volumetric beams into the sky/zenith (never focusing downward)
+    const skyConeLength = 45;
+    const skyConeGeo = new THREE.ConeGeometry(2.2, skyConeLength, 18, 1, true);
+    skyConeGeo.translate(0, -skyConeLength / 2, 0);
+    skyConeGeo.rotateX(-Math.PI / 2);
+    this.disposables.push(skyConeGeo);
+
+    const whiteCorners: {
+      corner: 'left' | 'right';
+      pos: THREE.Vector3;
+      defaultTarget: THREE.Vector3;
+    }[] = [
+      {
+        corner: 'left',
+        pos: new THREE.Vector3(
+          this.currentDimensions.leftX - 0.45,
+          this.currentDimensions.bottomY + 0.15,
+          this.currentDimensions.screenZ + 0.55
+        ),
+        defaultTarget: new THREE.Vector3(
+          this.currentDimensions.leftX - 3.0,
+          Math.max(16.0, this.currentDimensions.topY + 6.0),
+          14.0
+        ),
+      },
+      {
+        corner: 'right',
+        pos: new THREE.Vector3(
+          this.currentDimensions.rightX + 0.45,
+          this.currentDimensions.bottomY + 0.15,
+          this.currentDimensions.screenZ + 0.55
+        ),
+        defaultTarget: new THREE.Vector3(
+          this.currentDimensions.rightX + 3.0,
+          Math.max(16.0, this.currentDimensions.topY + 6.0),
+          14.0
+        ),
+      },
+    ];
+
+    for (let i = 0; i < whiteCorners.length; i++) {
+      const cfg = whiteCorners[i];
+      const spotGroup = new THREE.Group();
+      spotGroup.position.copy(cfg.pos);
+
+      // Chassis
+      const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+      spotGroup.add(baseMesh);
+
+      // White Lens Flare Sphere
+      const lensMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+      });
+      this.disposables.push(lensMat);
+      const lensMesh = new THREE.Mesh(lensGeo, lensMat);
+      lensMesh.position.set(0, 0, 0.1);
+      spotGroup.add(lensMesh);
+
+      // High-intensity white volumetric beam cone projecting high into the sky
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.30,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.FrontSide,
+      });
+      this.disposables.push(coneMat);
+      const coneMesh = new THREE.Mesh(skyConeGeo, coneMat);
+      coneMesh.position.set(0, 0, 0.1);
+      spotGroup.add(coneMesh);
+
+      spotGroup.lookAt(cfg.defaultTarget);
+      this.group.add(spotGroup);
+
+      this.whiteSkySpotlights.push({
+        group: spotGroup,
+        baseMesh,
+        lensMesh,
+        coneMesh,
+        basePos: cfg.pos.clone(),
+        targetPos: cfg.defaultTarget.clone(),
+        currentTarget: cfg.defaultTarget.clone(),
+        corner: cfg.corner,
+      });
+    }
+
+    // 4. Dynamic Stage Wash Point Lights (Tinted by Thumbnail Palette)
     this.washLight1 = new THREE.PointLight(0xff6600, 0.6, 25, 1.8);
     this.washLight1.position.set(
       -0.45 * this.currentDimensions.halfWidth,
@@ -392,6 +494,7 @@ export class StageLightsEffect extends BaseEffect {
     this.currentDimensions = calculateStageDimensions(width, height);
     this.recalculateSpotlightPositions(this.currentDimensions);
     this.recalculatePerimeterPositions(this.currentDimensions);
+    this.recalculateWhiteSkySpotlightPositions(this.currentDimensions);
     if (this.washLight1 && this.washLight2) {
       this.washLight1.position.set(
         -0.45 * this.currentDimensions.halfWidth,
@@ -403,6 +506,24 @@ export class StageLightsEffect extends BaseEffect {
         this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
         -1.0
       );
+    }
+  }
+
+  private recalculateWhiteSkySpotlightPositions(dims: StageDimensions): void {
+    if (this.whiteSkySpotlights.length >= 2) {
+      this.whiteSkySpotlights[0].basePos.set(
+        dims.leftX - 0.45,
+        dims.bottomY + 0.15,
+        dims.screenZ + 0.55
+      );
+      this.whiteSkySpotlights[0].group.position.copy(this.whiteSkySpotlights[0].basePos);
+
+      this.whiteSkySpotlights[1].basePos.set(
+        dims.rightX + 0.45,
+        dims.bottomY + 0.15,
+        dims.screenZ + 0.55
+      );
+      this.whiteSkySpotlights[1].group.position.copy(this.whiteSkySpotlights[1].basePos);
     }
   }
 
@@ -536,6 +657,10 @@ export class StageLightsEffect extends BaseEffect {
       for (const p of this.perimeterBassLights) {
         (p.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         (p.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+      for (const s of this.whiteSkySpotlights) {
+        (s.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        (s.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
       }
       this.washLight1.intensity = 0;
       this.washLight2.intensity = 0;
@@ -796,7 +921,69 @@ export class StageLightsEffect extends BaseEffect {
     }
 
     // -------------------------------------------------------------
-    // 3. Wash Lights (Tinted by Thumbnail Palette)
+    // 3. White Stage Sky Spotlights (Flanking Left & Right Corners of Screen)
+    // -------------------------------------------------------------
+    // Uses the same tempo/instrumental agility and drop logic as colouring spotlights,
+    // but strictly restricted to Left, Top (sky zenith), and Right — NEVER downward.
+    const skyBaseY = Math.max(14.0, this.currentDimensions.topY + 5.0);
+
+    for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
+      const spot = this.whiteSkySpotlights[i];
+      const isLeft = spot.corner === 'left';
+      const offset = isLeft ? 0.0 : 0.65;
+      const sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed;
+
+      if (isLeft) {
+        if (features.isDrop) {
+          // Energetic wide crossing sky scissor sweeps during drops
+          const spreadX = (this.currentDimensions.leftX * 0.4) + Math.sin(time * (2.8 * verifiedTempoSpeed)) * (this.currentDimensions.halfWidth + 5.0);
+          const spreadY = skyBaseY + 2.5 + Math.cos(time * (2.4 * verifiedTempoSpeed)) * 3.5;
+          const spreadZ = 13.0 + Math.sin(time * 2.0) * 3.0;
+          spot.targetPos.set(spreadX, Math.max(this.currentDimensions.topY + 4.0, spreadY), spreadZ);
+        } else {
+          // Melodic/tempo-synced skyward sweeps panning from Left to Top/Zenith to Right
+          const sweepX = (this.currentDimensions.leftX + 2.0) + Math.sin(time * sweepSpeed) * (this.currentDimensions.halfWidth + 4.5);
+          const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed) * 3.0;
+          const sweepZ = 13.0 + Math.sin(time * 0.5) * 2.5;
+          spot.targetPos.set(sweepX, Math.max(this.currentDimensions.topY + 4.0, sweepY), sweepZ);
+        }
+      } else {
+        if (features.isDrop) {
+          // Counter-crossing scissor sweep high across zenith
+          const spreadX = (this.currentDimensions.rightX * 0.4) - Math.sin(time * (2.8 * verifiedTempoSpeed) + offset) * (this.currentDimensions.halfWidth + 5.0);
+          const spreadY = skyBaseY + 2.5 + Math.cos(time * (2.4 * verifiedTempoSpeed) + offset) * 3.5;
+          const spreadZ = 13.0 + Math.sin(time * 2.0 + offset) * 3.0;
+          spot.targetPos.set(spreadX, Math.max(this.currentDimensions.topY + 4.0, spreadY), spreadZ);
+        } else {
+          const sweepX = (this.currentDimensions.rightX - 2.0) - Math.sin(time * sweepSpeed + offset) * (this.currentDimensions.halfWidth + 4.5);
+          const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 3.0;
+          const sweepZ = 13.0 + Math.sin(time * 0.5 + offset) * 2.5;
+          spot.targetPos.set(sweepX, Math.max(this.currentDimensions.topY + 4.0, sweepY), sweepZ);
+        }
+      }
+
+      // Smooth pan/tilt tracking towards sky target
+      if (deltaSeconds > 0) {
+        spot.currentTarget.lerp(spot.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
+      }
+      spot.group.position.copy(spot.basePos);
+      spot.group.lookAt(spot.currentTarget);
+
+      // Pure white concert searchlight optics
+      const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
+      lensMat.opacity = Math.min(0.98 * maxBri, 0.85 + instStem * 0.15);
+
+      const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
+      const rawSkyBri = (0.22 + instStem * 0.22 + (features.isDrop ? 0.10 : 0)) * maxBri;
+      coneMat.opacity = Math.min(0.48 * maxBri, rawSkyBri);
+
+      // Subtle volumetric shaft expansion on kicks/bass
+      const skyBeamScale = 1.0 + bassStem * 0.35 * bassBeamMult;
+      spot.coneMesh.scale.set(skyBeamScale, skyBeamScale, 1.0);
+    }
+
+    // -------------------------------------------------------------
+    // 4. Wash Lights (Tinted by Thumbnail Palette)
     // -------------------------------------------------------------
     this.washLight1.color.copy(primaryCol);
     this.washLight1.intensity = Math.min(1.2 * maxBri, (0.45 + bassStem * 0.55 * bassBeamMult) * maxBri);

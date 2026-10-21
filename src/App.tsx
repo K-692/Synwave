@@ -240,7 +240,6 @@ export const App: React.FC = () => {
     activeEffects: [
       'stage-structure',
       'stage-lights',
-      'thin-lasers',
       'fire-shooters',
       'shockwave-rings',
       'starfield-warp',

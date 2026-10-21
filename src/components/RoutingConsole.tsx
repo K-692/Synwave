@@ -4,9 +4,9 @@
  * Comprehensive calibration console for the 3D concert stage:
  * - Drums & Kicks: Screen Shake (YouTube iframe only), Screen Flash Strobe, Kick Sensitivity
  * - Bass Spectrum: 360° Perimeter Light Rotation Speed, Bass-to-Beam Radiance, Flash Color Saturation, Envelope Decay
- * - Instruments: 360° Downward Instrument Lasers Sweep Speed & Beam Density
+ * - Instruments: White Sky Searchlights & Stage Spotlights Sweep Agility
  * - Spotlights: Fixture Count (1-8), Thumbnail Palette Tuning, Global Brightness Ceiling
- * - Master Toggles: Moving Head Lights & 360° Rig, Downward Instrument Lasers
+ * - Master Toggles: Moving Head Lights & 360° Rig & White Sky Spotlights
  * - Safety & Accessibility: Reduced Flash Mode
  */
 
@@ -78,7 +78,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             <Sliders size={20} className="neon-cyan-icon" />
             <div>
               <h3>AUDIO-TO-VISUAL ROUTING CONSOLE</h3>
-              <p>Calibrate neural stem triggers, 360° perimeter bass rig, 360° downward instrument lasers, and screen blinders</p>
+              <p>Calibrate neural stem triggers, 360° perimeter bass rig, dual corner white sky searchlights, and screen blinders</p>
             </div>
           </div>
 
@@ -111,15 +111,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                 onClick={() => handleToggleEffect('lights')}
               >
                 <Lightbulb size={16} />
-                <span>Moving Head Lights & 360° Screen Rig</span>
-              </button>
-
-              <button
-                className={`effect-toggle-pill ${config.enabledEffects.lasers ? 'active' : ''}`}
-                onClick={() => handleToggleEffect('lasers')}
-              >
-                <Zap size={16} />
-                <span>360° Downward Instrument Lasers</span>
+                <span>Moving Head Lights & White Sky Spotlights</span>
               </button>
             </div>
           </div>
@@ -264,17 +256,17 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
             </div>
           </div>
 
-          {/* Section 4: 360° Downward Instrument Lasers */}
+          {/* Section 4: White Sky Searchlights & Instrumental Agility */}
           <div className="routing-section">
             <h4 className="routing-section-heading">
               <Music size={16} />
-              <span>360° DOWNWARD INSTRUMENT LASERS</span>
+              <span>WHITE SKY SEARCHLIGHTS & INSTRUMENT SWEEPS</span>
             </h4>
             <div className="sliders-grid">
               {/* Instrumental Movement Speed */}
               <div className="slider-control">
                 <div className="slider-label-row">
-                  <span>360° Conical Sweep Speed</span>
+                  <span>Sky Sweep Agility</span>
                   <span className="slider-val">{(config.instrumentalMovementSpeed ?? 1.0).toFixed(2)}x</span>
                 </div>
                 <input
@@ -285,41 +277,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.instrumentalMovementSpeed ?? 1.0}
                   onChange={(e) => handleSliderChange('instrumentalMovementSpeed', parseFloat(e.target.value))}
                 />
-                <span className="slider-hint">Higher instrumental frequency increases 360° conical rotation rate towards the stage floor</span>
-              </div>
-
-              {/* Laser Density */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Laser Beam Density</span>
-                  <span className="slider-val">{config.laserDensity.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="2.0"
-                  step="0.05"
-                  value={config.laserDensity}
-                  onChange={(e) => handleSliderChange('laserDensity', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Adjusts active razor beam count from the 3 top laser stations</span>
-              </div>
-
-              {/* Laser Beam Width / Thickness Slider */}
-              <div className="slider-control">
-                <div className="slider-label-row">
-                  <span>Laser Beam Width</span>
-                  <span className="slider-val">{(config.laserBeamWidth ?? 1.0).toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="2.5"
-                  step="0.05"
-                  value={config.laserBeamWidth ?? 1.0}
-                  onChange={(e) => handleSliderChange('laserBeamWidth', parseFloat(e.target.value))}
-                />
-                <span className="slider-hint">Adjusts razor laser thickness from ultra-thin filament threads to wider volumetric shafts</span>
+                <span className="slider-hint">Controls tempo-synced pan/tilt agility for the 2 white spotlights sweeping across Left, Top (zenith), and Right</span>
               </div>
             </div>
           </div>

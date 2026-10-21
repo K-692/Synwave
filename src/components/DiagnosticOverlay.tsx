@@ -14,7 +14,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { AudioFeatures, ShowDirectorState } from '../types';
 import { RoutingStore } from '../visualizer/director/RoutingStore';
 import { clearAllSynwaveCaches } from '../services/demucsService';
-import { getChoreographyMetadata } from '../visualizer/effects/laserChoreography';
 
 interface DiagnosticOverlayProps {
   isVisible: boolean;
@@ -185,44 +184,21 @@ export const DiagnosticOverlay: React.FC<DiagnosticOverlayProps> = ({
             </span>
           </div>
           <div className="metric-row">
-            <span className="metric-name">LASER DIRECTOR STATE</span>
-            <span
-              className="metric-value highlight"
-              style={{
-                color:
-                  directorState?.laserDecision?.semanticState &&
-                  directorState.laserDecision.semanticState !== 'OFF'
-                    ? '#00f0ff'
-                    : '#64748b',
-              }}
-            >
-              {directorState?.laserDecision?.semanticState || 'OFF'}
+            <span className="metric-name">WHITE SKY SPOTLIGHTS</span>
+            <span className="metric-value highlight" style={{ color: '#ffffff' }}>
+              Dual Flanks (Left & Right) · Upward Sky Beams
             </span>
           </div>
           <div className="metric-row">
-            <span className="metric-name">LASER CUE REASON</span>
+            <span className="metric-name">PERIMETER BASS RIG</span>
             <span className="metric-value text-muted-val" style={{ fontSize: '0.75rem' }}>
-              {directorState?.laserDecision?.activationReason || 'Standby'}
+              12 Fixtures (360° Continuous Bass-Driven Rotation)
             </span>
           </div>
           <div className="metric-row">
-            <span className="metric-name">DROP CONFIDENCE</span>
-            <span className="metric-value highlight">
-              {Math.round((directorState?.laserDecision?.confidence ?? 0) * 100)}%
-            </span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-name">4-BAR PHRASE ARC</span>
-            <span className="metric-value">
-              Bar {directorState?.laserDecision?.barInPhrase || 1}/4 in Phrase {directorState?.laserDecision?.phraseIndex || 0}
-            </span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-name">ACTIVE CHOREOGRAPHY</span>
+            <span className="metric-name">STAGE CHOREOGRAPHY</span>
             <span className="metric-value highlight" style={{ fontSize: '0.75rem' }}>
-              {directorState?.laserDecision?.patternId !== undefined
-                ? `#${directorState.laserDecision.patternId} ${getChoreographyMetadata(directorState.laserDecision.patternId).name}`
-                : 'Cathedral 3D Scissor Matrix'}
+              {directorState?.choreographyPattern || 'Festival Mainstage'}
             </span>
           </div>
           <div className="metric-row">

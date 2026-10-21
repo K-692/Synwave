@@ -27,10 +27,9 @@ export interface ColorPalette {
   accent: string;        // Highlight accent (e.g. #ffe600 yellow/gold)
   background: string;    // Deep dark background (e.g. #050711)
   glow: string;          // Emissive glow color
-  laserColor: string;    // Laser beam color
   ambientColor: string;  // Scene ambient lighting
   spotlightColors?: string[]; // Per-spotlight fixture assignments
-  rawSwatches?: string[];     // Authentic unmapped song swatches for laser palette derivation
+  rawSwatches?: string[];     // Authentic unmapped song swatches for dynamic palette derivation
 }
 
 export type MusicMood =
@@ -44,7 +43,7 @@ export type MusicMood =
 export interface AudioStems {
   kick: number;        // 0.0 to 1.0 (Kick transient & punch -> triggers kick flash lights & flame blasters)
   bass: number;        // 0.0 to 1.0 (Sub-bass & bass notes -> triggers moving head stage lights & floor wash)
-  instruments: number; // 0.0 to 1.0 (Synths, guitars, keys, melodies -> triggers razor-thin lasers & sweeps)
+  instruments: number; // 0.0 to 1.0 (Synths, guitars, keys, melodies -> triggers stage spotlights & sweeps)
   vocals: number;      // 0.0 to 1.0 (Vocal formants & upper harmonics -> triggers stage screen visuals & smoke)
 }
 
@@ -88,6 +87,8 @@ export interface AudioFeatures {
   midSpectralCentroid?: number;      // 0.0 to 1.0 (mid-range spectral brightness/center)
   midSpectralFlux?: number;          // 0.0 to 1.0 (mid-range spectral flux / note attack rate)
   midEnergyDistribution?: number;    // 0.0 to 1.0 (ratio of upper-mid vs lower-mid energy)
+  midSpectralContour?: number;       // 0.0 to 1.0 (weighted, temporally smoothed spectral contour in 250 Hz - 4 kHz)
+  midContourTrend?: number;          // -1.0 to +1.0 (smoothed contour movement: positive rising, negative falling)
 }
 
 export type ShowSection = 'intro' | 'verse' | 'buildup' | 'drop' | 'breakdown' | 'outro';
@@ -95,7 +96,6 @@ export type StageProfile = 'festival-mainstage';
 
 export interface EnabledEffectsConfig {
   lights: boolean;
-  lasers: boolean;
 }
 
 export interface AudioVisualRoutingConfig {
@@ -106,10 +106,8 @@ export interface AudioVisualRoutingConfig {
   screenFlashColorSaturation: number;   // 0.0 to 2.0 (default 1.0, blends thumbnail colors on bass)
   bassToBeamIntensity: number;          // 0.2 to 2.0 (default 1.0)
   perimeterBassRotationSpeed: number;   // 0.2 to 3.0 (default 1.0, 360-degree rotation)
-  instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, arena cathedral laser fan speed)
+  instrumentalMovementSpeed: number;    // 0.2 to 2.5 (default 1.0, stage lighting sweep speed)
   vocalToScreenGlow: number;            // 0.2 to 2.0 (default 1.0)
-  laserDensity: number;                 // 0.2 to 2.0 (default 1.0)
-  laserBeamWidth?: number;              // 0.2 to 2.5 (default 1.0, user-adjustable razor laser beam thickness)
   spotlightCount: number;               // 1 to 8 (active/target count, default 3)
   minSpotlightCount?: number;           // 1 to 4 (default 1 at BPM <= 70)
   maxSpotlightCount?: number;           // 4 to 8 (default 7 at BPM >= 160)
@@ -134,39 +132,6 @@ export interface BeatGridState {
   confidence: number;
 }
 
-export type LaserSemanticState =
-  | 'OFF'
-  | 'CINEMATIC_DIRECTIONAL'
-  | 'MELODIC_ANTHEM'
-  | 'BUILD_RISER'
-  | 'DROP_IMPACT'
-  | 'DROP_GROOVE'
-  | 'CLIMAX_OMNIDIRECTIONAL';
-
-export interface LaserShowDecision {
-  isPermitted: boolean;
-  semanticState: LaserSemanticState;
-  patternId: number;
-  prevPatternId: number;
-  transitionProgress: number; // 0.0 to 1.0 (smooth blend)
-  activationReason: string;
-  confidence: number; // 0.0 to 1.0 drop/cue confidence score
-  movementSpeed: number; // continuous trajectory sweep speed
-  beamDensity: number; // fraction of active beams (0.15 to 1.0)
-  beamIntensity: number; // baseline beam opacity (0.0 to 1.0)
-  pulseBrightness: number; // kick transient accent opacity (0.0 to 1.0)
-  beamSpreadMultiplier: number; // spatial expansion from bass/drop
-  beamThicknessMultiplier: number; // volumetric expansion from bass punch
-  elevationBias: number; // upward tilt bias into sky dome during builds
-  activeStationMask: [boolean, boolean, boolean]; // [left, center, right] call-and-response
-  isBeatGated: boolean; // whether beat-synchronized on/off pulsing is active
-  beatGateFactor: number; // 0.25 to 1.0 multiplier for beat-gated profile
-  absoluteBarIndex: number; // monotonic bar index
-  barInPhrase: number; // 1 to 4 in 4-bar phrase arc
-  phraseIndex: number; // monotonic 4-bar phrase counter
-  timingConfidence: number; // 0.0 to 1.0 beat grid confidence
-}
-
 export interface ShowDirectorState {
   currentSection: ShowSection;
   sectionProgress: number; // 0.0 to 1.0
@@ -176,7 +141,6 @@ export interface ShowDirectorState {
   intensityMultiplier: number;
   beatGrid: BeatGridState;
   spotlightCount?: number;
-  laserDecision?: LaserShowDecision;
 }
 
 export interface KieStemSeparationRequest {
@@ -351,7 +315,6 @@ export interface VisualEffectContext {
   directorState?: ShowDirectorState;
   routingConfig?: AudioVisualRoutingConfig;
   hasVideo?: boolean;
-  laserDecision?: LaserShowDecision;
 }
 
 export interface VisualEffect {

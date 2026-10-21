@@ -203,7 +203,7 @@ export class StarfieldEffect extends BaseEffect {
       this.positions[idx + 1] = this.lerp(this.positions[idx + 1], targetY, springRate);
       this.positions[idx + 2] = this.lerp(this.positions[idx + 2], targetZ, springRate);
 
-      // Color reaction: White-hot on kick, laser-tinted on drop, neon otherwise
+      // Color reaction: White-hot on kick, high-energy glow on drop, neon otherwise
       if (features.isKick) {
         this.colors[idx] = whiteColor.r;
         this.colors[idx + 1] = whiteColor.g;

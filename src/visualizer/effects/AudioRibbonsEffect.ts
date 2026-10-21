@@ -30,7 +30,7 @@ export class AudioRibbonsEffect extends BaseEffect {
     }
 
     this.ribbonLines = [];
-    const colors = [palette.primary, palette.secondary, palette.accent, palette.glow, palette.laserColor];
+    const colors = [palette.primary, palette.secondary, palette.accent, palette.glow, '#ffffff'];
 
     for (let r = 0; r < this.ribbonCount; r++) {
       const points: THREE.Vector3[] = [];

@@ -9,7 +9,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#ffe600',        // Acid Yellow
     background: '#04060d',    // Deep Void Indigo
     glow: '#00ffff',
-    laserColor: '#ff007f',
     ambientColor: '#120d2b'
   },
   {
@@ -20,7 +19,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#ff0078',        // Magenta
     background: '#090312',    // Retro Dusk
     glow: '#ff4d79',
-    laserColor: '#ff3366',
     ambientColor: '#200833'
   },
   {
@@ -31,7 +29,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#70e000',        // Radioactive Lime
     background: '#020b08',    // Dark Terminal Green
     glow: '#00ffaa',
-    laserColor: '#00ff66',
     ambientColor: '#041f14'
   },
   {
@@ -42,7 +39,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#4cc9f0',        // Icy Sky Blue
     background: '#030510',    // Starlight Obsidian
     glow: '#3a86ff',
-    laserColor: '#4cc9f0',
     ambientColor: '#0a0d24'
   },
   {
@@ -53,7 +49,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#ffffff',        // White Heat
     background: '#0c0502',    // Smoldering Black
     glow: '#ff9900',
-    laserColor: '#ff3300',
     ambientColor: '#2b1005'
   },
   {
@@ -64,7 +59,6 @@ export const COLOR_PALETTES: ColorPalette[] = [
     accent: '#3a86ff',        // Cyan Glint
     background: '#050507',    // Pitch Carbon
     glow: '#e0e0e0',
-    laserColor: '#ffffff',
     ambientColor: '#151518'
   }
 ];

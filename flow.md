@@ -1179,6 +1179,220 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 - Removed unsynchronized timers, independent rainbow color loops, and local activation gates from `LaserBeamsEffect.ts`, mapping perimeter modes (`Scissor Cross`, `Wide Horizon Fan`, `Liquid Sky`, `Drop Frenzy`) to semantic states using song-derived complementary color palettes.
 - Enhanced `DiagnosticOverlay.tsx` to display real-time laser state, cue reason, drop confidence %, 4-bar phrase arc stage, and active choreography metadata.
 
+
+### 5.24 Phase 25 (Phase 18) — Cinematic Camera-Facing Instrument Drift
+
+#### 1. Problem Diagnosis & Motivation
+1. **Absence of Dedicated Low-Percussion Melodic Choreography:**
+   - Prior choreography patterns in Synwave were predominantly designed around high-energy rhythmic sections, drops, and buildups with active kick transients.
+   - In spacious cinematic melodic choruses, vocal-instrumental bridges, and emotional passages with little or no kick drum activity, existing patterns either remained completely blacked out or cycled through wide spatial sweeps and rotational matrices that felt too aggressive for atmospheric passages.
+2. **Requirement for Static-but-Dynamic Forward Projection:**
+   - Cinematic concert lighting requires a static-but-dynamic presentation:
+     - *Static composition:* The beams remain oriented forward toward the viewer/camera plane, maintaining a recognizable, narrow forward-facing arrangement.
+     - *Dynamic movement:* The overall aim point drifts smoothly across a bounded area in response to the musical evolution of the melody.
+     - *Sparse presentation:* Only a controlled subset of beams is active (15–30% density; ~2 beams per station).
+     - *Restrained timing:* Activates when a suitable melodic section begins with low kick activity, fading in smoothly and remaining almost still when the melody holds.
+
+---
+
+#### 2. Architecture & Implementation Journey
+
+##### 1. Dedicated Pattern ID 22 (`laserChoreography.ts`)
+- Appended **ID 22: `Cinematic Camera-Facing Instrument Drift`** to `LASER_CHOREOGRAPHIES` without renumbering or modifying existing IDs 0–21.
+- Registered in `LASER_CHOREOGRAPHY_METADATA`:
+  - Primary category: `CINEMATIC_DIRECTIONAL`
+  - Compatible categories: `['CINEMATIC_DIRECTIONAL', 'MELODIC_ANTHEM']`
+  - Four-bar arc role: `'motif'`
+  - Default density: `0.25` (sparse filament presentation)
+  - Default speed scale: `0.40`
+  - Max spread aperture: `45°` (narrow, cohesive forward fan)
+- **Forward-Facing Stage Geometry:**
+  - Projects towards a camera-facing target plane situated just in front of the viewer/camera ($Z_{\text{target}} = \text{cameraZ} - 1.6 \approx 7.6\text{m}$, $Y_{\text{target}} \approx 2.4\text{m}$, $X_{\text{target}} \approx 0$).
+  - Maintains small, consistent horizontal and vertical offsets between beams within each station ($c \cdot 1.25\text{m}$ spread; alternating $\pm 0.12\text{m}$ vertical stagger) so individual beams remain visually distinguishable.
+  - Applies subtle coordinated station offsets ($\Delta X = -0.45\text{m}$ for left, $+0.20\text{m}$ $Y$ for center, $+0.45\text{m}$ for right), preserving the 3-station top-aperture rig.
+  - Dynamically adapts to aspect ratio and screen resizing using authoritative stage dimensions from `calculateStageDimensions()`.
+
+##### 2. Inexpensive Smoothed Mid-Band Spectral Contour (`AudioEngine.ts`)
+- Added `midSpectralContour` and `midContourTrend` to `AudioFeatures`:
+  - Evaluates weighted centroid across the 250 Hz–4 kHz mid-range bins (bins 12 to 186).
+  - Enforces a continuity check clamping frame-to-frame jumps to $\pm 0.045$, preventing erratic octave jumps between unrelated harmonics.
+  - Derives `smoothedContourTrend` indicating melodic movement direction: positive for rising melody, negative for falling melody, and zero for sustained stable tones.
+
+##### 3. Music-Informed 2D Drift State (`LaserShowController.ts`)
+- Created continuous 2D motion coordinates `cinematicAimX` and `cinematicAimY`:
+  - **Vertical Drift:** Steered by `midContourTrend` and modulated by spectral flux stability factor ($1.0$ when coherent, down to $0.08$ when chaotic). Rising melodic contour drifts upward; falling contour drifts downward; sustained notes decay velocity to zero and hold position; noisy/unstable flux reduces movement rather than jittering.
+  - **Horizontal Drift:** Driven by a slow musical wander (8–20s period) modulated by instrumental energy and upper-mid vs lower-mid distribution sway.
+  - Normalized target area corresponds to 5–15% of usable visual width and 3–8% of usable visual height.
+
+##### 4. Hierarchical Activation & Kick History Evaluation
+- Maintained a short, beat-aware rolling kick history window (`rollingKickHistory` over 40 frames).
+- Condition for cinematic drift:
+  $$\text{isLowKick} = (\bar{E}_{\text{kick}} < 0.28) \land (\text{avgInstSustain} > 0.38) \land (\text{midRangeEnergy} > 0.22) \land (\text{midSpectralFlux} < 0.60) \land (C_{\text{drop}} < 0.40)$$
+- **Strict Cue Precedence:** Drops, buildups, and climaxes immediately override the cinematic state. Isolated kicks do not trigger drops or cause aim jumps.
+- **Envelope Tuning:** Smoothed fade-in (~700ms) and clean release fade-out (~450ms).
+- **Phrase Scheduler Protection:** When locked into Pattern 22 in `CINEMATIC_DIRECTIONAL`, bar-by-bar pattern switching is disabled, maintaining a cohesive forward visual composition throughout the passage.
+
+---
+
+### Phase 26 — Spotlight-Synchronized Laser Movement Dynamics, 4-Bar Paced Choreography Gating, and Organic Drum/Kick Heartbeat Pulse
+
+#### Objective & Architectural Motivation
+Refactor laser movement dynamics, choreography alteration cadence, and physical acoustic responsiveness so that:
+1. **Movement Dynamics Match Spotlights:** Lasers exhibit the identical energy-level movement as the moving-head spotlights surrounding the YouTube iframe screen (`StageLightsEffect.ts`), responding directly to tempo, instrumental presence, bass, and drops.
+2. **Paced Mode Alteration (1 Bar of Every 4 Bars):** Eliminate frequent measure-by-measure pattern switching; alter the active laser mode strictly on downbeat Bar 1 of each 4-bar phrase, holding the mode steady through Bars 2, 3, and 4.
+3. **5-Tier Acoustic Energy Classification:** Map active Top aperture and Perimeter rigs strictly according to the user-supplied 5-tier acoustic specification (from 1/5 Very low to 5/5 Very high).
+4. **Cardiovascular Heartbeat Pulse:** Introduce an organic "lub-dub" double-pulse envelope synchronized to kicks and drums, expanding beam girth and core radiance.
+
+#### Key Architectural Implementations:
+
+##### 1. Spotlight-Synchronized Movement Dynamics (`LaserShowController.ts`)
+- Extracted spotlight energy formula from `StageLightsEffect.ts`:
+  - Verified tempo speed factor: $\text{verifiedTempoSpeed} = \text{clamp}(\text{BPM} / 128.0, 0.6, 1.8)$.
+  - Base spotlight speed: $(0.8 + \text{instStem} \cdot 1.4 + \text{bassStem} \cdot 0.4) \cdot \text{verifiedTempoSpeed}$.
+  - Drop / climax surge: $(2.8 + \text{kickStem} \cdot 0.8 + \text{bassStem} \cdot 0.6) \cdot \text{verifiedTempoSpeed}$, up to $3.4$ during peak climax.
+  - Multiplied by tier base speed scale ($T1: 0.45, T2: 0.75, T3: 1.15, T4: 1.70, T5: 2.40$) and user routing multiplier.
+  - Trajectory tracking agility lerp at $\Delta t \cdot (4.0 + \text{instStem} \cdot 5.0)$, exactly matching the moving-head spotlights surrounding the YouTube iframe.
+
+##### 2. Paced 4-Bar Choreography Scheduling (`LaserShowController.ts`)
+- In `advanceChoreographyScheduler`, restricted pattern alteration strictly to:
+  $$\text{isPhraseDownbeat} = (\text{barInPhraseCounter} == 1)$$
+- On Bar 1, `selectChoreographyForTier` deterministically selects the Top pattern and Perimeter mode for the 4-bar phrase.
+- During Bars 2, 3, and 4, the active laser mode is locked steady, eliminating erratic mode hopping while continuous spotlight-synchronized movement develops the phrase.
+- Urgent drop impact entrances (`DROP_IMPACT`) retain instantaneous override capability to preserve downbeat impact accuracy.
+
+##### 3. Authoritative 5-Tier Acoustic Classification Table (`laserChoreography.ts`)
+- Formalized typed registry `LASER_ENERGY_TIERS` and selector `selectChoreographyForTier`:
+  - **Tier 1 (1/5 · Very low, Base Speed 0.45):**
+    - Top Rig: `[22]` (`Cinematic Camera-Facing Instrument Drift`)
+    - Perimeter Rig: Mode `2` (`Liquid Sky`)
+  - **Tier 2 (2/5 · Low, Base Speed 0.75):**
+    - Top Rig: `[12]` (`Skyward Crown Fan`)
+    - Perimeter Rig: Mode `2` (`Liquid Sky`)
+  - **Tier 3 (3/5 · Medium, Base Speed 1.15):**
+    - Top Rig: `[7, 11, 15, 20, 18, 3]` (`Scissor Canopy`, `Ocean Scan`, `Sine Wave`, `Starlight Cascade`, `Aerial Grid`, `Skyward Dome`)
+    - Perimeter Rig: Mode `1` (`Wide Horizon Fan`)
+  - **Tier 4 (4/5 · High, Base Speed 1.70):**
+    - Top Rig: `[0, 2, 4, 6, 8, 13, 14, 17, 19]` (`Fly-Through`, `Cathedral Scissor`, `Concentrated Burst`, `360 Rake`, `Helicoid Spiral`, `Plane Slicer`, `Hypercube`, `Prism Split`, `Waterfall & Geyser`)
+    - Perimeter Rig: Mode `0` (`Scissor Cross`)
+  - **Tier 5 (5/5 · Very high, Base Speed 2.40):**
+    - Top Rig: `[9, 1, 5, 10, 16, 21]` (`Full-Window Slashes`, `Orbital Gimbal`, `Vortex Tunnel`, `Radial Starburst`, `Conical Fan`, `Climax Superfan`)
+    - Perimeter Rig: Mode `3` (`Drop Frenzy`)
+
+##### 4. Organic Kick / Drum Heartbeat Dual-Pulse Envelope (`ThinLasersEffect.ts` & `LaserBeamsEffect.ts`)
+- Cardiovascular "lub-dub" double-pulse generator in `LaserShowController.ts`:
+  $$p_{\text{systole}}(t) = \sin\left(\frac{t}{0.09}\pi\right) \cdot 1.0 \quad (0 \le t \le 0.09\text{s})$$
+  $$p_{\text{diastole}}(t) = \sin\left(\frac{t - 0.11}{0.13}\pi\right) \cdot 0.55 \quad (0.11 \le t \le 0.24\text{s})$$
+- Applied to Top Rig (`ThinLasersEffect.ts`):
+  - Arterial beam girth expansion: $\text{beamThickness} \cdot (1.0 + \text{heartbeatPulse} \cdot 0.45)$.
+  - Core & sheath luminosity pump: $+\text{heartbeatPulse} \cdot 0.35$ opacity.
+- Applied to Perimeter Rig (`LaserBeamsEffect.ts`):
+  - Direct consumption of `decision.perimeterMode` from tier table.
+  - Volumetric beamScale expansion: $\text{scale} \cdot (1.0 + \text{heartbeatPulse} \cdot 0.40)$.
+  - Core line and glow mesh luminosity pulse: $+\text{heartbeatPulse} \cdot 0.35$ opacity.
+
+---
+
+### Phase 27 — Comprehensive Musical Laser Classifier, Single Top-Center Rig & Full-Window Reach
+
+#### Objective & Problem Analysis
+1. **Mode Stagnation Resolution:** Previous implementations suffered from artificial verse/intro blackouts and a narrow activation window, causing only 2–3 modes to ever be seen during an entire track.
+2. **Uniform Beam Thickness:** Tapered cylinder geometry ($r_{\text{top}} = 0.002, r_{\text{bottom}} = 0.0045$) and call-and-response station dimming caused some beams to appear paper-thin and fade out into sub-pixel rasterization.
+3. **End-to-End Window Reach & Clean Origin:** Beams occasionally terminated prematurely or protruded backwards through emitter origins.
+4. **Single Top-Center Fixture:** Previous rig featured 3 fixtures (Left, Center, Right); refactored to remove the 2 side fixtures and consolidate all laser beams into a single top-center emitter directly above the YouTube video screen.
+
+#### Architectural Implementations
+
+##### 1. Full 23-Mode Musical & Acoustic Classifier (`laserChoreography.ts` & `LaserShowController.ts`)
+Implemented `classifyLaserChoreography(section, features, phraseIndex, trackSeed, currentPatternId, dropConfidence, sectionProgress)` mapping all 23 trajectories across all song sections:
+- **Intro & Ambient:** Skyward Crown Fan (`#12`), Cinematic Camera-Facing Drift (`#22`), Skyward Dome (`#3`), Starlight Cascade (`#18`). (Tier 1–2, Perimeter Mode 2).
+- **Verse · Calm / Vocal:** Cinematic Camera-Facing Drift (`#22`), Ocean Scan (`#11`), Sine Wave Ribbon (`#15`), Scissor Canopy (`#7`). (Tier 1–2, Perimeter Mode 2).
+- **Verse · Active / Groove:** Aerial Crossing Grid (`#20`), Starlight Cascade (`#18`), Cathedral Scissor Matrix (`#2`), Dual Helicoid (`#8`). (Tier 3, Perimeter Mode 1).
+- **Buildup · Early Anticipation:** Skyward Crown Fan (`#12`), Prism Split (`#17`), Horizon Rake (`#6`), Skyward Dome (`#3`). (Tier 2–3, Perimeter Mode 2).
+- **Buildup · Late Pre-Drop Riser:** Concentrated Stage Burst (`#4`), Waterfall & Geyser (`#19`), Hypercube Cage (`#14`), Multi-Plane Slicer (`#13`), Prism Split (`#17`). (Tier 4, Perimeter Mode 0).
+- **Drop · Downbeat Slam / Impact:** Concentrated Stage Burst (`#4`), Fly-Through (`#0`), Full-Window Slashes (`#9`), Radial Starburst (`#10`), Climax Superfan (`#21`). (Tier 5, Perimeter Mode 3).
+- **Drop · Heavy Bass / Tech Groove:** Dual Helicoid Spiral (`#8`), Vortex Tunnel (`#5`), Hypercube Cage (`#14`), Multi-Plane Slicer (`#13`), Cathedral Scissor (`#2`). (Tier 4, Perimeter Mode 0).
+- **Drop · High-BPM / Euphoria:** Full-Window Slashes (`#9`), 360° Orbital Gimbal (`#1`), Radial Starburst (`#10`), Conical Superfan (`#16`), Climax Superfan (`#21`). (Tier 5, Perimeter Mode 3).
+- **Chorus · Uplifting Anthem:** Skyward Dome (`#3`), Scissor Canopy (`#7`), Ocean Scan (`#11`), Conical Superfan (`#16`), Aerial Grid (`#20`). (Tier 3, Perimeter Mode 1).
+- **Chorus · Driving Rhythm:** Fly-Through (`#0`), Cathedral Scissor (`#2`), Conical Superfan (`#16`), Dual Helicoid (`#8`), Multi-Plane Slicer (`#13`). (Tier 4, Perimeter Mode 0).
+- **Climax · Peak Omnidirectional:** Climax Omnidirectional Superfan (`#21`), 360° Orbital Gimbal (`#1`), Radial Starburst (`#10`), Conical Superfan (`#16`), Full-Window Slashes (`#9`). (Tier 5, Perimeter Mode 3).
+- **Breakdown / Bridge:** Cinematic Drift (`#22`), Sine Wave Ribbon (`#15`), Skyward Crown Fan (`#12`), Ocean Scan (`#11`). (Tier 1–2, Perimeter Mode 2).
+- **Outro · Horizon Resolution:** Skyward Crown Fan (`#12`), Skyward Dome (`#3`), Cinematic Drift (`#22`). (Tier 1–2, Perimeter Mode 2).
+
+##### 2. Single Top-Center Laser Rig (`ThinLasersEffect.ts`)
+- Eliminated Station 0 (Top-Left) and Station 2 (Top-Right).
+- Mounted a single authoritative top-center station at:
+  $$\mathbf{P}_{\text{emitter}} = (0.0, \text{dims.topY} + 0.55, \text{dims.screenZ} + 0.5)$$
+- Consolidates 20 razor-sharp beams radiating symmetrically from the single diode nozzle dot.
+- Trajectory evaluation passes authoritative center station index (`stationIdx: 1`), keeping coordinate math centered.
+
+##### 3. Uniform Non-Tapered Beam Thickness (`ThinLasersEffect.ts`)
+- Eliminated conical tapering: replaced with constant-radius cylinders:
+  - Neon Core: `CORE_RADIUS = 0.024` ($r_{\text{top}} = r_{\text{bottom}} = 0.024\text{m}$).
+  - Glow Sheath: `SHEATH_RADIUS = 0.060` ($r_{\text{top}} = r_{\text{bottom}} = 0.060\text{m}$).
+  - Atmospheric Halo: `HALO_RADIUS = 0.100` ($r_{\text{top}} = r_{\text{bottom}} = 0.100\text{m}$).
+- Removed station call-and-response masking dimming (`stationScale = 1.0` uniformly across all beams).
+- All 20 beams receive identical uniform scaling and opacity across the entire show.
+
+##### 4. Origin-Locked Full-Window Reach (`ThinLasersEffect.ts`)
+- Geometry translation and rotation:
+  $$\text{geo.translate}(0, 0.5, 0) \longrightarrow \text{geo.rotateX}(\pi / 2)$$
+  Extends cylinder from $Z=0$ to $Z=1.0$ along local $+Z$ axis.
+- Core, sheath, and halo meshes positioned at $(0, 0, 0)$ inside `beam.group` (which is positioned at $\mathbf{P}_{\text{emitter}}$).
+- Length scaled to $200.0\text{m}$ (`FULL_WINDOW_BEAM_LENGTH = 200.0`), traversing the arena ceiling, floor, stage, and auditorium completely through and past all viewport boundaries without clipping.
+
+---
+
+### Phase 28 — Complete Laser System Decommission & Dual Corner White Sky Searchlights
+
+#### Objective & Problem Analysis
+1. **Total Laser Decommissioning:** Remove all laser engines, 3D laser geometries, procedural laser choreographies, laser color derivation, laser director telemetry, and routing configurations across the entire codebase.
+2. **Dual Corner White Stage Spotlights:** Mount two dedicated high-intensity white spotlights flanking the left and right corners of the YouTube stage screen aperture.
+3. **Sky-Oriented Pan/Tilt Choreography:** The white spotlights utilize the same tempo-synchronized and stem-responsive movement dynamics as the colouring stage moving heads, but with a strict directional invariant: **never focus in a downward direction or tilt toward the stage floor/bottom**. They function as outdoor arena searchlights / stage sky-cannons throwing 45-meter volumetric beams into the sky, sweeping across Left, Top (sky zenith), and Right.
+
+#### Architectural Implementations
+
+##### 1. Full Laser Architecture Deletion
+Cleanly removed all laser-specific files and dependencies:
+- Deleted `src/visualizer/effects/ThinLasersEffect.ts`.
+- Deleted `src/visualizer/effects/LaserBeamsEffect.ts`.
+- Deleted `src/visualizer/effects/laserChoreography.ts`.
+- Deleted `src/visualizer/director/LaserShowController.ts`.
+- Replaced `laserColorUtils.ts` with `src/visualizer/effects/flashColorUtils.ts` (preserving `resolveFlashPaletteColors` and pure color normalization functions for screen kick flashes without laser dependencies).
+- Purged all laser fields from `src/types/index.ts` (`LaserSemanticState`, `LaserShowDecision`, `LaserEnergyTier`, `ColorPalette.laserColor`, `EnabledEffectsConfig.lasers`, `laserDensity`, `laserBeamWidth`, and `laserDecision`).
+- Removed laser controls and routing configuration from `RoutingStore.ts` (bumped storage key to `v5` to prevent stale localStorage state).
+- Streamlined `ShowDirector.ts` to manage stage lighting and scene progression without laser sub-orchestration.
+- Updated `DiagnosticOverlay.tsx` (replaced laser state telemetry with real-time white sky searchlight status) and `RoutingConsole.tsx` (updated Section 4 to White Sky Searchlights & Instrumental Agility).
+- Updated `App.tsx` and `StemSeparationLoader.tsx` to remove all laser references.
+
+##### 2. Corner White Sky Searchlights Rig (`StageLightsEffect.ts`)
+Integrated two dedicated white searchlight fixtures mounted at the lower stage corners flanking the YouTube aperture:
+- **Left Stage Corner:**
+  $$\mathbf{P}_{\text{left}} = (\text{dims.leftX} - 0.45, \text{dims.bottomY} + 0.15, \text{dims.screenZ} + 0.55)$$
+- **Right Stage Corner:**
+  $$\mathbf{P}_{\text{right}} = (\text{dims.rightX} + 0.45, \text{dims.bottomY} + 0.15, \text{dims.screenZ} + 0.55)$$
+- **Optics & Beam Geometry:**
+  - Metallic chassis cylinder with white lens flare sphere (`0xffffff`, opacity 0.95).
+  - 45-meter volumetric beam cone (`skyConeLength = 45.0`, base radius 0.25, aperture radius 2.2) extending along local $+Z$ with additive blending (`THREE.AdditiveBlending`).
+  - Responsive beam shaft expansion on sub-bass / kick hits ($1.0 + \text{bassStem} \cdot 0.35$).
+
+##### 3. Upward Sky Sweep Dynamics (Left, Zenith/Top, Right — Never Downward)
+- **Tempo & Stem Synchronization:**
+  Calculates sweep angular velocity using the exact colouring spotlight speed equation:
+  $$\omega_{\text{sweep}} = (0.8 + \text{instStem} \cdot 1.4) \cdot v_{\text{tempo}}$$
+  where $v_{\text{tempo}}$ is the verified track tempo factor relative to 128 BPM.
+- **Strict Directional Invariant ($Y_{\text{target}} \ge \text{dims.topY} + 4.0$):**
+  The target coordinate strictly resides in the upper hemisphere ($Y \in [14.0, 22.0]$), with the base mount at $Y \approx 1.5 - 2.0$. Consequently, the aiming vector always exhibits a steep positive $\Delta Y \ge +12.0\text{m}$.
+- **Kinematic Aiming Profiles:**
+  - **Left Searchlight:**
+    - *Normal Mode:* Sweeps across from left stage flank through the celestial zenith over to the right:
+      $$X_t = (\text{dims.leftX} + 2.0) + \sin(t \cdot \omega_{\text{sweep}}) \cdot (\text{dims.halfWidth} + 4.5)$$
+      $$Y_t = \max(\text{dims.topY} + 4.0, Y_{\text{sky}} + \cos(t \cdot 0.7 \cdot v_{\text{tempo}}) \cdot 3.0)$$
+    - *Drop Mode:* Fast-sweeping zenith scissor sweeps:
+      $$X_t = (\text{dims.leftX} \cdot 0.4) + \sin(t \cdot 2.8 \cdot v_{\text{tempo}}) \cdot (\text{dims.halfWidth} + 5.0)$$
+      $$Y_t = \max(\text{dims.topY} + 4.0, Y_{\text{sky}} + 2.5 + \cos(t \cdot 2.4 \cdot v_{\text{tempo}}) \cdot 3.5)$$
+  - **Right Searchlight:** Symmetrically counter-phased with a $0.65\text{ rad}$ offset, crossing overhead in the sky with the left beam.
+- **Smooth Target Tracking:** Lerps smoothly at rate $(4.0 + \text{instStem} \cdot 5.0) \cdot \Delta t$, freezing instantly on pause (`deltaSeconds === 0`).
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1188,15 +1402,17 @@ Implemented a strict, canonical single-file caching architecture with index tabl
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Python backend (`shazam_server.py` and `demucs_service.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/shazam` (`shazam_*.json`) and `.synwave_cache/stems` (`stems_*.json`).
-- **Professional Concert Laser Director:** Authoritative single-controller system (`LaserShowController.ts`) featuring:
-  - 7 typed semantic states (`OFF`, `CINEMATIC_DIRECTIONAL`, `MELODIC_ANTHEM`, `BUILD_RISER`, `DROP_IMPACT`, `DROP_GROOVE`, `CLIMAX_OMNIDIRECTIONAL`).
-  - Strict hierarchical activation gating with auditable multi-signal drop confidence ($C_{\text{drop}}$) and Schmitt-trigger hysteresis ($0.60$ / $0.38$).
-  - Beat-grid-synchronized 4-bar choreography scheduler (Motif $\to$ Develop $\to$ Tension $\to$ Accent) with anti-flicker monotonic measure tracking.
-  - Decoupled acoustic modulation: fast kick impulse decay ($140\text{ms}$), alternating station call-and-response masks, sub-bass beam spread/thickness scaling, and instrumental trajectory steering.
-  - Coherent synchronization across top-aperture (`ThinLasersEffect.ts`) and perimeter (`LaserBeamsEffect.ts`) rigs using song-derived complementary palettes.
-- **Screen Flash Strobe:** Strictly manipulated by audio kick transients with sub-millisecond onset precision, zero interference from metronome clock ticks, and dynamic opacity scaling via `kickSensitivity`.
-- **Media Showcase & Documentation:** Embedded `demo/demo.mp4` with complete credits to Abandoned (@AbandonedOfficial).
-- **Repository Hygiene:** Clean workspace with no stray temporary test scripts.
+- **Concert Stage Architecture (Phase 28):**
+  - All laser systems completely decommissioned.
+  - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture.
+  - 45m high-power volumetric white beams projecting upward into the arena sky, sweeping Left, Top (zenith), and Right with zero downward focus.
+  - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).
+  - 12x 360° continuous rotatable perimeter bass moving heads.
+  - Direct-DOM full-window screen blinder strobe driven strictly by kick transients.
+- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3). Pushing to GitHub repo per explicit user authorization.
+
+
+
 
 
 

@@ -34,6 +34,9 @@ export class AudioEngine {
   private smoothedMidSpectralCentroid = 0.5;
   private smoothedMidSpectralFlux = 0;
   private smoothedMidEnergyDistribution = 0.5;
+  private smoothedMidSpectralContour = 0.5;
+  private prevMidSpectralContour = 0.5;
+  private smoothedContourTrend = 0.0;
 
   // Transient beat and drum kick detection state
   private energyHistory: number[] = [];
@@ -370,6 +373,18 @@ export class AudioEngine {
     this.smoothedMidSpectralFlux = lerp(this.smoothedMidSpectralFlux, rawMidFlux, 0.40);
     this.smoothedMidEnergyDistribution = lerp(this.smoothedMidEnergyDistribution, rawMidDistribution, 0.30);
 
+    // Phase 18: Weighted, temporally smoothed mid-band spectral contour (250 Hz - 4 kHz)
+    // Continuity check limits frame-to-frame jump (max 0.045) to prevent erratic octave/harmonic jumping
+    if (midCentroidDenominator > 0.06) {
+      const rawContour = rawMidCentroid;
+      const jump = rawContour - this.smoothedMidSpectralContour;
+      const clampedJump = Math.max(-0.045, Math.min(0.045, jump));
+      this.smoothedMidSpectralContour = lerp(this.smoothedMidSpectralContour, this.smoothedMidSpectralContour + clampedJump, 0.22);
+    }
+    const rawTrend = (this.smoothedMidSpectralContour - this.prevMidSpectralContour) * 45.0;
+    this.prevMidSpectralContour = this.smoothedMidSpectralContour;
+    this.smoothedContourTrend = lerp(this.smoothedContourTrend, Math.max(-1.0, Math.min(1.0, rawTrend)), 0.15);
+
     // Track dynamic rolling sub-bass baseline for Drum Kick Detection
     this.subBassHistory.push(rawSubBass);
     if (this.subBassHistory.length > 30) {
@@ -539,6 +554,8 @@ export class AudioEngine {
       midSpectralCentroid: this.smoothedMidSpectralCentroid,
       midSpectralFlux: this.smoothedMidSpectralFlux,
       midEnergyDistribution: this.smoothedMidEnergyDistribution,
+      midSpectralContour: this.smoothedMidSpectralContour,
+      midContourTrend: this.smoothedContourTrend,
     };
   }
 
@@ -681,7 +698,7 @@ export class AudioEngine {
 
   /**
    * Identifies the exact timestamp of a sudden music spike (transient kick onset or maximal energy surge)
-   * around candidate drop activation to ensure lasers activate on the exact downbeat impact.
+   * around candidate drop activation to ensure stage lighting activates on the exact downbeat impact.
    */
   private findSuddenMusicSpikeTimestamp(
     rawStartTime: number,
