@@ -215,9 +215,10 @@ flowchart TD
 #### 3. Stage Director & Visual Choreography Pipeline
 - **Dual Corner White Sky Spotlights (`StageLightsEffect.ts`):**
   - Two high-power concert searchlights mounted at the lower left and lower right corners of the YouTube iframe stage aperture.
-  - Projects 45-meter high-intensity volumetric white beam shafts (`#ffffff`) shooting into the arena ceiling and open sky ($Y \in [14, 25]$).
-  - Uses the same movement and tempo-synchronization logic as the colouring moving heads (`sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed`), but never focuses downward. Pan/tilt movements are strictly constrained to Left, Top (sky zenith), and Right sweeps.
-  - During drops, engages rapid crossing scissor sweeps across the zenith.
+  - **Fixed Origins (Zero Audio Shake):** The spotlight chassis (`fixedBaseMesh`) and optical head origins (`headGroup`) are strictly fixed in 3D stage space with zero translation or audio shake.
+  - **Bass-Presence Turn On:** Automatically turns ON when bass is present in the track (`effectiveBass > 0.08`) with musical attack/decay envelopes, and turns completely OFF during bass-free passages.
+  - **Kick-Synchronized Blinking:** Blinks in tight lockstep with drum kick hits (`features.isKick` / kick stem spikes), executing a concert blink cycle (impact strike flash $\to$ shutter cut notch $\to$ smooth recovery).
+  - **Dynamic Beam Sky Movement:** Uses the same tempo/instrumental agility logic as colouring moving heads (`sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed`), projecting 45-meter volumetric white beams into the sky. Sweeps are strictly constrained to Left, Top (sky zenith), and Right — never downward. Engages rapid crossing scissor sweeps during drops.
 - **12x 360° Continuous Rotatable Perimeter Bass Lights:**
   - High-intensity moving heads framing the perimeter of the YouTube screen, driven continuously by bass stem energy and sub-bass frequencies.
 - **Symmetrical BPM Spotlights (`StageLightsEffect.ts`):** Symmetrically frames the YouTube screen across Top, Left, and Right fixtures, scaling dynamically from 2 to 12 fixtures based on detected BPM ($70-160\text{ BPM}$).
@@ -239,7 +240,7 @@ flowchart TD
 ## ✨ Key Features
 
 - **Dual Corner White Sky Spotlights (Skyward Searchlights):**
-  Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen throwing 45m volumetric white beams into the sky, sweeping across Left, Top (zenith), and Right without ever focusing downward.
+  Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen with strictly fixed origins (zero audio shake). Features dynamic beam sweeps across Left, Top (zenith), and Right using colouring spotlight logic (never downward), automated bass-presence illumination, and tight kick/drum hit synchronized blinking.
 - **360° Continuous Perimeter Bass Rig:**
   12 perimeter moving heads directly modulated by neural bass stems executing continuous 360° sweeps around the stage aperture.
 - **Pinpointed Tri-STEM Peak Drop Activation:**

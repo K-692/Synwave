@@ -43,8 +43,8 @@ interface PerimeterBassLight {
 }
 
 interface WhiteSkySpotlight {
-  group: THREE.Group;
-  baseMesh: THREE.Mesh;
+  fixedBaseMesh: THREE.Mesh;
+  headGroup: THREE.Group;
   lensMesh: THREE.Mesh;
   coneMesh: THREE.Mesh;
   basePos: THREE.Vector3;
@@ -75,6 +75,10 @@ export class StageLightsEffect extends BaseEffect {
   private whiteSkySpotlights: WhiteSkySpotlight[] = [];
   private washLight1!: THREE.PointLight;
   private washLight2!: THREE.PointLight;
+
+  // White Sky Spotlight audio-reactive state: turned ON by bass, blinks on kick hits
+  private whiteSpotlightBassPresence = 0;
+  private kickBlinkTimer = 0;
 
   // Internal time accumulation (freezes when deltaSeconds === 0)
   private internalTime = 0;
@@ -425,44 +429,47 @@ export class StageLightsEffect extends BaseEffect {
 
     for (let i = 0; i < whiteCorners.length; i++) {
       const cfg = whiteCorners[i];
-      const spotGroup = new THREE.Group();
-      spotGroup.position.copy(cfg.pos);
 
-      // Chassis
-      const baseMesh = new THREE.Mesh(baseGeo, baseMat);
-      spotGroup.add(baseMesh);
+      // 1. Fixed Base Mount / Chassis: Added directly to this.group and strictly fixed in stage space (no translation/shake)
+      const fixedBaseMesh = new THREE.Mesh(baseGeo, baseMat);
+      fixedBaseMesh.position.copy(cfg.pos);
+      this.group.add(fixedBaseMesh);
 
-      // White Lens Flare Sphere
+      // 2. Optical Head Group: Anchored at cfg.pos with no offset, pivots purely in rotation around the stationary origin
+      const headGroup = new THREE.Group();
+      headGroup.position.copy(cfg.pos);
+
+      // White Lens Flare Sphere (at optical center 0, 0, 0)
       const lensMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.95,
+        opacity: 0.0,
       });
       this.disposables.push(lensMat);
       const lensMesh = new THREE.Mesh(lensGeo, lensMat);
-      lensMesh.position.set(0, 0, 0.1);
-      spotGroup.add(lensMesh);
+      lensMesh.position.set(0, 0, 0);
+      headGroup.add(lensMesh);
 
-      // High-intensity white volumetric beam cone projecting high into the sky
+      // High-intensity white volumetric beam cone projecting into the sky (apex at 0, 0, 0)
       const coneMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.30,
+        opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.FrontSide,
       });
       this.disposables.push(coneMat);
       const coneMesh = new THREE.Mesh(skyConeGeo, coneMat);
-      coneMesh.position.set(0, 0, 0.1);
-      spotGroup.add(coneMesh);
+      coneMesh.position.set(0, 0, 0);
+      headGroup.add(coneMesh);
 
-      spotGroup.lookAt(cfg.defaultTarget);
-      this.group.add(spotGroup);
+      headGroup.lookAt(cfg.defaultTarget);
+      this.group.add(headGroup);
 
       this.whiteSkySpotlights.push({
-        group: spotGroup,
-        baseMesh,
+        fixedBaseMesh,
+        headGroup,
         lensMesh,
         coneMesh,
         basePos: cfg.pos.clone(),
@@ -516,14 +523,16 @@ export class StageLightsEffect extends BaseEffect {
         dims.bottomY + 0.15,
         dims.screenZ + 0.55
       );
-      this.whiteSkySpotlights[0].group.position.copy(this.whiteSkySpotlights[0].basePos);
+      this.whiteSkySpotlights[0].fixedBaseMesh.position.copy(this.whiteSkySpotlights[0].basePos);
+      this.whiteSkySpotlights[0].headGroup.position.copy(this.whiteSkySpotlights[0].basePos);
 
       this.whiteSkySpotlights[1].basePos.set(
         dims.rightX + 0.45,
         dims.bottomY + 0.15,
         dims.screenZ + 0.55
       );
-      this.whiteSkySpotlights[1].group.position.copy(this.whiteSkySpotlights[1].basePos);
+      this.whiteSkySpotlights[1].fixedBaseMesh.position.copy(this.whiteSkySpotlights[1].basePos);
+      this.whiteSkySpotlights[1].headGroup.position.copy(this.whiteSkySpotlights[1].basePos);
     }
   }
 
@@ -923,9 +932,60 @@ export class StageLightsEffect extends BaseEffect {
     // -------------------------------------------------------------
     // 3. White Stage Sky Spotlights (Flanking Left & Right Corners of Screen)
     // -------------------------------------------------------------
-    // Uses the same tempo/instrumental agility and drop logic as colouring spotlights,
-    // but strictly restricted to Left, Top (sky zenith), and Right — NEVER downward.
+    // - Fixed Origins: Chassis (fixedBaseMesh) and Head (headGroup) origins are strictly stationary (no translation or audio shake).
+    // - Beam Movement: Uses the same tempo/instrumental agility and drop logic as colouring spotlights.
+    //   Strictly restricted to Left, Top (sky zenith), and Right — NEVER downward.
+    // - Bass Presence: Turned ON when bass is present; turns OFF when bass is absent.
+    // - Kick Blinking: Blinks in tight synchronization with kick/drum hits (strike flash -> shutter cut -> recovery).
+
+    // 3a. Bass presence evaluation (Turns ON when bass > 0.08)
+    const effectiveBass = Math.max(
+      features.stems.bass,
+      features.bass || 0,
+      (features.subBass || 0) * 0.90
+    );
+    const targetBassPresence = effectiveBass > 0.08
+      ? Math.min(1.0, (effectiveBass - 0.08) / 0.22)
+      : 0.0;
+
+    if (deltaSeconds > 0) {
+      if (targetBassPresence > this.whiteSpotlightBassPresence) {
+        // Fast, crisp attack when bass hits
+        this.whiteSpotlightBassPresence += (targetBassPresence - this.whiteSpotlightBassPresence) * Math.min(1.0, deltaSeconds * 18.0);
+      } else {
+        // Smooth musical release when bass ceases
+        this.whiteSpotlightBassPresence += (targetBassPresence - this.whiteSpotlightBassPresence) * Math.min(1.0, deltaSeconds * 5.0);
+      }
+    }
+
+    // 3b. Kick drum hit detection and blink synchronization
+    const kickDuration = 0.13; // 130ms concert blink cycle
+    if (features.isKick || (features.stems.kick > 0.50 && this.kickBlinkTimer <= 0.03)) {
+      this.kickBlinkTimer = kickDuration;
+    }
+
+    if (deltaSeconds > 0 && this.kickBlinkTimer > 0) {
+      this.kickBlinkTimer = Math.max(0, this.kickBlinkTimer - deltaSeconds);
+    }
+
+    let blinkMultiplier = 1.0;
+    if (this.kickBlinkTimer > 0) {
+      const elapsedKick = kickDuration - this.kickBlinkTimer;
+      if (elapsedKick < 0.035) {
+        // Phase 1 (0-35ms): Instant kick impact strike flash (2.4x burst)
+        blinkMultiplier = 2.4;
+      } else if (elapsedKick < 0.075) {
+        // Phase 2 (35-75ms): Sharp concert shutter blink cut (0.10x notch)
+        blinkMultiplier = 0.10;
+      } else {
+        // Phase 3 (75-130ms): Smooth recovery back to steady bass illumination
+        const recovery = (elapsedKick - 0.075) / (0.130 - 0.075);
+        blinkMultiplier = 0.10 + 0.90 * recovery;
+      }
+    }
+
     const skyBaseY = Math.max(14.0, this.currentDimensions.topY + 5.0);
+    const bassDrive = this.whiteSpotlightBassPresence;
 
     for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
       const spot = this.whiteSkySpotlights[i];
@@ -936,49 +996,61 @@ export class StageLightsEffect extends BaseEffect {
       if (isLeft) {
         if (features.isDrop) {
           // Energetic wide crossing sky scissor sweeps during drops
-          const spreadX = (this.currentDimensions.leftX * 0.4) + Math.sin(time * (2.8 * verifiedTempoSpeed)) * (this.currentDimensions.halfWidth + 5.0);
-          const spreadY = skyBaseY + 2.5 + Math.cos(time * (2.4 * verifiedTempoSpeed)) * 3.5;
-          const spreadZ = 13.0 + Math.sin(time * 2.0) * 3.0;
+          const spreadX = (this.currentDimensions.leftX * 0.3) + Math.sin(time * (3.0 * verifiedTempoSpeed)) * (this.currentDimensions.halfWidth + 5.5);
+          const spreadY = skyBaseY + 3.0 + Math.cos(time * (2.6 * verifiedTempoSpeed)) * 4.0;
+          const spreadZ = 14.0 + Math.sin(time * 2.0) * 3.0;
           spot.targetPos.set(spreadX, Math.max(this.currentDimensions.topY + 4.0, spreadY), spreadZ);
         } else {
           // Melodic/tempo-synced skyward sweeps panning from Left to Top/Zenith to Right
           const sweepX = (this.currentDimensions.leftX + 2.0) + Math.sin(time * sweepSpeed) * (this.currentDimensions.halfWidth + 4.5);
           const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed) * 3.0;
-          const sweepZ = 13.0 + Math.sin(time * 0.5) * 2.5;
+          const sweepZ = 13.5 + Math.sin(time * 0.5) * 2.5;
           spot.targetPos.set(sweepX, Math.max(this.currentDimensions.topY + 4.0, sweepY), sweepZ);
         }
       } else {
         if (features.isDrop) {
           // Counter-crossing scissor sweep high across zenith
-          const spreadX = (this.currentDimensions.rightX * 0.4) - Math.sin(time * (2.8 * verifiedTempoSpeed) + offset) * (this.currentDimensions.halfWidth + 5.0);
-          const spreadY = skyBaseY + 2.5 + Math.cos(time * (2.4 * verifiedTempoSpeed) + offset) * 3.5;
-          const spreadZ = 13.0 + Math.sin(time * 2.0 + offset) * 3.0;
+          const spreadX = (this.currentDimensions.rightX * 0.3) - Math.sin(time * (3.0 * verifiedTempoSpeed) + offset) * (this.currentDimensions.halfWidth + 5.5);
+          const spreadY = skyBaseY + 3.0 + Math.cos(time * (2.6 * verifiedTempoSpeed) + offset) * 4.0;
+          const spreadZ = 14.0 + Math.sin(time * 2.0 + offset) * 3.0;
           spot.targetPos.set(spreadX, Math.max(this.currentDimensions.topY + 4.0, spreadY), spreadZ);
         } else {
           const sweepX = (this.currentDimensions.rightX - 2.0) - Math.sin(time * sweepSpeed + offset) * (this.currentDimensions.halfWidth + 4.5);
           const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 3.0;
-          const sweepZ = 13.0 + Math.sin(time * 0.5 + offset) * 2.5;
+          const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.5;
           spot.targetPos.set(sweepX, Math.max(this.currentDimensions.topY + 4.0, sweepY), sweepZ);
         }
       }
 
-      // Smooth pan/tilt tracking towards sky target
+      // Smooth pan/tilt tracking towards sky target (same agility scaling as colouring spotlights)
       if (deltaSeconds > 0) {
         spot.currentTarget.lerp(spot.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
       }
-      spot.group.position.copy(spot.basePos);
-      spot.group.lookAt(spot.currentTarget);
 
-      // Pure white concert searchlight optics
+      // Strictly fixed origins: Chassis and Optical Head positions NEVER translate or shake
+      spot.fixedBaseMesh.position.copy(spot.basePos);
+      spot.headGroup.position.copy(spot.basePos);
+      spot.headGroup.lookAt(spot.currentTarget);
+
       const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
-      lensMat.opacity = Math.min(0.98 * maxBri, 0.85 + instStem * 0.15);
-
       const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
-      const rawSkyBri = (0.22 + instStem * 0.22 + (features.isDrop ? 0.10 : 0)) * maxBri;
-      coneMat.opacity = Math.min(0.48 * maxBri, rawSkyBri);
 
-      // Subtle volumetric shaft expansion on kicks/bass
-      const skyBeamScale = 1.0 + bassStem * 0.35 * bassBeamMult;
+      // Turn OFF completely when bass is absent
+      if (bassDrive <= 0.005) {
+        lensMat.opacity = 0;
+        coneMat.opacity = 0;
+        continue;
+      }
+
+      // Pure white concert searchlight optics (activated by bass, blinking on kick drum hits)
+      const rawLensOpacity = (0.82 + instStem * 0.16 + (features.isDrop ? 0.10 : 0)) * bassDrive;
+      const rawConeOpacity = (0.26 + instStem * 0.18 + (features.isDrop ? 0.10 : 0)) * bassDrive;
+
+      lensMat.opacity = Math.min(1.0, Math.min(0.98 * maxBri, rawLensOpacity * blinkMultiplier));
+      coneMat.opacity = Math.min(0.85, Math.min(0.55 * maxBri, rawConeOpacity * blinkMultiplier));
+
+      // Volumetric beam width expands subtly with bass & kick hits (origin remains 100% fixed)
+      const skyBeamScale = (1.0 + bassFactor * 0.35 * bassBeamMult) * (this.kickBlinkTimer > 0 ? 1.15 : 1.0);
       spot.coneMesh.scale.set(skyBeamScale, skyBeamScale, 1.0);
     }
 

@@ -1393,6 +1393,26 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - **Right Searchlight:** Symmetrically counter-phased with a $0.65\text{ rad}$ offset, crossing overhead in the sky with the left beam.
 - **Smooth Target Tracking:** Lerps smoothly at rate $(4.0 + \text{instStem} \cdot 5.0) \cdot \Delta t$, freezing instantly on pause (`deltaSeconds === 0`).
 
+##### 4. Fixed-Origin Searchlight Architecture, Bass Activation & Kick-Synchronized Blinking (Phase 29)
+- **Stationary Chassis & Origin Rig (`fixedBaseMesh` & `headGroup`):**
+  - Fixture base chassis (`fixedBaseMesh`) is attached directly to the visualizer root group at $\mathbf{P}_{\text{left}}$ and $\mathbf{P}_{\text{right}}$, remaining strictly stationary with zero runtime translation, rotation, or audio shake.
+  - Optical head (`headGroup`) is co-located at $\mathbf{P}_{\text{left}}$ and $\mathbf{P}_{\text{right}}$ with emitter lens and beam cone apex anchored at $(0, 0, 0)$.
+  - Look-at orientation tracks dynamic sky targets without applying any positional displacement or audio-reactive shake to the fixture origin.
+- **Bass-Presence Activation:**
+  - Evaluates track bass energy across stems and spectrum:
+    $$\text{effectiveBass} = \max(\text{stems.bass}, \text{features.bass}, \text{features.subBass} \cdot 0.90)$$
+  - Activates when $\text{effectiveBass} > 0.08$, smoothly scaling presence to $1.0$ at $\ge 0.30$.
+  - Employs an asymmetrical envelope with rapid attack ($\Delta t \cdot 18.0$) on bass arrival and musical release ($\Delta t \cdot 5.0$) on bass exit.
+  - When bass presence drops $\le 0.005$, lens and cone materials fade completely to zero opacity (fully OFF during bass-free passages).
+- **Synchronous Kick Drum Hit Blinking:**
+  - Gated to percussive transient kick hits (`features.isKick` and stem kick spikes).
+  - Triggers a precise 130ms concert lighting shutter blink cycle:
+    - **Strike Flash ($t \in [0, 35\text{ms}]$):** $2.4\times$ intensity white burst.
+    - **Shutter Cut Notch ($t \in [35, 75\text{ms}]$):** Sharp $0.10\times$ notch cut creating an authentic concert shutter blink.
+    - **Settle Recovery ($t \in [75, 130\text{ms}]$):** Smooth linear recovery back to steady bass illumination.
+- **Beam Shaft Volumetric Expansion:**
+  - Shaft width expands subtly ($1.0 + \text{bassFactor} \cdot 0.35$) with an additional $1.15\times$ radial pulse during active kick blink windows, maintaining a fixed cone apex at the spotlight origin.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
