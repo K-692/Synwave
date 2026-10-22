@@ -14,9 +14,13 @@ import { RoutingConsole } from './components/RoutingConsole';
 import { DiagnosticOverlay } from './components/DiagnosticOverlay';
 import { RoutingStore, STAGE_PROFILES } from './visualizer/director/RoutingStore';
 import { detectHardwareProfile } from './utils/hardwareDetector';
+import { PlaylistDrawer } from './components/PlaylistDrawer';
 import {
   processYouTubeUrl,
   extractYouTubeVideoId,
+  fetchProcessedPlaylist,
+  saveTrackToLocalPlaylist,
+  type PlaylistItem,
 } from './services/youtubeAudioService';
 import { extractThumbnailColors } from './services/thumbnailColorService';
 import { StemSeparationLoader } from './components/StemSeparationLoader';
@@ -110,6 +114,8 @@ export const App: React.FC = () => {
   // Console Modal State
   const [isRoutingOpen, setIsRoutingOpen] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
+  const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [activeProfile, setActiveProfile] = useState<StageProfile>(
     RoutingStore.getInstance().getActiveProfile()
   );
@@ -158,6 +164,22 @@ export const App: React.FC = () => {
     });
     return unsub;
   }, []);
+
+  // Fetch previously processed playlist from backend and localStorage cache
+  const refreshPlaylist = useCallback(async () => {
+    try {
+      const items = await fetchProcessedPlaylist();
+      if (items.length > 0) {
+        setPlaylist(items);
+      }
+    } catch (err) {
+      console.warn('[App] Error fetching playlist:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshPlaylist();
+  }, [refreshPlaylist]);
 
   // Synchronize visual engine stage screen with video state and extract thumbnail colors
   useEffect(() => {
@@ -724,6 +746,25 @@ export const App: React.FC = () => {
         RoutingStore.getInstance().setSpotlightCount(count);
       }
 
+      // Update persistent stage playlist with freshly processed track
+      const playlistItem: PlaylistItem = {
+        videoId,
+        title: result.title,
+        artist: result.artist,
+        duration: result.duration || result.durationSeconds || 0,
+        audioUrl: result.audioUrl,
+        youtubeUrl: rawUrl,
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        hasDemucsStems: Boolean(fullDemucsStems && fullDemucsStems.stems),
+        bpm: resolvedBpm.bpm ?? undefined,
+        processedAt: Date.now(),
+      };
+      saveTrackToLocalPlaylist(playlistItem);
+      setPlaylist((prev) => {
+        const withoutCurrent = prev.filter((item) => item.videoId !== videoId);
+        return [playlistItem, ...withoutCurrent];
+      });
+
       // Load extracted audio endpoint into AudioEngine
       await loadTrack(track, false);
       if (activePipelineTrackIdRef.current !== pipelineTrackId) return;
@@ -745,6 +786,18 @@ export const App: React.FC = () => {
       }
     }
   }, [loadTrack]);
+
+  // Ingest song selected directly from the stage playlist drawer
+  const handleSelectPlaylistItem = useCallback((item: PlaylistItem) => {
+    setIsPlaylistOpen(false);
+    if (item.videoId === currentVideoId) {
+      if (!isPlaying) {
+        audioEngineRef.current?.play();
+      }
+      return;
+    }
+    handleYouTubeUrlSubmit(item.youtubeUrl);
+  }, [currentVideoId, isPlaying, handleYouTubeUrlSubmit]);
 
   // Global window paste handler to automatically capture YouTube links pasted anywhere
   useEffect(() => {
@@ -871,6 +924,9 @@ export const App: React.FC = () => {
       } else if (e.code === 'KeyC' || e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         setIsRoutingOpen((prev) => !prev);
+      } else if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        setIsPlaylistOpen((prev) => !prev);
       } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         const currentCfg = RoutingStore.getInstance().getConfig();
@@ -951,13 +1007,28 @@ export const App: React.FC = () => {
         currentTrackTitle={currentTrack?.title}
         isRoutingOpen={isRoutingOpen}
         isDiagnosticOpen={isDiagnosticOpen}
+        isPlaylistOpen={isPlaylistOpen}
+        playlistCount={playlist.length}
         activeProfileName={STAGE_PROFILES[activeProfile]?.name}
         isVisible={isTopBarVisible}
         isLoading={isSeparatingStems || isVideoLoading}
         onToggleRouting={() => setIsRoutingOpen((prev) => !prev)}
         onToggleDiagnostic={() => setIsDiagnosticOpen((prev) => !prev)}
+        onTogglePlaylist={() => setIsPlaylistOpen((prev) => !prev)}
         onMouseEnter={() => setIsTopBarVisible(true)}
         onYouTubeUrlSubmit={handleYouTubeUrlSubmit}
+      />
+
+      {/* Stage Processed Tracks Playlist Drawer */}
+      <PlaylistDrawer
+        isOpen={isPlaylistOpen}
+        playlist={playlist}
+        currentVideoId={currentVideoId}
+        isPlaying={isPlaying}
+        isLoading={isSeparatingStems || isVideoLoading}
+        onClose={() => setIsPlaylistOpen(false)}
+        onSelectSong={handleSelectPlaylistItem}
+        onRefreshPlaylist={refreshPlaylist}
       />
 
       {/* Audio-to-Visual Routing Console Modal */}

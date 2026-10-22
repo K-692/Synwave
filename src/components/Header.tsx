@@ -11,6 +11,7 @@ import {
   Activity,
   ArrowRight,
   ClipboardPaste,
+  ListMusic,
   SlidersHorizontal,
 } from 'lucide-react';
 
@@ -18,11 +19,14 @@ interface HeaderProps {
   currentTrackTitle?: string;
   isRoutingOpen?: boolean;
   isDiagnosticOpen?: boolean;
+  isPlaylistOpen?: boolean;
+  playlistCount?: number;
   activeProfileName?: string;
   isVisible: boolean;
   isLoading?: boolean;
   onToggleRouting?: () => void;
   onToggleDiagnostic?: () => void;
+  onTogglePlaylist?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onYouTubeUrlSubmit?: (url: string) => void;
@@ -31,16 +35,19 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   isRoutingOpen = false,
   isDiagnosticOpen = false,
+  isPlaylistOpen = false,
+  playlistCount = 0,
   isVisible,
   isLoading = false,
   onToggleRouting,
   onToggleDiagnostic,
+  onTogglePlaylist,
   onMouseEnter,
   onMouseLeave,
   onYouTubeUrlSubmit,
 }) => {
   const [urlInput, setUrlInput] = useState('');
-  const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen;
+  const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen || isPlaylistOpen;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +143,19 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Top Right: Floating Console & Telemetry HUD Toggles */}
       <div className={`header-toggles floating-pill menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
+        {onTogglePlaylist && (
+          <button
+            className={`btn-icon playlist-toggle-btn ${isPlaylistOpen ? 'active' : ''}`}
+            onClick={onTogglePlaylist}
+            title="Stage Playlist (Hotkey: P)"
+          >
+            <ListMusic size={18} />
+            {typeof playlistCount === 'number' && playlistCount > 0 && (
+              <span className="playlist-badge-count">{playlistCount}</span>
+            )}
+          </button>
+        )}
+
         {onToggleRouting && (
           <button
             className={`btn-icon ${isRoutingOpen ? 'active' : ''}`}

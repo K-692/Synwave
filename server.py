@@ -105,6 +105,76 @@ def get_unique_identifier(video_id: str) -> str:
     """Computes unique cache key for a YouTube video ID."""
     return f"yt_{video_id}"
 
+def get_or_fetch_metadata(video_id: str, canonical_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieves or automatically populates track metadata for a YouTube video.
+    Reads persistent meta_{unique_id}.json if present; otherwise queries free YouTube oEmbed
+    and Demucs duration cache without requiring any API keys.
+    """
+    unique_id = get_unique_identifier(video_id)
+    meta_path = META_CACHE_DIR / f"meta_{unique_id}.json"
+
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r") as mf:
+                data = json.load(mf)
+                if data and data.get("title") and not data.get("title").startswith("YouTube Video ("):
+                    return data
+        except Exception:
+            pass
+
+    title = f"YouTube Video ({video_id})"
+    artist = "YouTube Creator"
+    thumbnail = f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+    duration = 0
+
+    # Query YouTube oEmbed standard (open public endpoint, no API key required)
+    try:
+        import urllib.request
+        import ssl
+        ctx = ssl._create_unverified_context()
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, context=ctx, timeout=3.0) as res:
+            oe = json.loads(res.read().decode())
+            if oe.get("title"):
+                title = oe["title"]
+            if oe.get("author_name"):
+                artist = oe["author_name"]
+            if oe.get("thumbnail_url"):
+                thumbnail = oe["thumbnail_url"]
+    except Exception:
+        pass
+
+    # Retrieve pre-computed duration from Demucs stem cache if available
+    try:
+        from demucs_service import get_demucs_service
+        stems = get_demucs_service().get_cached_result(file_hash=unique_id, song_key=canonical_url)
+        if stems and "durationSeconds" in stems:
+            duration = round(stems["durationSeconds"])
+    except Exception:
+        pass
+
+    meta_info = {
+        "title": title,
+        "artist": artist,
+        "uploader": artist,
+        "duration": duration,
+        "thumbnailUrl": thumbnail,
+        "videoId": video_id,
+        "uniqueId": unique_id,
+        "url": canonical_url or f"https://www.youtube.com/watch?v={video_id}",
+    }
+
+    try:
+        META_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(meta_path, "w") as mf:
+            json.dump(meta_info, mf, indent=2)
+    except Exception as e:
+        print(f"[Server] Meta save warning for {video_id}: {e}")
+
+    return meta_info
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint reporting hardware acceleration and service status."""
@@ -392,6 +462,67 @@ async def get_audio_stream(video_id: str):
             "Access-Control-Allow-Headers": "*",
         },
     )
+
+@app.get("/api/playlist")
+async def get_playlist():
+    """
+    Returns all songs that have been processed and cached in .synwave_cache.
+    Scans extracted audio files, resolves metadata & Demucs stem status, and returns a sorted playlist.
+    """
+    playlist = []
+    seen_ids = set()
+
+    # Discover all extracted audio tracks (yt_{video_id}.wav) sorted newest first
+    audio_files = sorted(
+        list(AUDIO_CACHE_DIR.glob("yt_*.wav")),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+    for af in audio_files:
+        raw_name = af.stem  # e.g. yt_dhOaQfjRrKI
+        vid = raw_name[3:] if raw_name.startswith("yt_") else raw_name
+        if vid in seen_ids:
+            continue
+        seen_ids.add(vid)
+
+        canonical_url = f"https://www.youtube.com/watch?v={vid}"
+        meta = get_or_fetch_metadata(vid, canonical_url)
+
+        # Check Demucs stem separation availability
+        from demucs_service import get_demucs_service
+        stems = get_demucs_service().get_cached_result(file_hash=f"yt_{vid}", song_key=canonical_url)
+
+        duration = meta.get("duration", 0)
+        if not duration and stems and "durationSeconds" in stems:
+            duration = round(stems["durationSeconds"])
+            meta["duration"] = duration
+
+        bpm = None
+        if stems and stems.get("demucsBpm"):
+            bpm = stems["demucsBpm"].get("bpm")
+
+        playlist.append({
+            "videoId": vid,
+            "uniqueId": f"yt_{vid}",
+            "title": meta.get("title", f"YouTube Track ({vid})"),
+            "artist": meta.get("artist") or meta.get("uploader", "YouTube Creator"),
+            "duration": duration,
+            "durationSeconds": stems.get("durationSeconds", duration) if stems else duration,
+            "thumbnailUrl": meta.get("thumbnailUrl") or f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg",
+            "youtubeUrl": canonical_url,
+            "audioUrl": f"http://127.0.0.1:8765/api/audio/{vid}",
+            "cached": True,
+            "hasStems": bool(stems and stems.get("stems")),
+            "bpm": bpm,
+            "processedAt": af.stat().st_mtime,
+        })
+
+    return {
+        "success": True,
+        "count": len(playlist),
+        "tracks": playlist,
+    }
 
 @app.get("/api/cache/info")
 async def cache_info():

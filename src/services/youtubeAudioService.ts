@@ -127,3 +127,71 @@ export async function processYouTubeUrl(
   const result: YouTubeProcessResult = await response.json();
   return result;
 }
+
+export interface PlaylistItem {
+  videoId: string;
+  uniqueId?: string;
+  title: string;
+  artist: string;
+  duration: number;
+  durationSeconds?: number;
+  thumbnailUrl: string;
+  youtubeUrl: string;
+  audioUrl: string;
+  cached?: boolean;
+  hasStems?: boolean;
+  hasDemucsStems?: boolean;
+  bpm?: number | null;
+  processedAt?: number;
+}
+
+/**
+ * Retrieves all processed and cached songs from the backend service.
+ * Automatically synchronizes with local persistent storage for instant offline availability.
+ */
+export async function fetchProcessedPlaylist(): Promise<PlaylistItem[]> {
+  try {
+    const res = await fetch(`${SERVER_ENDPOINT}/api/playlist`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.tracks)) {
+        try {
+          localStorage.setItem('synwave_processed_playlist', JSON.stringify(data.tracks));
+        } catch {
+          // ignore
+        }
+        return data.tracks;
+      }
+    }
+  } catch (err) {
+    console.warn('[YouTubeAudioService] Backend playlist query warning:', err);
+  }
+
+  // Fallback to local storage if server is starting up
+  try {
+    const saved = localStorage.getItem('synwave_processed_playlist');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+
+  return [];
+}
+
+/**
+ * Saves or updates a processed track at the top of the local persistent playlist.
+ */
+export function saveTrackToLocalPlaylist(item: PlaylistItem): void {
+  try {
+    const saved = localStorage.getItem('synwave_processed_playlist');
+    let list: PlaylistItem[] = saved ? JSON.parse(saved) : [];
+    list = list.filter((t) => t.videoId !== item.videoId);
+    list.unshift(item);
+    localStorage.setItem('synwave_processed_playlist', JSON.stringify(list));
+  } catch {
+    // ignore
+  }
+}
