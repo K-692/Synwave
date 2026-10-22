@@ -760,10 +760,14 @@ export class StageLightsEffect extends BaseEffect {
       const glowB = spotlightAnalysis.glowingFactors[nextIdx] ?? glowA;
       targetGlowFactor = Math.max(0.0, Math.min(1.0, glowA + (glowB - glowA) * frac));
 
-      // Simultaneous dual-stem average crossing state:
-      // Turn ON when both Instrument and Bass frequencies cross and rise above average at the same time.
-      // Turn OFF before that, and turn OFF if both go below average together.
-      isTurnedOn = spotlightAnalysis.spotlightsActive[frameIdx] ?? false;
+      // The spotlights should get turned on only in verses (mir-aidj/all-in-one segmentation)
+      if (spotlightAnalysis.verseSegments && spotlightAnalysis.verseSegments.length > 0) {
+        isTurnedOn = spotlightAnalysis.verseSegments.some(
+          (v) => t >= v.start && t <= v.end
+        );
+      } else if (spotlightAnalysis.spotlightsActive && spotlightAnalysis.spotlightsActive.length > 0) {
+        isTurnedOn = spotlightAnalysis.spotlightsActive[frameIdx] ?? false;
+      }
     } else {
       // Graceful real-time DSP fallback if pre-analysis is still generating
       const instSig = Math.max(features.highMid * 0.4 + features.treble * 0.6, features.stems?.instruments ?? 0);
@@ -784,10 +788,10 @@ export class StageLightsEffect extends BaseEffect {
     this.wasKickTriggered = features.isKick || kickPower > 0.36;
 
     if (isKickOnset && deltaSeconds > 0) {
-      // If Kick/drum hits from Kick STEM, all spotlight light beams take a random position
+      // If Kick/drum hits from Kick STEM, all spotlight light beams take a random position synced with kicks
       const randAngle = Math.random() * Math.PI * 2;
-      const randDist = 4.2 + Math.random() * 3.8;
-      const randElev = (Math.random() - 0.5) * 3.2;
+      const randDist = 4.0 + Math.random() * 3.5;
+      const randElev = (Math.random() - 0.5) * 3.0;
 
       const kX = Math.cos(randAngle) * randDist;
       const kY = randElev;
@@ -801,70 +805,75 @@ export class StageLightsEffect extends BaseEffect {
 
       // Spotlights at top side will be in sync together
       const topAngle = Math.random() * Math.PI * 2;
-      const topDist = 3.8 + Math.random() * 3.0;
+      const topDist = 3.6 + Math.random() * 2.8;
       this.topKickOffset.set(
         Math.cos(topAngle) * topDist,
-        -1.2 - Math.random() * 2.2,
+        -1.2 - Math.random() * 2.0,
         Math.sin(topAngle) * topDist
       );
 
       this.kickImpulseTime = 1.0;
 
-      // The 2 white spotlights at bottom: Kick will make those 2 spotlights glow intensely
+      // The 2 white spotlights at bottom: Kick will make those 2 spotlights glow intensely when kick hits
       this.whiteKickIntensity = Math.min(2.8, 1.0 + 1.8 * Math.max(kickPower, 0.65));
     }
 
     // Dynamic interpolation & continuous updates (strictly zero drift when paused)
     if (deltaSeconds > 0) {
       this.kickImpulseTime = Math.max(0.0, this.kickImpulseTime - deltaSeconds * 3.2);
-      this.whiteKickIntensity = Math.max(1.0, this.whiteKickIntensity - deltaSeconds * 5.8);
+      this.whiteKickIntensity = Math.max(1.0, this.whiteKickIntensity - deltaSeconds * 5.5);
 
       // Continuous movement angle and glowing factor lerping
       this.currentMovementAngle += (targetThetaRad - this.currentMovementAngle) * Math.min(1.0, deltaSeconds * 12.0);
       this.currentGlowingFactor += (targetGlowFactor - this.currentGlowingFactor) * Math.min(1.0, deltaSeconds * 14.0);
 
-      // Smooth attack/release for simultaneous dual-stem average crossing activation
+      // Smooth attack/release for verse-only spotlight activation
       if (isTurnedOn) {
-        this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 9.0);
+        this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 8.0);
       } else {
-        this.smoothTurnOnFactor = Math.max(0.0, this.smoothTurnOnFactor - deltaSeconds * 6.0);
+        this.smoothTurnOnFactor = Math.max(0.0, this.smoothTurnOnFactor - deltaSeconds * 5.0);
       }
     }
 
-    // Effective continuous glowing factor (0.0 to 1.0) scaled by activation
+    // Effective continuous glowing factor (0.0 to 1.0) scaled by verse activation
     const effectiveGlow = this.currentGlowingFactor * this.smoothTurnOnFactor;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 2. COLOURING SPOTLIGHTS (360° Movement, Opposite Right, Kick Sync)
+    // UNIFIED SPOTLIGHT CHOREOGRAPHY ACROSS 360 DEGREES
     // ═══════════════════════════════════════════════════════════════════════════
+    // The 3rd left side spotlight moved with phase 1.6 in an elliptical sweep.
+    // Every spotlight on the left side now moves in sync together with this exact sweep.
+    // Every spotlight on the right side moves in sync together with opposite angle (-thetaRad).
+    // Every spotlight on the top side moves in sync together.
     const thetaRad = this.currentMovementAngle;
-    const radiusX = 4.2;
-    const radiusY = 2.6;
-    const radiusZ = 3.6;
+    const baseSweepPhase = 1.6;
 
     // Left side: in sync together with thetaRad across 360 degrees
-    const leftOffsetX = radiusX * Math.cos(thetaRad);
-    const leftOffsetY = radiusY * Math.sin(thetaRad);
-    const leftOffsetZ = radiusZ * Math.sin(2.0 * thetaRad);
+    const leftAngle = thetaRad + baseSweepPhase;
+    const leftOffsetX = Math.cos(leftAngle) * 2.8;
+    const leftOffsetY = Math.sin(leftAngle) * 1.8;
+    const leftOffsetZ = Math.sin(2.0 * leftAngle) * 2.4;
 
     // Right side: in sync together, movement angles opposite to left (-thetaRad)
-    const rightOffsetX = radiusX * Math.cos(-thetaRad);
-    const rightOffsetY = radiusY * Math.sin(-thetaRad);
-    const rightOffsetZ = radiusZ * Math.sin(-2.0 * thetaRad);
+    const rightAngle = -thetaRad + baseSweepPhase;
+    const rightOffsetX = -Math.cos(rightAngle) * 2.8;
+    const rightOffsetY = Math.sin(rightAngle) * 1.8;
+    const rightOffsetZ = -Math.sin(2.0 * rightAngle) * 2.4;
 
     // Top side: in sync together across 360 degrees
-    const topRadiusX = 4.6;
-    const topRadiusY = 2.0;
-    const topRadiusZ = 3.0;
-    const topOffsetX = topRadiusX * Math.sin(thetaRad);
-    const topOffsetY = topRadiusY * Math.cos(thetaRad);
-    const topOffsetZ = topRadiusZ * Math.cos(2.0 * thetaRad);
+    const topAngle = thetaRad + baseSweepPhase;
+    const topOffsetX = Math.sin(topAngle) * 3.4;
+    const topOffsetY = Math.cos(topAngle) * 2.0;
+    const topOffsetZ = Math.cos(2.0 * topAngle) * 2.6;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 2. COLOURING SPOTLIGHTS (Symmetrical Moving Heads)
+    // ═══════════════════════════════════════════════════════════════════════════
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
       const isActive = i < currentLayout.length;
 
-      // Activation factor lerping (smooth appearance/disappearance on dynamic BPM count change)
+      // Activation factor lerping
       if (isActive) {
         const slot = currentLayout[i];
         fix.targetSlotPos.copy(slot.pos);
@@ -893,7 +902,7 @@ export class StageLightsEffect extends BaseEffect {
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
 
-      // Fully turned OFF when slot deactivated OR dual-stem average frequency condition not met
+      // Fully turned OFF when slot deactivated OR spotlights not active (only turned ON in verses)
       if (fix.activationFactor <= 0.001 || this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
@@ -940,13 +949,14 @@ export class StageLightsEffect extends BaseEffect {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 3. PERIMETER LIGHTS (360° Coordinated Sweeps)
+    // 3. PERIMETER SPOTLIGHTS (All Left in Sync, All Right Opposite, All Top Sync)
     // ═══════════════════════════════════════════════════════════════════════════
     for (let i = 0; i < this.perimeterBassLights.length; i++) {
       const pLight = this.perimeterBassLights[i];
       const pLensMat = pLight.lensMesh.material as THREE.MeshBasicMaterial;
       const pConeMat = pLight.coneMesh.material as THREE.MeshBasicMaterial;
 
+      // Turn OFF when outside verses
       if (this.smoothTurnOnFactor <= 0.001) {
         pLensMat.opacity = 0;
         pConeMat.opacity = 0;
@@ -954,26 +964,43 @@ export class StageLightsEffect extends BaseEffect {
       }
 
       pLight.group.position.copy(pLight.basePos);
-      const isRight = pLight.side === 'right';
-      const sideAngle = isRight ? -thetaRad : thetaRad;
 
-      const sweepOffsetX = Math.cos(sideAngle + pLight.phaseOffset) * 2.8;
-      const sweepOffsetY = Math.sin(sideAngle + pLight.phaseOffset) * 1.8;
-      const sweepOffsetZ = Math.sin((sideAngle + pLight.phaseOffset) * 2.0) * 2.4;
+      let pTargetX = pLight.baseTarget.x;
+      let pTargetY = pLight.baseTarget.y;
+      let pTargetZ = pLight.baseTarget.z;
 
-      const pTargetX = pLight.baseTarget.x + sweepOffsetX;
-      const pTargetY = pLight.baseTarget.y + sweepOffsetY;
-      const pTargetZ = pLight.baseTarget.z + sweepOffsetZ;
+      if (pLight.side === 'left') {
+        // All spotlights at left side move in sync together in the exact manner of the 3rd left spotlight
+        pTargetX += leftOffsetX + this.leftKickOffset.x * this.kickImpulseTime;
+        pTargetY += leftOffsetY + this.leftKickOffset.y * this.kickImpulseTime;
+        pTargetZ += leftOffsetZ + this.leftKickOffset.z * this.kickImpulseTime;
+      } else if (pLight.side === 'right') {
+        // All spotlights at right side move in sync together, opposite movement angles to left
+        pTargetX += rightOffsetX + this.rightKickOffset.x * this.kickImpulseTime;
+        pTargetY += rightOffsetY + this.rightKickOffset.y * this.kickImpulseTime;
+        pTargetZ += rightOffsetZ + this.rightKickOffset.z * this.kickImpulseTime;
+      } else if (pLight.side === 'top') {
+        // All spotlights at top side move in sync together
+        pTargetX += topOffsetX + this.topKickOffset.x * this.kickImpulseTime;
+        pTargetY += topOffsetY + this.topKickOffset.y * this.kickImpulseTime;
+        pTargetZ += topOffsetZ + this.topKickOffset.z * this.kickImpulseTime;
+      } else {
+        // Bottom frame perimeter fixtures: sweep upward-forward in sync
+        pTargetX += Math.cos(leftAngle) * 2.4;
+        pTargetY += Math.sin(leftAngle) * 1.6;
+        pTargetZ += Math.sin(2.0 * leftAngle) * 2.0;
+      }
+
       pLight.currentTarget.set(pTargetX, pTargetY, pTargetZ);
-
       pLight.group.lookAt(pLight.currentTarget);
 
       const crossCol = colorPaletteArray[(i + 1) % colorPaletteArray.length];
       pLensMat.color.copy(crossCol);
       pConeMat.color.copy(crossCol);
 
-      pLensMat.opacity = Math.min(0.95, 0.72 * maxBri * effectiveGlow);
-      pConeMat.opacity = Math.min(0.30, 0.16 * maxBri * effectiveGlow);
+      // Continuous Bass STEM glowing factor (0.0 to 1.0)
+      pLensMat.opacity = Math.min(0.95, 0.76 * maxBri * effectiveGlow);
+      pConeMat.opacity = Math.min(0.32, 0.20 * maxBri * effectiveGlow);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -981,8 +1008,6 @@ export class StageLightsEffect extends BaseEffect {
     // ═══════════════════════════════════════════════════════════════════════════
     const skyBaseY = Math.max(16.0, this.currentDimensions.topY + 6.0);
     const minTargetY = this.currentDimensions.topY + 4.5;
-    const skyRadiusX = 4.2;
-    const skyRadiusZ = 3.8;
 
     for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
       const spot = this.whiteSkySpotlights[i];
@@ -990,23 +1015,31 @@ export class StageLightsEffect extends BaseEffect {
       const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
       const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
 
-      // Turn OFF if dual-stem frequency condition not met
+      // Turn OFF when outside verses
       if (this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
         continue;
       }
 
-      // Left follows left angle (thetaRad), Right follows opposite angle (-thetaRad)
-      const cornerAngle = isLeft ? thetaRad : -thetaRad;
+      // Left follows left movement angle (leftAngle), Right follows opposite angle (rightAngle)
       const baseCornerX = isLeft
         ? this.currentDimensions.leftX - 3.0
         : this.currentDimensions.rightX + 3.0;
 
-      // 360 degree upward sky orbit (strictly projecting upward)
-      const sweepX = baseCornerX + Math.cos(cornerAngle) * skyRadiusX;
-      const sweepZ = 14.0 + Math.sin(cornerAngle) * skyRadiusZ;
-      const sweepY = skyBaseY + Math.sin(2.0 * cornerAngle) * 2.5;
+      let sweepX: number;
+      let sweepY: number;
+      let sweepZ: number;
+
+      if (isLeft) {
+        sweepX = baseCornerX + Math.cos(leftAngle) * 3.6;
+        sweepY = skyBaseY + Math.sin(2.0 * leftAngle) * 2.2;
+        sweepZ = 14.0 + Math.sin(leftAngle) * 3.2;
+      } else {
+        sweepX = baseCornerX - Math.cos(rightAngle) * 3.6;
+        sweepY = skyBaseY + Math.sin(2.0 * rightAngle) * 2.2;
+        sweepZ = 14.0 - Math.sin(rightAngle) * 3.2;
+      }
 
       spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
 

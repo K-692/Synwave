@@ -222,6 +222,8 @@ export interface SpotlightAnalysisData {
   glowingFactors: number[];
   spotlightsActive: boolean[];
   kickEvents?: Array<{ time: number; timestampMs: number; intensity: number }>;
+  segments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number }>;
+  verseSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number }>;
 }
 
 export interface DemucsStemData {

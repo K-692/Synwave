@@ -781,6 +781,7 @@ class DemucsService:
                 drums_audio=separated.get("drums"),
                 sr=sr,
                 target_fps=self.target_fps,
+                audio_path=file_path,
             )
             print(f"[DemucsService] Pre-computed spotlight frequency analysis ({result['spotlightAnalysis']['frameCount']} frames)")
         except Exception as e:

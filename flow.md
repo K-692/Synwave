@@ -1557,11 +1557,6 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Left side spotlights framing the YouTube screen move in perfect synchrony with angle $\theta(t)$.
   - Right side spotlights move in perfect synchrony with each other, but with **opposite movement angles** ($-\theta(t)$).
   - Top side spotlights move in sync together across 360°.
-- **Simultaneous Dual-STEM Average Frequency Crossing Gate:**
-  - Evaluates dual threshold crossing across the timeline:
-    - When both Instrument and Bass STEM frequencies cross and rise above their respective midpoint averages together at the exact same timestamp ($f_{\text{inst}} \ge f_{\text{inst\_avg}} \land f_{\text{bass}} \ge f_{\text{bass\_avg}}$), all spotlights (colouring fixtures + 2 bottom white searchlights) turn **ON**.
-    - Before this initial crossing occurs, all spotlights remain **OFF**.
-    - When both frequencies together drop below their respective averages ($f_{\text{inst}} < f_{\text{inst\_avg}} \land f_{\text{bass}} < f_{\text{bass\_avg}}$), all spotlights turn **OFF**.
 - **Continuous Bass STEM Glowing Factor ($0.0$ to $1.0$):**
   - Maps continuous Bass STEM frequency between min ($0.0$) and max ($1.0$):
     $$\text{glowingFactor}(t) = \frac{f_{\text{bass}}(t) - f_{\text{bass\_min}}}{f_{\text{bass\_max}} - f_{\text{bass\_min}}}$$
@@ -1573,26 +1568,42 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
     - Top side spotlights take a randomized projection target in sync together.
 - **Dual White Bottom Sky Spotlights Specialization:**
   - Flank the bottom corners of the YouTube player aperture, strictly projecting upwards into the sky ($Y \ge \text{topY} + 4.5\text{m}$).
-  - Follow identical 360° frequency movement (left follows $\theta$, right follows $-\theta$), dual-stem average crossing ON/OFF gating, and continuous bass glowing factor.
+  - Follow identical 360° frequency movement (left follows $\theta$, right follows $-\theta$), and continuous bass glowing factor.
   - **Kick Sync Exception:** White searchlights maintain their upward beam alignment without random scattering, but kick strikes trigger an **intense white flash glow boost** ($\le 2.8\times$) with volumetric beam cone expansion.
+
+##### 14. All-In-One Music Structure Segmentation, Verse-Only Activation, & Synchronized Spotlight Movement (Phase 39)
+- **All-In-One MIR Integration (`mir-aidj/all-in-one` via `allin1_infer`):**
+  - Integrated `all-in-one` metrical and functional music structure analysis directly into the offline pre-analysis pipeline.
+  - Automatically predicts functional music segments (`start`, `intro`, `verse`, `chorus`, `bridge`, `break`, `inst`, `solo`, `outro`, `end`) with exact start and end timestamps.
+  - Resolves segment intervals and tags timestamped frames with `isVerse(t)` across the entire song duration.
+- **Verses-Only Spotlight Turn ON Gate:**
+  - Strict architectural requirement: **all spotlights (including the 2 bottom white sky spotlights) turn ON only in verses**.
+  - During `verse` intervals ($t \in [v_{\text{start}}, v_{\text{end}}]$), spotlights illuminate with smooth musical attack envelope.
+  - Outside of verses (e.g. during chorus, breakdown, drop, intro, outro), all stage spotlights fade out cleanly and remain completely OFF.
+- **Unified Symmetrical 360° Spotlight Movement:**
+  - Discovered and addressed the root cause of the 3rd left spotlight movement perfection: previous iterations had differing `phaseOffset`s across perimeter lights and separate calculations in spawned fixtures.
+  - Unified all spotlights framing the YouTube iframe screen:
+    - **Left Side Spotlights:** Symmetrically synchronized together, adopting the elliptical cone sweep $\theta_{\text{sweep}} = \theta_{\text{rad}} + 1.6$, oscillating continuously across the stage with $\pm 2.8\text{m}$ (X), $\pm 1.8\text{m}$ (Y), and $\pm 2.4\text{m}$ (Z) towards the audience/floor forward.
+    - **Right Side Spotlights:** Symmetrically synchronized together with **opposite movement angles** ($-\theta_{\text{rad}} + 1.6$), mirroring the left side.
+    - **Top Side Spotlights:** Symmetrically synchronized together across 360° ($\theta_{\text{rad}} + 1.6$), sweeping downward into the arena.
+    - **Kick Sync:** On drum/kick transients from the Kick STEM, left, right (opposite), and top spotlights take synchronized random projection offsets, while bottom white spotlights trigger an intense white glow flare without angular scattering.
 - **End-to-End Pipeline Integration:**
-  - Integrated into `demucs_service.py` (auto-analyzed during neural separation) and `server.py` (`/api/spotlight/{video_id}`).
-  - Cached directly into `.synwave_cache/stems/stems_*.json` for instantaneous sub-millisecond retrieval.
-  - TypeScript types (`SpotlightAnalysisData`) and `StageLightsEffect.ts` fully connected with smooth interpolation and freeze-on-pause protection.
+  - `spotlight_analysis.py` updated with `analyze_song_segments` and `segments` / `verseSegments` JSON serialization.
+  - `demucs_service.py` connects `audio_path` to trigger `allin1_infer` during stem separation.
+  - `StageLightsEffect.ts` renders unified left, right, and top spotlight movements with verse-only activation.
 
 ---
 
 ## 6. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~345ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~350ms).
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all 43 files.
-- **Dedicated Pre-Analysis Engine (`spotlight_analysis.py`):** Standalone CLI and modular Python engine for STFT frequency extraction, 360° mapping, dual-stem average crossing, and kick transient extraction.
-- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) with `/api/spotlight/{video_id}` and Demucs stem cache backfill.
-- **StageLightsEffect 3D Audio-Reactivity (Phase 38):**
-  - Left spotlights in sync with 360° frequency angle.
-  - Right spotlights in sync with opposite 360° angle.
-  - Top spotlights in sync together.
-  - Dual-stem simultaneous average crossing ON/OFF gating.
+- **Music Structure Segmentation (`all-in-one`):** Fully integrated via `allin1_infer` in Python virtual environment (`.venv`), detecting verses, choruses, bridges, and breaks.
+- **StageLightsEffect 3D Audio-Reactivity (Phase 39):**
+  - All left side spotlights in sync together following the 3rd left spotlight sweep.
+  - All right side spotlights in sync together with opposite movement angles.
+  - All top side spotlights in sync together.
+  - Spotlights turn ON strictly during verses and OFF outside verses.
   - Continuous Bass STEM glowing factor (0.0 to 1.0).
   - Kick hits trigger synchronized random projection positions for left, right (opposite), and top spotlights.
   - Bottom 2 white searchlights strictly project upward and glow intensely on Kick hits.

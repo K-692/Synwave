@@ -187,21 +187,55 @@ class SpotlightAnalyzer:
 
         return kicks
 
+    def analyze_song_segments(self, audio_path: str | Path) -> List[Dict[str, Any]]:
+        """
+        Uses mir-aidj/all-in-one (allin1_infer) to find timestamps of particular segments in a song.
+        Extracts functional music structure segments (verse, chorus, bridge, break, inst, etc.).
+        """
+        path = Path(audio_path)
+        if not path.exists():
+            return []
+
+        try:
+            try:
+                import allin1_infer as allin1_mod
+            except ImportError:
+                import allin1 as allin1_mod
+
+            print(f"[SpotlightAnalyzer] Running all-in-one music structure segmentation on {path.name}...")
+            result = allin1_mod.analyze(str(path), device="cpu")
+            segments: List[Dict[str, Any]] = []
+            for s in result.segments:
+                segments.append({
+                    "label": s.label,
+                    "start": round(float(s.start), 3),
+                    "end": round(float(s.end), 3),
+                    "startMs": int(round(s.start * 1000.0)),
+                    "endMs": int(round(s.end * 1000.0)),
+                })
+            verse_count = sum(1 for s in segments if str(s.get("label", "")).lower() == "verse")
+            print(f"[SpotlightAnalyzer] all-in-one detected {len(segments)} segments ({verse_count} verses).")
+            return segments
+        except Exception as e:
+            print(f"[SpotlightAnalyzer] Note: all-in-one segmentation skipped or error: {e}")
+            return []
+
     def analyze_stems_audio(
         self,
         instruments_audio: np.ndarray | torch.Tensor,
         bass_audio: np.ndarray | torch.Tensor,
         drums_audio: Optional[np.ndarray | torch.Tensor] = None,
         sr: int = 44100,
+        audio_path: Optional[str | Path] = None,
+        segments: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Performs the complete pre-analysis on extracted Instrument and Bass STEM waveforms:
         - Continuous frequencies of Instrument and Bass stems against timestamp in milliseconds.
         - Computes min, max, and midpoint average ((max + min) / 2) for both STEMs.
         - Distributes Instrument frequency across 360 degrees for spotlight movements.
-        - Evaluates simultaneous threshold crossing: turns spotlights ON when both frequencies
-          cross and increase above their averages at the same time; turns OFF before that,
-          and turns OFF when both go below average.
+        - Uses all-in-one (mir-aidj/all-in-one) to detect song segments:
+          The spotlights should get turned on ONLY in verses.
         - Maps continuous Bass frequency to [0.0, 1.0] glowing intensity factor.
         - Pinpoints Kick STEM transients for synchronized random beam directions.
         """
@@ -213,6 +247,10 @@ class SpotlightAnalyzer:
         total_len = max(len(inst_mono), len(bass_mono))
         num_frames = max(1, total_len // hop_length)
         duration_sec = round(num_frames / self.target_fps, 2)
+
+        # 0. Segment Analysis using mir-aidj/all-in-one (if audio_path is provided and segments not already supplied)
+        if segments is None and audio_path is not None:
+            segments = self.analyze_song_segments(audio_path)
 
         # 1. Frequency calculation for Instrument STEM (150 Hz to 7500 Hz)
         inst_freqs = self.compute_continuous_frequency_trajectory(
@@ -264,26 +302,25 @@ class SpotlightAnalyzer:
         glowing_factors = [round(float(g), 4) for g in norm_bass]
 
         # 7. Activation state:
-        # "When the frequency of the instrument and bass STEMs for a timestamp cross
-        #  (cross and got increased) the average (max+min/2) frequency value together
-        #  at the same time, all the spotlights including the white spotlight should get turned on.
-        #  Before that, it should be turned off.
-        #  If they both together go below the average frequency for a timestamp then spotlights
-        #  should get turned off."
+        # "Use this github https://github.com/mir-aidj/all-in-one to find out timestamp of particular
+        #  segments in a song. The spotlights should get turned on only in verses."
+        verse_intervals = [
+            (s["start"], s["end"])
+            for s in (segments or [])
+            if str(s.get("label", "")).lower() == "verse"
+        ]
+
         spotlights_active: List[bool] = []
-        is_active = False  # Turned OFF before initial threshold crossing
-
         for i in range(num_frames):
-            fi = float(inst_freqs[i])
-            fb = float(bass_freqs[i])
-
-            if fi >= inst_avg and fb >= bass_avg:
-                # Crossed and increased above average together at the same time -> Turned ON
-                is_active = True
-            elif fi < inst_avg and fb < bass_avg:
-                # Both together go below average frequency -> Turned OFF
-                is_active = False
-            # If one is above and one is below, retain current state (hysteresis)
+            t_sec = i / self.target_fps
+            if verse_intervals:
+                # Active strictly when current timestamp is within any verse segment
+                is_active = any(v_start <= t_sec <= v_end for v_start, v_end in verse_intervals)
+            else:
+                # Fallback if no verse annotations available: dual-stem average crossing
+                fi = float(inst_freqs[i])
+                fb = float(bass_freqs[i])
+                is_active = fi >= inst_avg and fb >= bass_avg
 
             spotlights_active.append(is_active)
 
@@ -312,6 +349,8 @@ class SpotlightAnalyzer:
             "glowingFactors": glowing_factors,
             "spotlightsActive": spotlights_active,
             "kickEvents": kick_events,
+            "segments": segments or [],
+            "verseSegments": [s for s in (segments or []) if str(s.get("label", "")).lower() == "verse"],
         }
 
     def analyze_audio_file(
@@ -335,12 +374,13 @@ class SpotlightAnalyzer:
         origin, separated = service.separator.separate_audio_file(path)
         sr = service.separator.samplerate
 
-        # Perform spotlight analysis on separated stems
+        # Perform spotlight analysis on separated stems with all-in-one song segment analysis
         analysis = self.analyze_stems_audio(
             instruments_audio=separated["other"],
             bass_audio=separated["bass"],
             drums_audio=separated["drums"],
             sr=sr,
+            audio_path=path,
         )
 
         if save_to_cache:
@@ -396,6 +436,8 @@ def analyze_spotlight_stems(
     drums_audio: Optional[np.ndarray | torch.Tensor] = None,
     sr: int = 44100,
     target_fps: int = 25,
+    audio_path: Optional[str | Path] = None,
+    segments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Helper functional API to analyze stem tensors."""
     analyzer = get_spotlight_analyzer(target_fps=target_fps)
@@ -404,6 +446,8 @@ def analyze_spotlight_stems(
         bass_audio=bass_audio,
         drums_audio=drums_audio,
         sr=sr,
+        audio_path=audio_path,
+        segments=segments,
     )
 
 

@@ -96,7 +96,7 @@ flowchart TD
             G --> H["4-Stem Isolation\n(Drums, Bass, Inst, Vocals)"]
             H --> I["25 FPS RMS Envelopes &\nStatic Track Averages"]
             H --> J["Kick Comb Filter & Transient Onsets"]
-            H --> SPOT_ENGINE["spotlight_analysis.py (DSP Frequency Pre-Analysis)\n(Inst & Bass Freqs in ms, 360° Angles, Dual-Stem Avg Crossing, Bass Glow)"]
+            H --> SPOT_ENGINE["spotlight_analysis.py (DSP Frequency & all-in-one Structure Segmentation)\n(Inst & Bass Freqs in ms, 360° Angles, Verses-Only Activation Gate, Bass Glow)"]
             E --> PL_API["GET /api/playlist\n(Processed Track Library)"]
             E --> SPOT_API["GET /api/spotlight/{video_id}\n(Pre-Computed Spotlight Choreography)"]
         end
@@ -222,21 +222,22 @@ flowchart TD
 - **Mid-Range Spectral Engine ($250\text{Hz}-4\text{kHz}$):** Computes mid-range spectral centroid ($C_{\text{mid}}$), spectral flux ($F_{\text{mid}}$), and dispersion ($D_{\text{mid}}$) fused with Demucs instrumental data to steer intelligent concert spotlight choreographies without bass interference.
 
 #### 3. Stage Director & Visual Choreography Pipeline
-- **Neural STEM Frequency Pre-Analysis (`spotlight_analysis.py`):**
+- **Neural STEM Frequency Pre-Analysis & All-In-One Structure Segmentation (`spotlight_analysis.py`):**
   - Performs an offline DSP/STFT spectral pre-analysis on the extracted audio across the separated `instruments` ($150-7500\text{Hz}$) and `bass` ($25-450\text{Hz}$) stems, generating continuous millisecond-by-millisecond frequency trajectories.
   - Computes global $f_{\min}$, $f_{\max}$, and midpoint average frequency thresholds ($\bar{f} = \frac{f_{\min} + f_{\max}}{2}$) for both stems.
   - Distributes the continuous frequency spectrum across a full $360^\circ$ angular movement space ($\theta = \frac{f - f_{\min}}{f_{\max} - f_{\min}} \times 360^\circ$).
-  - **Simultaneous Dual-STEM Average Crossing Gate:** All spotlights (including the two bottom white sky spotlights) turn ON when and only when both Instrument and Bass stem frequencies simultaneously cross and exceed their midpoint track averages. Dropping below average turns the spotlights OFF with musical attack/decay smoothing.
+  - **All-In-One Music Structure Segmentation (`mir-aidj/all-in-one`):** Automatically predicts functional music segments (`intro`, `verse`, `chorus`, `bridge`, `break`, `inst`, `solo`, `outro`).
+  - **Verses-Only Spotlight Turn ON Gate:** All spotlights (including the two bottom white sky spotlights) turn ON strictly during song verses. During non-verse segments (chorus, drop, bridge, breakdown, intro, outro), all spotlights turn OFF cleanly with smooth theatrical attack/release envelopes.
   - **Continuous Bass STEM Glow Factor ($0.0 \to 1.0$):** Continuously scales spotlight glow and beam emission based on the real-time Bass STEM frequency mapped across $[f_{\min}, f_{\max}]$.
-  - **Kick-Synchronized Random Beam Projection:**
-    - On drum/kick hits detected from the Demucs Kick STEM, spotlight light beam projection directions take synchronized random target orientations.
-    - **Left Side Spotlights:** Symmetrically synchronized together.
-    - **Right Side Spotlights:** Symmetrically synchronized together with opposite movement angles ($-x, y, -z$ and inverse rotation) relative to the left side.
-    - **Top Side Spotlights:** Symmetrically synchronized together.
+  - **Unified Symmetrical Spotlight Movements (`StageLightsEffect.ts`):**
+    - **Left Side Spotlights:** Symmetrically synchronized together, executing an elliptical cone sweep across the stage into the audience forward in lockstep with the 3rd left spotlight.
+    - **Right Side Spotlights:** Symmetrically synchronized together with **opposite movement angles** ($-\theta_{\text{rad}} + 1.6$), mirroring the left side.
+    - **Top Side Spotlights:** Symmetrically synchronized together across 360°.
+    - **Kick Sync:** On drum/kick hits detected from the Demucs Kick STEM, spotlight light beam projection directions take synchronized random target orientations.
 - **Dual Bottom White Sky Spotlights (`StageLightsEffect.ts`):**
   - Two high-power white concert searchlights mounted at the lower left and lower right corners flanking the YouTube stage screen aperture.
   - Strictly project upward into the arena sky ($Y \ge 16.0\text{m}$, never pointing downwards).
-  - Governed by the same $360^\circ$ frequency movement distribution, continuous Bass glow factor, and simultaneous dual-stem average crossing ON/OFF gate.
+  - Governed by the same $360^\circ$ frequency movement distribution, continuous Bass glow factor, and verses-only ON/OFF gate.
   - **Kick Intensity Flash Exception:** Kick hits do *not* scatter their beam projection direction; instead, drum kicks trigger an intense white glow flare and high-power emission pulse!
 - **12x 360° Continuous Rotatable Perimeter Bass Lights:**
   - High-intensity moving heads framing the perimeter of the YouTube screen, driven continuously by bass stem energy and sub-bass frequencies.
@@ -264,16 +265,18 @@ flowchart TD
 
 ## ✨ Key Features
 
+- **All-In-One Music Structure Segmentation & Verses-Only Spotlight Turn ON:**
+  Uses `all-in-one` (`mir-aidj/all-in-one`) to identify functional structural blocks (`verse`, `chorus`, `bridge`, `break`, `intro`, `outro`). All spotlights (colouring fixtures and white sky searchlights) turn ON strictly during verses and stay cleanly OFF everywhere else.
 - **STEM Frequency Pre-Analysis & 360° Spotlight Choreography:**
   Offline pre-analysis computes timestamped frequencies (in ms) for both the Instrument and Bass STEMs. Frequencies are linearly distributed across 360 degrees to direct spotlight pan/tilt trajectories.
-- **Simultaneous Dual-STEM Average Crossing Gate:**
-  Spotlights (including white sky searchlights) illuminate if and only if both Instrument and Bass STEM frequencies cross and rise above their track midpoint average simultaneously ($\bar{f} = \frac{f_{\min} + f_{\max}}{2}$). When both frequencies drop below their average, spotlights turn OFF cleanly.
+- **Unified Synchronized Spotlight Movement:**
+  All spotlights on the left side of the YouTube screen move in sync together in an elliptical cone sweep; all spotlights on the right side move in sync with opposite angles; all spotlights on the top side move in sync together.
 - **Continuous Bass Glow Factor ($0.0 \to 1.0$):**
   Spotlight glowing factor is continuously driven by the normalized Bass STEM frequency ($f_{\min} \to 0.0$, $f_{\max} \to 1.0$), ensuring organic, non-stepped beam luminance.
 - **Kick-Synced Coordinated Spotlight Scattering:**
   Kick hits from the Demucs Kick STEM trigger coordinated random beam projections across the stage: Left spotlights synchronize together; Right spotlights mirror with opposite angles; Top spotlights synchronize together.
 - **Dual Bottom White Sky Spotlights with Kick Flares:**
-  Two bottom corner searchlights project strictly upward into the arena sky, governed by the $360^\circ$ frequency distribution and dual-stem ON/OFF gate. Drum kicks trigger high-intensity white beam flares rather than angular scattering.
+  Two bottom corner searchlights project strictly upward into the arena sky, governed by the $360^\circ$ frequency distribution and verses-only ON/OFF gate. Drum kicks trigger high-intensity white beam flares rather than angular scattering.
 - **Stage Playlist Drawer & Instant Concert Loading:**
   Access your library of processed songs with the top-right `ListMusic` button or the `P` hotkey. Search by track title or artist, preview 16:9 thumbnails, and load any cached song into Synwave with sub-20ms instant startup.
 - **High-Definition 1K Stage Video Playback:**
