@@ -1503,6 +1503,37 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - If a video has not yet loaded its thumbnail, or if the thumbnail is monochromatic, `getPurePaletteColors()` strictly returns `[]`, causing the flash system to flash pure white (`#ffffff`) on all kicks with zero synthetic green, red, or violet bleeding.
   - In `App.tsx`, `loadTrack` immediately resets `visualEngine.setSongPalette(null)` on track change so previous songs' colors never bleed into newly selected tracks, and immediately re-applies `track.extractedColors` if cached.
 
+##### 11. Spotlight Movement & Pre-Analysis Dynamics (Phase 36)
+- **Iterative Peak-of-Peaks (IPOP) Pre-Analysis on Instrument STEM:**
+  - Implemented an algorithm to pre-analyze the separated instrument STEM amplitude envelope for each song:
+    $$\text{Global Maximum } A_{\text{max}} = \max_{0 \le t \le T} A_{\text{inst}}(t)$$
+    $$\text{Stop Threshold } \theta_{\text{stop}} = 0.52 \cdot A_{\text{max}}$$
+  - In each iteration, the peak amplitude within the remaining envelope is located at timestamp $t_{\text{peak}}$. A segment $[t_{\text{peak}} - T_w, t_{\text{peak}} + T_w]$ (where half-window $T_w = 1.8\text{s}$) is carved out, recorded with normalized intensity, and zeroed out from the working buffer until remaining peaks fall below $\theta_{\text{stop}}$.
+  - Adjacent and overlapping windows within $\Delta t \le 0.15\text{s}$ are merged into contiguous IPOP instrument peak segments.
+  - **Strict Segment Gating:** The moving head spotlights framing the YouTube iframe screen (`this.fixtures`) and the dual white bottom sky spotlights (`whiteSkySpotlights`) turn **ON exclusively during these IPOP segments** (`effectiveInstActivation <= 0.01` deactivates lens and volumetric cone opacity to 0).
+  - Wired directly from `App.tsx` and `VisualEngine.ts` via `context.demucsStems`, fingerprinted per track to eliminate redundant re-computation.
+- **20–85 Hz Sub-Bass Frequency Analysis on BASS STEM:**
+  - Formulated a targeted sub-bass frequency analysis pipeline (`analyzeBassStemFrequency`):
+    - Calibrated frequency bounds for modern EDM: $\text{SUB\_BASS\_FREQ\_MIN} = 20\text{Hz}$, $\text{SUB\_BASS\_FREQ\_MAX} = 85\text{Hz}$.
+    - At $44,100\text{Hz}$ with FFT size 2048 (bin resolution $\approx 21.53\text{Hz}$), bins 1 to 4 span $21.5\text{Hz}$ to $86.1\text{Hz}$, capturing fundamental sub frequencies (808s, synthesized sub bass, and drop rumbles).
+    - Detects dominant sub-bass frequency $f_{\text{peak}} = \text{argmax}(\text{FFT}_{1..4}) \cdot 21.53\text{Hz}$ and tests inclusion in $[20\text{Hz}, 85\text{Hz}]$.
+    - Couples spectral sub energy with the separated Demucs BASS STEM amplitude:
+      $$E_{\text{sub}} = 0.55 \cdot E_{\text{FFT}} + 0.45 \cdot \text{stem}_{\text{bass}}$$
+    - Activates continuous 360° rotation gate whenever $E_{\text{sub}} \ge 0.18$ and frequency is within the calibrated range.
+- **Continuous 360° Conical Rotation:**
+  - When the sub-bass gate triggers, spotlights around the YouTube iframe screen (`this.fixtures`) transition from melodic sine sweeps to continuous 360° conical rotations around their forward projection vector:
+    $$x_{\text{target}} = x_{\text{slot}} + \sin(\theta_{\text{rot}}) \cdot R_x, \quad y_{\text{target}} = y_0 + \cos(\theta_{\text{rot}}) \cdot R_y, \quad z_{\text{target}} = z_0 + \sin(2\theta_{\text{rot}}) \cdot R_z$$
+  - Angle $\theta_{\text{rot}}$ advances monotonically without reversing:
+    $$\frac{d\theta_{\text{rot}}}{dt} = (1.0 + 6.5 \cdot \text{subBassExcess}) \cdot \omega_{\text{mult}}$$
+- **Dual White Bottom Spotlights with Strictly Upward Projection:**
+  - Mounted at bottom left and right stage corners flanking the YouTube player aperture.
+  - Follow identical IPOP instrument peak gating, 360° sub-bass rotation, and kick drum sync.
+  - **Strict Upward Constraint:** Target elevation is clamped strictly to $Y \ge \text{topY} + 4.0\text{m}$ (into the open sky/zenith). During 360° rotation, the beam sweeps in the horizontal sky plane $(X, Z)$ overhead, projecting strictly upward and never pointing downwards.
+- **Complete Kick Drum STEM Synchronization:**
+  - Kick hits directly from the separated Kick STEM drive punchy, synchronous glow bursts across both colouring spotlights and sky searchlights without dark shutter dropouts:
+    $$\text{kickGlowFactor} = 1.0 + 1.5 \cdot \text{kickStem} + \text{transientBurst}$$
+  - Lens and volumetric beam opacity scale proportionally with kick drum strikes, widening beam cone geometry during impactful transients.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1512,6 +1543,11 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), `.synwave_cache/metadata` (`meta_yt_*.json`), and `.synwave_cache/thumbnails` (`thumb_*.jpg`).
+- **Spotlight Movement & Pre-Analysis Dynamics (Phase 36):**
+  - Iterative Peak-of-Peaks (IPOP) pre-analysis on instrument STEM amplitude envelope turning on spotlights strictly during peak segments.
+  - 20–85 Hz sub-bass frequency analysis on BASS STEM driving continuous 360° rotation around forward axes.
+  - Dual white bottom stage spotlights following the same logics with strictly upward sky projection ($Y \ge \text{topY} + 4.0\text{m}$).
+  - Kick STEM synchronization dynamically scaling spotlight glow intensity on every kick transient without shutter dropouts.
 - **High-Fidelity 1K Video Rendering & Strict Thumbnail Flash Colors (Phase 35):**
   - YouTube iframe locked to highest resolution up to 1K (`hd1080` / `hd720`), capping out $> 1\text{K}$ streams.
   - Screen flash strictly constrained to authentic thumbnail colors (e.g. shades of blue) + pure white downbeats (`#ffffff`), with 0 synthetic green, red, or violet bleeding.
@@ -1534,7 +1570,6 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Pure uncompressed WAV extraction via `yt-dlp` & `ffmpeg`.
   - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS verified operational with 25 FPS envelopes and 199+ kick events per track.
   - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture with stationary chassis/head origins and omnidirectional double-sided $55\text{m}$ volumetric beams.
-  - Audio manipulation active: Screen shake on kicks, pure thumbnail palette + 1/2 bar white screen blinder flash on kick transients, and bass-activated white sky spotlights with synchronous kick blinking.
   - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).
   - 12x 360° continuous rotatable perimeter bass moving heads.
 - **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3).

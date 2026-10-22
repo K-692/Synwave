@@ -22,6 +22,7 @@ import type {
   AudioVisualRoutingConfig,
   BeatGridState,
   ColorPalette,
+  DemucsStemData,
   MusicMood,
   QualityPreset,
   ShowDirectorState,
@@ -122,6 +123,9 @@ export class VisualEngine {
   private currentHalfBarIndex = -1;
   private kicksInCurrentHalfBar = 0;
   private circularPaletteIndex = 0;
+
+  // Pre-analyzed Demucs stem data (passed to effects for per-track analysis)
+  private demucsStems: DemucsStemData | null = null;
 
   public getActiveFlashColors(): string[] {
     return ['#ffffff', ...this.getPurePaletteColors()];
@@ -340,6 +344,7 @@ export class VisualEngine {
       directorState: directorState || this.currentDirectorState || undefined,
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
       hasVideo: this.hasActiveVideo,
+      demucsStems: this.demucsStems || undefined,
     };
   }
 
@@ -847,6 +852,14 @@ export class VisualEngine {
     if (stageStructure) {
       stageStructure.setVideoActive(active);
     }
+  }
+
+  /**
+   * Updates the current track's Demucs stem data and propagates it to effects
+   * that need per-track pre-analysis (e.g. IPOP on instrument stem in StageLightsEffect).
+   */
+  public setDemucsStems(stems: DemucsStemData | null): void {
+    this.demucsStems = stems;
   }
 
   public setSpotlightCount(count: number): void {

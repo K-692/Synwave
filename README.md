@@ -257,8 +257,14 @@ flowchart TD
   The YouTube iframe player automatically locks playback to the highest resolution up to 1K (`hd1080` Full HD / `hd720` HD), while strictly capping out resolutions > 1K (1440p/4K) to safeguard GPU resources and maintain fluid 60 FPS performance. Explicit 100% viewport attributes and quality range constraints guarantee maximum visual sharpness without letterboxing.
 - **Strict Thumbnail-Derived Screen Flash Palette:**
   Screen flashes strictly follow the authentic color palette extracted from the official video thumbnail (e.g. 2–3 authentic shades of blue for blue-dominant music videos) plus pure white (`#ffffff`) for the 1/2-bar impact anchor. Dominant hue clustering with a 6% chromatic volume threshold filters out small logos or compression artifacts, ensuring zero synthetic green, red, or violet colors bleed into the performance. Monochromatic videos strictly default to pure white.
-- **Dual Corner White Sky Spotlights (Skyward Searchlights):**
-  Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen with strictly fixed origins (zero audio shake). Features dynamic beam sweeps across Left, Top (zenith), and Right using colouring spotlight logic (never downward), automated bass-presence illumination, and tight kick/drum hit synchronized blinking.
+- **Iterative Peak-of-Peaks (IPOP) Instrument STEM Pre-Analysis:**
+  Every track undergoes pre-analysis on its separated Demucs Instrument STEM amplitude envelope using Iterative Peak-of-Peaks (IPOP) detection ($T_w = 1.8\text{s}$, relative threshold $0.52 \cdot A_{\text{max}}$). The stage spotlights around the YouTube screen aperture and the dual bottom white searchlights turn **ON exclusively during these instrument peak segments**, deactivating cleanly during intros, verses, and non-instrumental passages.
+- **20–85 Hz Sub-Bass Frequency Analysis & Continuous 360° Conical Rotation:**
+  Spotlights perform real-time frequency analysis on the separated BASS STEM in the modern EDM sub-bass frequency band (20–85 Hz, FFT bins 1–4). When the bass reaches target frequencies within this range, spotlights transition into continuous 360° conical rotations around their forward projection vector, scaling rotational velocity with sub-bass amplitude.
+- **Dual Bottom Corner White Sky Spotlights (Strictly Upward Sky Projection):**
+  Two high-output white concert searchlights mounted at the bottom corners of the stage frame flanking the YouTube screen. They follow the identical IPOP gating, 360° sub-bass rotation, and kick sync, with the beam vector strictly clamped to $Y \ge \text{topY} + 4.0\text{m}$ (never pointing downwards, projecting exclusively into the arena sky/zenith).
+- **Direct Kick Drum STEM Synchronization:**
+  Both colouring moving heads and white sky searchlights glow with heightened luminous intensity completely in sync with every kick drum strike from the separated Kick STEM ($1.0 + 1.5 \cdot \text{kickStem} + \text{transientBurst}$), dynamically expanding volumetric cone geometry without shutter dropouts.
 - **360° Continuous Perimeter Bass Rig:**
   12 perimeter moving heads directly modulated by neural bass stems executing continuous 360° sweeps around the stage aperture.
 - **Pinpointed Tri-STEM Peak Drop Activation:**

@@ -478,6 +478,8 @@ export const App: React.FC = () => {
       if (track.duration > 0) {
         visualEngineRef.current?.setTrackDuration(track.duration);
       }
+      // Clear demucsStems so IPOP analysis refreshes when stems arrive for the new track
+      visualEngineRef.current?.setDemucsStems(null);
 
       if (audioEngineRef.current) {
         audioEngineRef.current.setTrackAnalysis(track.analysis || null);
@@ -505,6 +507,7 @@ export const App: React.FC = () => {
         // Load Demucs neural stems (from cache or track record)
         if (track.demucsStems) {
           audioEngineRef.current.setDemucsStems(track.demucsStems);
+          visualEngineRef.current?.setDemucsStems(track.demucsStems);
         } else if (track.file || track.url) {
           (async () => {
             const stems = await separateAudioWithDemucs(track.file || track.url, {
@@ -516,6 +519,7 @@ export const App: React.FC = () => {
             if (stems) {
               track.demucsStems = stems;
               audioEngineRef.current?.setDemucsStems(stems);
+              visualEngineRef.current?.setDemucsStems(stems);
               // Re-resolve BPM now that Demucs kick stems are available
               const updatedBpm = resolveTrackBpm(track.id, null, stems);
               if (updatedBpm.source !== 'unavailable') {

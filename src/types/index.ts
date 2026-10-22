@@ -306,6 +306,8 @@ export interface VisualEffectContext {
   directorState?: ShowDirectorState;
   routingConfig?: AudioVisualRoutingConfig;
   hasVideo?: boolean;
+  /** Full Demucs stem data for per-track pre-analysis (e.g. IPOP on instrument stem). */
+  demucsStems?: DemucsStemData;
 }
 
 export interface VisualEffect {
