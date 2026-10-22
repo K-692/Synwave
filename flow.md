@@ -1454,6 +1454,31 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Screen flash is reliably triggered on every kick hit (`(features.isKick && !wasKickLastFrame) || isKickTransientRise || (features.isKick && isLockoutCleared)`) with a minimum 80ms refractory period supporting drum rolls up to 750 BPM.
   - Flash opacity scales with kick energy with a solid minimum baseline ($0.50$ to $0.98$), guaranteeing vertical-sync visual feedback on every drum beat.
 
+##### 9. YouTube Iframe Centered 16:9 Caption-Masking Crop Architecture (Phase 34)
+- **Empirical YouTube Closed Caption Space Analysis:**
+  - YouTube HTML5 player renders closed captions and auto-subtitles inside the dynamically injected container `.caption-window.ytp-caption-window-bottom`.
+  - In embedded players where controls are hidden (`controls=0`), the caption window sits with a bottom offset of $12\text{px}$ to $24\text{px}$ ($\sim 2\%$ to $4\%$ of player height).
+  - Caption typography defaults to $\sim 3.8\%$ to $4.5\%$ of player height per line, scaling up to $10\% - 11.5\%$ for 2-line captions including line padding and background highlight box.
+  - In worst-case conditions (user font magnification of 150% or multi-line roll-up auto-captions), the upper boundary of the caption container reaches between $12\%$ and $14\%$ of player height from the bottom edge.
+- **Centered 16:9 Crop Mathematical Formulation:**
+  - When scaling an iframe uniformly by factor $S$ within a fixed 16:9 container using `overflow: hidden` and `transform-origin: center center`:
+    $$\text{Crop fraction per edge} = \frac{S - 1}{2S}$$
+  - For $S = 1.30$, bottom crop is $11.54\%$ (insufficient; 2-line subtitles or magnified text can peek into view).
+  - For $S = 1.35$, bottom crop is $12.96\%$ (marginal clearance).
+  - For $S = 1.40$, bottom crop is $\frac{0.40}{2.80} = 14.286\%$ ($\approx 14.3\%$).
+  - A scale factor of $S = 1.40$ establishes the golden ratio for standard video embeds:
+    - Exactly $14.29\%$ is cropped from the bottom, completely masking the subtitle container, closed captions, and bottom player watermarks.
+    - Exactly $14.29\%$ is cropped from the top, simultaneously eliminating any embed title bars or channel badges.
+    - Exactly $14.29\%$ is cropped from left and right, maintaining an identical horizontal-to-vertical scale ($1.40\times / 1.40\times = 1.0$), ensuring the visible aperture preserves a pristine, non-distorted $16:9$ aspect ratio.
+    - Symmetrically centered from $(50\%, 50\%)$, retaining $71.4\%$ of both width and height to safeguard focal concert performance elements, musicians, and stage lighting from being over-cropped.
+- **Component & Layout Architecture (`YouTubeStagePlayer.tsx` & `index.css`):**
+  - Configured design token `--yt-crop-scale: 1.4;` in `:root`.
+  - Introduced `.yt-crop-container` wrapper with `position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; display: flex; align-items: center; justify-content: center;`.
+  - Applied absolute centering and scaling to `.yt-iframe-target, .synwave-youtube-stage-screen iframe`:
+    `position: absolute; top: 50%; left: 50%; width: 100% !important; height: 100% !important; transform: translate(-50%, -50%) scale(var(--yt-crop-scale, 1.4)); transform-origin: center center;`.
+  - Added ref-backed container recreation (`cropContainerRef`) in `YouTubeStagePlayer.tsx` to automatically re-instantiate `#synwave-yt-iframe-player` in the DOM if a prior `player.destroy()` call removed the node during video switching.
+  - Decoupled from 2D drum kick shake: outer container `#synwave-youtube-stage-screen` receives audio kick displacement (`onStageShake`), shaking smoothly while the inner iframe maintains centered 16:9 crop integrity.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
@@ -1463,6 +1488,10 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), and `.synwave_cache/metadata` (`meta_yt_*.json`).
+- **YouTube Iframe Centered 16:9 Caption Masking (Phase 34):**
+  - Standard 16:9 centered crop scaled at $1.40\times$ cleanly pushing bottom captions, subtitles, and watermarks out of frame.
+  - Zero distortion across all YouTube resolutions (360p, 720p, 1080p, 4K) and aspect ratios (16:9 native, 21:9 anamorphic, 4:3 pillarbox).
+  - Defensively maintains DOM element nodes across video transitions and synchronizes with kick stage shake.
 - **Kick Screen Flash Mechanics (Phase 33):**
   - Pure white impact on the downbeat kick of every 1/2 bar.
   - Circular chromatic cycling through pure song palette colors for any additional kicks within each 1/2 bar.

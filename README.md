@@ -239,6 +239,7 @@ flowchart TD
 - **Synchronized 4K YouTube Stage Aperture (`z-index: 1`):**
   - Muted video playback (`volume = 0`) complying with browser autoplay policies while local lossless audio serves as the master clock.
   - Continuous 100ms drift monitor: if video drifts $> 140\text{ms}$ from master audio, micro-seeks snap the playhead back into phase.
+  - **Centered 16:9 Caption-Masking Crop:** Scaled uniformly at $1.40\times$ from the center within an `overflow: hidden` aperture. Eliminates bottom closed captions, roll-up auto-subtitles, and player watermarks while maintaining a non-distorted, standard 16:9 aspect ratio without over-cropping the concert performance.
   - Clean video aperture: zero Synwave-generated text overlays, badges, or titles over the video; captions disabled by default (`cc_load_policy: 0`, `controls: 0`).
 - **Responsive Glassmorphic HUD & Stage Playlist Drawer (`z-index: 25` & `z-index: 30`):**
   - **Stage Playlist Drawer (`P`):** Slide-out drawer with real-time title/artist search, 16:9 YouTube thumbnail previews, 3-bar animated soundwave equalizer for active tracks, `STEMS READY` / `BPM` badges, and instant single-click song loading.
@@ -267,8 +268,8 @@ flowchart TD
   Subsequent plays of analyzed songs load in **`< 10ms`** from local disk under `.synwave_cache`, eliminating redundant neural compute.
 - **Zero API Key Requirement:**
   Operates 100% locally with `yt-dlp`, `ffmpeg`, YouTube oEmbed, and Demucs v4. No Google Cloud API keys, `.env` files, quotas, or rate-limiting apply.
-- **Clean Stage Video Aperture:**
-  The YouTube concert screen is completely free of text overlays, status badges, or forced closed captions (`cc_load_policy: 0`).
+- **Clean Stage Video Aperture & 16:9 Centered Caption Crop:**
+  The YouTube concert screen is completely free of text overlays or badges. The iframe is scaled $1.40\times$ from the center within a standard 16:9 aperture, completely cropping out bottom subtitles/captions and watermarks without over-cropping the performance.
 - **Dual-Layer Audio Impact:**
   Deep sub-bass ($20-100\text{Hz}$) drives camera FOV zoom punch ($60^\circ \to 63.5^\circ$), while percussive kicks shake the YouTube stage screen in 2D space.
 - **Symmetrical BPM-Scaled Moving Heads:**

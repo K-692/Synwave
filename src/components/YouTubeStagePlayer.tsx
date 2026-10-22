@@ -64,6 +64,7 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
 }) => {
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const containerId = 'synwave-yt-iframe-player';
+  const cropContainerRef = useRef<HTMLDivElement>(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const isSyncingRef = useRef(false);
   const lastSyncTimestampRef = useRef(0);
@@ -110,6 +111,14 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
           // ignore
         }
         playerRef.current = null;
+      }
+
+      // Ensure target element exists in DOM before initializing (recreates if destroyed)
+      if (cropContainerRef.current && !document.getElementById(containerId)) {
+        const div = document.createElement('div');
+        div.id = containerId;
+        div.className = 'yt-iframe-target';
+        cropContainerRef.current.appendChild(div);
       }
 
       try {
@@ -275,13 +284,15 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
     }
   }, [currentTime, isPlayerReady]);
 
-  // Phase 15: Render purely the clean iframe container without any Synwave-generated text overlays
+  // Phase 15 & 18: Render clean iframe container with standard centered 16:9 cropping to hide captions
   return (
     <div
       id="synwave-youtube-stage-screen"
       className={`synwave-youtube-stage-screen ${videoId ? 'active' : ''}`}
     >
-      <div id={containerId} className="yt-iframe-target" />
+      <div ref={cropContainerRef} className="yt-crop-container">
+        <div id={containerId} className="yt-iframe-target" />
+      </div>
     </div>
   );
 };

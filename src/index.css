@@ -40,6 +40,9 @@
   /* Layout */
   --header-height: 58px;
   --dock-height: 78px;
+
+  /* YouTube Stage Iframe Centered 16:9 Crop Factor (hides captions without over-cropping) */
+  --yt-crop-scale: 1.4;
 }
 
 /* Reset and Base */
@@ -2729,10 +2732,34 @@ html, body, #root {
   visibility: visible;
 }
 
-.yt-iframe-target,
-.synwave-youtube-stage-screen iframe {
+/* 16:9 Inner Cropping Wrapper */
+.yt-crop-container {
+  position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * Standard 16:9 Centered Video Crop:
+ * Centers the YouTube video iframe and scales it up uniformly by 1.40x.
+ * 1. Aspect ratio remains strictly 16:9 standard for all video dimensions.
+ * 2. Bottom captions, subtitles, and player watermarks are cropped outside the visible bounds.
+ * 3. Video is symmetrically cropped from the center without over-cropping the main subject.
+ */
+.yt-iframe-target,
+.synwave-youtube-stage-screen iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100% !important;
+  height: 100% !important;
+  transform: translate(-50%, -50%) scale(var(--yt-crop-scale, 1.4));
+  transform-origin: center center;
   border: none;
   display: block;
 }
