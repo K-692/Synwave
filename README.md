@@ -85,10 +85,10 @@ Synwave is structured into a four-tier decoupled architecture separating acousti
 ```mermaid
 flowchart TD
     subgraph INGEST["1. INGEST & AUDIO EXTRACTION LAYER"]
-        A["YouTube URL\n(Watch, Shorts, youtu.be)"] --> B["Video ID Extractor & Unique Key"]
+        A["YouTube URL\n(Watch, Shorts, youtu.be, or Playlist)"] --> B["Video ID Extractor & Unique Key"]
         B --> C{"Cache Store (.synwave_cache)"}
         C -->|"Hit (< 10ms)"| D["Cached WAV & Stem Store"]
-        C -->|"Miss"| E["FastAPI Daemon (:8765)"]
+        C -->|"Miss"| E["FastAPI Microservice (:8765)"]
         
         subgraph DAEMON["Python Microservice (Apple Silicon MPS / CUDA)"]
             E --> F["yt-dlp + FFmpeg Audio Extractor\n(Best Audio -> 44.1kHz WAV)"]
@@ -96,11 +96,13 @@ flowchart TD
             G --> H["4-Stem Isolation\n(Drums, Bass, Inst, Vocals)"]
             H --> I["25 FPS RMS Envelopes &\nStatic Track Averages"]
             H --> J["Kick Comb Filter & Transient Onsets"]
+            E --> PL_API["GET /api/playlist\n(Processed Track Library)"]
         end
         
         F --> K["High-Fidelity Audio Stream (/api/audio)"]
         I --> D
         J --> D
+        PL_API --> PL_STORE["Stage Playlist Store\n(Backend Cache + LocalStorage)"]
     end
 
     subgraph ANALYSIS["2. REAL-TIME FEATURE & DROP PINPOINTING ENGINE"]
@@ -112,21 +114,22 @@ flowchart TD
         O -->|"D > D_avg && B > B_avg && I > I_avg"| P["isTriStemDropActive (Drops Only)"]
         
         N --> Q["Sub-Bass Filter\n(20 - 100 Hz)"]
-        N --> R["Transient Kick Edge Detector\n(40 - 150 Hz, 180ms Lockout)"]
+        N --> R["Transient Kick Edge Detector\n(40 - 150 Hz, 80ms Lockout)"]
         N --> S["Mid-Range Spectral Engine\n(250 Hz - 4 kHz: Centroid, Flux, Dispersion)"]
-        D --> T["BeatGrid & Phrase Engine (Demucs Kick Intervals)"]
+        D --> T["BeatGrid & Half-Bar Engine\n(Demucs Kick Intervals, 1/2 Bar Tracking)"]
     end
 
     subgraph DIRECTOR["3. STAGE DIRECTOR & CHOREOGRAPHY PIPELINE"]
         B --> U["Stage Screen Aperture (Muted)"]
         B --> V["Thumbnail Color Palette Extractor"]
-        V --> W["flashColorUtils: Direct Palette Normalization"]
+        V --> W["flashColorUtils: Pure Chromatic Palette Normalization"]
         
         P & S & W --> X["Dual Corner White Sky Spotlights\n(Left & Right Stage Flanks, Zenith Skyward Sweeps)"]
         T --> Y["Symmetrical BPM Moving-Head Lights\n(2 to 12 Fixtures, Monotonic 70-160 BPM)"]
         Q --> Z["Audience Camera FOV Punch\n(60° to 63.5° Dynamic Zoom)"]
         R --> AA["YouTube Iframe Screen Shake\n(Isolated Kick Transform)"]
-        R & P & W --> AB["Direct-DOM Full-Window Blinder\n(0.96 Peak Opacity, Compulsory White + Palette)"]
+        R & T & W --> AB["Direct-DOM Window Blinder\n(1/2 Bar Pure White + Circular Palette Washes)"]
+        PL_STORE --> PL_DRAWER["Stage Playlist Drawer (Hotkey: P)\n(Search, Thumbnails, BPM, Fast Load)"]
     end
 
     subgraph PRESENTATION["4. PRESENTATION & RENDERING LAYER"]
@@ -136,8 +139,9 @@ flowchart TD
         X & Y & Z --> AE["Three.js r186 WebGL2 Scene Graph\n(z-index: 2, pointer-events: none)"]
         AA --> AD
         AB --> AF["Festival Window Blinder Overlay\n(z-index: 15, Direct DOM Mutation)"]
+        PL_DRAWER --> AG["Glassmorphic Stage Playlist Panel\n(z-index: 30, Slide-Out Drawer)"]
         
-        AD & AE & AF --> AG["Glassmorphic HUD & Control Dock\n(z-index: 25: Console [C], Telemetry [D], Info [i])"]
+        AD & AE & AF --> AH["Glassmorphic Top Header & Transport Dock\n(z-index: 25: Playlist [P], Console [C], Telemetry [D])"]
     end
 ```
 
@@ -150,45 +154,47 @@ flowchart TD
                                       SYNWAVE SYSTEM TOPOLOGY
 ====================================================================================================
 
- [ Local Audio File ] ─────────► [ SHA-256 Fingerprint Engine ]
-                                            │
-               ┌────────────────────────────┴───────────────────────────┐
-               ▼ (Cache Hit < 10ms)                                     ▼ (Cache Miss)
-    [ 3-Tier Stem Cache ]                                  [ FastAPI Daemon (:8765) ]
-    • Tier 1: In-Memory Map                                • ShazamIO Song Recognition
-    • Tier 2: Browser IndexedDB                            • Meta Demucs v4 (htdemucs on MPS)
-    • Tier 3: Local Disk Cache                             • Static Averages (D_avg, B_avg, I_avg)
-               │                                           • Kick Onsets & Comb Filtering
-               └────────────────────────────┬───────────────────────────┘
-                                            │
-                                            ▼
-                           [ Real-Time Audio Engine ]
-                           • Web Audio API Master Clock (t)
-                           • 2048-Point FFT Spectral Decomp
-                           • Tri-STEM Peak Drop Activation:
-                             (D > D_avg) ∧ (B > B_avg) ∧ (I > I_avg) ∧ (Joint ≥ Thresh)
-                                            │
-        ┌───────────────────────────────────┼───────────────────────────────────┐
-        ▼                                   ▼                                   ▼
- [ Sub-Bass (20-100Hz) ]         [ Kick Transient (40-150Hz) ]       [ Mid-Range Spectral (250Hz-4kHz) ]
-   FOV Camera Punch (60°-63.5°)    Screen Shake & Blinder Trigger      White Sky Searchlights & Moving Heads
-        │                                   │                                   │
-        └───────────────────────────────────┼───────────────────────────────────┘
-                                            │
-                                            ▼
-                           [ Show Director & Visual Engine ]
-                           • Dual Corner White Sky Searchlights (Upward Zenith Projection)
-                           • Symmetrical BPM-Synchronized Moving Heads (2-12)
-                           • 12x 360° Continuous Rotatable Perimeter Bass Lights
-                           • Full-Window Blinder Wash (0.96 Opacity, White + Song Colors)
-                                            │
-       ┌────────────────────────────────────┴───────────────────────────────────┐
-       ▼                                                                        ▼
-[ Three.js r186 Scene Graph ]                                 [ YouTube 4K Stage Screen ]
-• Transparent WebGL2 Canvas (z: 2)                            • 16:9 Stage Aperture (z: 1)
-• 45m Skyward White Beams (Left, Zenith, Right)               • Muted Video Playback (vol: 0)
-• Stage Truss & Jumbotron Bezels                              • Master Clock Continuous Sync Loop
-• Billboard Dust & Atmosphere                                 • Zero Synwave Text Overlays
+ [ YouTube URL / Stage Playlist ] ──► [ Video ID & Cache Resolver ]
+                                             │
+               ┌─────────────────────────────┴────────────────────────────┐
+               ▼ (Cache Hit < 10ms)                                       ▼ (Cache Miss)
+    [ Persistent Cache Store ]                                  [ FastAPI Daemon (:8765) ]
+    • Tier 1: In-Memory Map                                     • Direct Audio Stream via yt-dlp & FFmpeg
+    • Tier 2: Browser LocalStorage                              • Meta Demucs v4 (htdemucs on MPS)
+    • Tier 3: Local Disk (.synwave_cache)                       • Static Averages (D_avg, B_avg, I_avg)
+    • Tier 4: GET /api/playlist                                 • Kick Onsets & Comb Filtering
+               │                                                          │
+               └─────────────────────────────┬────────────────────────────┘
+                                             │
+                                             ▼
+                            [ Real-Time Audio Engine ]
+                            • Web Audio API Master Clock (t)
+                            • 2048-Point FFT Spectral Decomp
+                            • Tri-STEM Peak Drop Activation:
+                              (D > D_avg) ∧ (B > B_avg) ∧ (I > I_avg) ∧ (Joint ≥ Thresh)
+                                             │
+        ┌────────────────────────────────────┼────────────────────────────────────┐
+        ▼                                    ▼                                    ▼
+ [ Sub-Bass (20-100Hz) ]          [ Kick Transient (40-150Hz) ]        [ Mid-Range Spectral (250Hz-4kHz) ]
+   FOV Camera Punch (60°-63.5°)     Screen Shake & Blinder Trigger       White Sky Searchlights & Moving Heads
+        │                                    │                                    │
+        └────────────────────────────────────┼────────────────────────────────────┘
+                                             │
+                                             ▼
+                            [ Show Director & Visual Engine ]
+                            • Dual Corner White Sky Searchlights (Upward Zenith Projection)
+                            • Symmetrical BPM-Synchronized Moving Heads (2-12)
+                            • 12x 360° Continuous Rotatable Perimeter Bass Lights
+                            • Full-Window Blinder Wash (1/2 Bar White Anchor + Pure Palette Colors)
+                            • Stage Playlist Drawer (Instant One-Click Concert Loading)
+                                             │
+       ┌─────────────────────────────────────┴────────────────────────────────────┐
+       ▼                                                                          ▼
+[ Three.js r186 Scene Graph ]                                  [ YouTube 4K Stage Screen ]
+• Transparent WebGL2 Canvas (z: 2)                             • 16:9 Stage Aperture (z: 1)
+• 45m Skyward White Beams (Left, Zenith, Right)                • Muted Video Playback (vol: 0)
+• Stage Truss & Jumbotron Bezels                               • Master Clock Continuous Sync Loop
+• Stage Playlist Drawer (z: 30)                                • Zero Synwave Text Overlays
 ====================================================================================================
 ```
 
@@ -197,19 +203,19 @@ flowchart TD
 ### Deep Architectural Walkthrough
 
 #### 1. Acoustic Intelligence & Multi-Tier Caching Layer
-- **Shazam-First Prerequisite Pipeline:** Recognition executes before neural separation. Tracks are identified in `< 1.5s` and cached in persistent storage (`synwave_shazam_cache_v2`). The recognized song title and artist are instantly displayed in the loading interface.
+- **Direct YouTube URL Audio Ingestion:** Provide any YouTube URL (or select from the persistent playlist). The Python microservice automatically downloads and extracts the uncompressed high-fidelity audio stream to WAV via `yt-dlp` and `ffmpeg` without requiring any external API keys or credentials.
 - **Meta Demucs v4 HTDemucs (`demucs_service.py`):** Isolates local audio into four discrete high-fidelity stems: `drums`, `bass`, `instruments`, and `vocals`. Running on Apple Silicon Metal Performance Shaders (MPS) or NVIDIA CUDA, it computes 25 FPS normalized RMS envelopes, static track-wide averages ($\bar{A}_D, \bar{A}_B, \bar{A}_I$), and transient kick onsets.
-- **3-Tier Persistent Stem Cache:**
-  - **Tier 1 (Memory):** Synchronous JS Map for zero-latency in-session lookups.
-  - **Tier 2 (IndexedDB):** Browser-persistent object store (`synwave_stems_db`) allowing instant song switches and page reloads without re-computation or storage quotas.
-  - **Tier 3 (Server Disk):** Cached JSON envelopes and recognition in `.synwave_cache/stems/{sha256}.json` and `.synwave_cache/shazam/{hash}.json`. The lightweight `/api/check-stems-cache` and `/api/check-shazam-cache` pre-flight endpoints bypass audio file re-uploads entirely.
+- **Persistent Multi-Tier Stem Cache (`.synwave_cache/`):**
+  - **In-Memory & IndexedDB:** Instant zero-latency lookups for active session tracks.
+  - **Local Disk Cache:** Pre-processed WAV audio (`.synwave_cache/audio/yt_*.wav`), neural stem JSON envelopes (`.synwave_cache/stems/`), and metadata (`.synwave_cache/metadata/`). Pre-analyzed tracks achieve a `< 20ms` sub-millisecond cache hit, loading instantaneously.
+  - **Stage Playlist Ingestion API (`/api/playlist`):** Automatically aggregates all processed tracks, their YouTube video IDs, durations, extracted thumbnails, Demucs neural stem readiness, and BPMs into a single responsive library.
 
 #### 2. Real-Time Feature & Drop Pinpointing Engine
 - **Pinpointed Tri-STEM Peak Drop Gate (`AudioEngine.ts`):** Climactic visuals and drop sweeps are gated strictly by the song's true drop segment. A frame qualifies as a drop if and only if:
   $$D(t) > \bar{A}_D \;\land\; B(t) > \bar{A}_B \;\land\; I(t) > \bar{A}_I \;\land\; J(t) \ge \text{Threshold}$$
   This mathematical gate completely eliminates false activations during vocal buildups, quiet intros, and acoustic breakdowns.
 - **Isolated Sub-Bass Bandpass ($20-100\text{Hz}$):** Directly drives camera FOV zoom punch ($60^\circ \to 63.5^\circ$), physically vibrating the audience perspective without harmonic distortion from vocals or guitars.
-- **Transient Kick Detection ($40-150\text{Hz}$):** Comb-filtered kick detector with a 180ms refractory lockout drives 2D pixel displacement strictly on the YouTube stage screen element.
+- **Transient Kick Detection ($40-150\text{Hz}$):** Comb-filtered kick detector fusing Demucs neural kick transients with FFT kick spikes across an 80ms refractory lockout, driving 2D pixel displacement strictly on the YouTube stage screen element.
 - **Mid-Range Spectral Engine ($250\text{Hz}-4\text{kHz}$):** Computes mid-range spectral centroid ($C_{\text{mid}}$), spectral flux ($F_{\text{mid}}$), and dispersion ($D_{\text{mid}}$) fused with Demucs instrumental data to steer intelligent concert spotlight choreographies without bass interference.
 
 #### 3. Stage Director & Visual Choreography Pipeline
@@ -222,10 +228,11 @@ flowchart TD
 - **12x 360° Continuous Rotatable Perimeter Bass Lights:**
   - High-intensity moving heads framing the perimeter of the YouTube screen, driven continuously by bass stem energy and sub-bass frequencies.
 - **Symmetrical BPM Spotlights (`StageLightsEffect.ts`):** Symmetrically frames the YouTube screen across Top, Left, and Right fixtures, scaling dynamically from 2 to 12 fixtures based on detected BPM ($70-160\text{ BPM}$).
-- **Full-Window Screen Flash Blinder (`flashColorUtils.ts` & `VisualEngine.ts`):**
-  - Full-window elliptical radial gradient wash covering $100\text{vw} \times 100\text{vh}$ at `z-index: 15`.
-  - Driven by direct DOM mutation on `#festival-window-blinder`, delivering vertical-sync accuracy without React component re-renders.
-  - Synchronized with kick transients; compulsory pure white (`#FFFFFF`) on downbeats, cycling through song palette colors with white-hot filament cores.
+- **Kick-Activated Screen Flash Blinder (`flashColorUtils.ts` & `VisualEngine.ts`):**
+  - **Pure Color Gradient Isolation:** Full-window radial blinder wash ($100\text{vw} \times 100\text{vh}$ at `z-index: 15`). White frames flash pure brilliant white; colored frames flash 100% pure RGB values from the song palette without central white core washout.
+  - **1/2 Bar Pure White Anchor Rule:** Every 1/2 bar downbeat kick (every 2 beats in 4/4 meter) is guaranteed to flash pure white (`#ffffff`), anchoring the rhythmic structure.
+  - **Circular Palette Color Rotation:** Additional kicks occurring within the same 1/2 bar cycle through the extracted song palette one after another in a continuous circular sequence.
+  - **Zero Dropped Kicks:** Evaluated with an 80ms refractory interval that supports ultra-fast drum rolls up to 750 BPM with no minimum volume dropouts.
 
 #### 4. Presentation & Hardware-Accelerated Rendering Layer
 - **Three.js r186 WebGL2 Canvas (`z-index: 2`):** Transparent canvas overlaying the stage video with additive volumetric lighting, stage trusses, moving heads, and atmosphere dust.
@@ -233,28 +240,33 @@ flowchart TD
   - Muted video playback (`volume = 0`) complying with browser autoplay policies while local lossless audio serves as the master clock.
   - Continuous 100ms drift monitor: if video drifts $> 140\text{ms}$ from master audio, micro-seeks snap the playhead back into phase.
   - Clean video aperture: zero Synwave-generated text overlays, badges, or titles over the video; captions disabled by default (`cc_load_policy: 0`, `controls: 0`).
-- **Responsive Glassmorphic HUD (`z-index: 25`):** Floating docks, Audio-to-Visual Routing Console (`C`), Real-Time Telemetry HUD (`D`), and YouTube metadata modal (`i`).
+- **Responsive Glassmorphic HUD & Stage Playlist Drawer (`z-index: 25` & `z-index: 30`):**
+  - **Stage Playlist Drawer (`P`):** Slide-out drawer with real-time title/artist search, 16:9 YouTube thumbnail previews, 3-bar animated soundwave equalizer for active tracks, `STEMS READY` / `BPM` badges, and instant single-click song loading.
+  - **Audio-to-Visual Routing Console (`C`):** Full calibration of sensitivity, blinder intensity, and photosensitive safety mode.
+  - **Real-Time Telemetry HUD (`D`):** Live FFT, neural stem meters, BPM confidence, and MPS hardware diagnostics.
 
 ---
 
 ## ✨ Key Features
 
+- **Stage Playlist Drawer & Instant Concert Loading:**
+  Access your library of processed songs with the top-right `ListMusic` button or the `P` hotkey. Search by track title or artist, preview 16:9 thumbnails, and load any cached song into Synwave with sub-20ms instant startup.
+- **Kick-Activated Screen Flash (1/2 Bar White Anchor + Pure Palette Colors):**
+  Every 1/2 bar kick triggers a pure brilliant white blinder flash. Any additional kicks within that 1/2 bar rotate through authentic song palette colors in a circular sequence with 0 dropped hits and no white color-bleeding.
 - **Dual Corner White Sky Spotlights (Skyward Searchlights):**
   Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen with strictly fixed origins (zero audio shake). Features dynamic beam sweeps across Left, Top (zenith), and Right using colouring spotlight logic (never downward), automated bass-presence illumination, and tight kick/drum hit synchronized blinking.
 - **360° Continuous Perimeter Bass Rig:**
   12 perimeter moving heads directly modulated by neural bass stems executing continuous 360° sweeps around the stage aperture.
 - **Pinpointed Tri-STEM Peak Drop Activation:**
   Climactic visuals activate exclusively during true musical drops where Drums, Bass, and Instruments simultaneously exceed track averages, staying cleanly off during intros, verses, and breakdowns.
-- **Full-Window Screen Flash Blinder:**
-  High-intensity $100\text{vw} \times 100\text{vh}$ blinder wash with 0.96 peak opacity, direct DOM mutation, and compulsory pure white downbeats cycling through song palette colors.
 - **Direct YouTube Link Stage Ingest:**
   Provide any YouTube URL (via input pill, paste button, or `Cmd+V`). Synwave directly mounts the video on the concert screen while extracting lossless audio.
 - **High-Precision Audio-Video Drift Synchronization:**
   A 100ms continuous monitoring loop locks the YouTube stage video to the master Web Audio clock, snapping buffered video into lip-sync and percussive phase.
-- **3-Tier Persistent STEM Cache:**
-  Subsequent plays of analyzed songs load in **`< 10ms`** from Memory, IndexedDB, or local disk under `.synwave_cache`, eliminating redundant neural compute.
+- **Sub-10ms Persistent STEM Cache:**
+  Subsequent plays of analyzed songs load in **`< 10ms`** from local disk under `.synwave_cache`, eliminating redundant neural compute.
 - **Zero API Key Requirement:**
-  By directly providing the YouTube link, no Google Cloud API keys, quotas, or rate-limiting apply.
+  Operates 100% locally with `yt-dlp`, `ffmpeg`, YouTube oEmbed, and Demucs v4. No Google Cloud API keys, `.env` files, quotas, or rate-limiting apply.
 - **Clean Stage Video Aperture:**
   The YouTube concert screen is completely free of text overlays, status badges, or forced closed captions (`cc_load_policy: 0`).
 - **Dual-Layer Audio Impact:**
@@ -273,6 +285,7 @@ flowchart TD
 | Key / Shortcut | Action | Description |
 |---|---|---|
 | `Space` | **Play / Pause** | Toggle playback (with input focus protection and iframe focus recovery). |
+| `P` | **Stage Playlist Drawer** | Open or close the persistent stage playlist drawer with search and one-click loading. |
 | `F` | **Toggle Fullscreen** | Enter or exit native edge-to-edge fullscreen mode. |
 | `Double-Click` | **Toggle Fullscreen** | Double-clicking anywhere on the 3D stage toggles fullscreen. |
 | `C` | **Routing Console** | Open or close the Audio-to-Visual Routing Console. |
@@ -281,6 +294,7 @@ flowchart TD
 | `Arrow Left` | **Seek -5 Seconds** | Scrub playback backward by 5 seconds. |
 | `Arrow Right` | **Seek +5 Seconds** | Scrub playback forward by 5 seconds. |
 | `Digit 1` | **Festival Profile** | Re-engage the Festival Mainstage choreography profile. |
+| `Escape` | **Dismiss Panels** | Close the Stage Playlist Drawer, Routing Console, or Telemetry HUD. |
 
 ---
 
@@ -368,7 +382,7 @@ If you prefer running services in separate terminals:
 **Terminal 1 — Python Microservice:**
 ```bash
 source .venv/bin/activate
-python3 shazam_server.py
+python3 server.py
 ```
 *Microservice starts on `http://127.0.0.1:8765`.*
 
@@ -437,13 +451,12 @@ All third-party libraries incorporated into Synwave are free and open-source sof
 
 | Package | Version | License | Authors / Maintainers | Repository Link |
 |---|---|---|---|---|
-| `demucs` | `^4.1.0` | [MIT](https://github.com/adefossez/demucs/blob/main/LICENSE) | Alexandre Défossez (Meta AI Research) | [adefossez/demucs](https://github.com/adefossez/demucs) |
+| `demucs` | `^4.0.1` | [MIT](https://github.com/adefossez/demucs/blob/main/LICENSE) | Alexandre Défossez (Meta AI Research) | [adefossez/demucs](https://github.com/adefossez/demucs) |
 | `torch` | `^2.2.0` | [BSD-3-Clause](https://github.com/pytorch/pytorch/blob/main/LICENSE) | Meta Platforms, Inc. & PyTorch Contributors | [pytorch/pytorch](https://github.com/pytorch/pytorch) |
-| `shazamio` | `^0.8.1` | [MIT](https://github.com/shazamio/ShazamIO/blob/master/LICENSE) | DotX12 & ShazamIO Contributors | [shazamio/ShazamIO](https://github.com/shazamio/ShazamIO) |
+| `yt-dlp` | `^2024.0.0` | [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE) | yt-dlp Contributors | [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp) |
 | `fastapi` | `^0.115.0` | [MIT](https://github.com/fastapi/fastapi/blob/master/LICENSE) | Sebastián Ramírez (tiangolo) | [fastapi/fastapi](https://github.com/fastapi/fastapi) |
 | `uvicorn` | `^0.30.0` | [BSD-3-Clause](https://github.com/encode/uvicorn/blob/master/LICENSE.md) | Encode & Uvicorn Contributors | [encode/uvicorn](https://github.com/encode/uvicorn) |
 | `numpy` | `^1.26.0` | [BSD-3-Clause](https://github.com/numpy/numpy/blob/main/LICENSE.txt) | Travis Oliphant & NumPy Developers | [numpy/numpy](https://github.com/numpy/numpy) |
-| `certifi` | `^2024.0.0` | [MPL-2.0](https://github.com/certifi/python-certifi/blob/master/LICENSE) | Kenneth Reitz & Mozilla | [certifi/python-certifi](https://github.com/certifi/python-certifi) |
 | `aiofiles` | `^23.2.0` | [Apache-2.0](https://github.com/Tinche/aiofiles/blob/master/LICENSE) | Tin Tvrtković & aiofiles Contributors | [Tinche/aiofiles](https://github.com/Tinche/aiofiles) |
 | `python-multipart` | `^0.0.12` | [Apache-2.0](https://github.com/Kludex/python-multipart/blob/master/LICENSE.txt) | Andrew Chen Wang & Kludex | [Kludex/python-multipart](https://github.com/Kludex/python-multipart) |
 
@@ -463,11 +476,9 @@ Here are the currently known bugs and areas under active improvement:
    On the very first track analyzed, Demucs downloads the `htdemucs` neural weights (~80MB) from GitHub releases. This may take 20–45 seconds depending on network bandwidth. Subsequent tracks with the same model run much faster, and cached songs load in `< 10ms`.
 2. **YouTube Video Embed Restrictions:**
    Certain record labels disable third-party iframe embeds for select official music videos on YouTube (resulting in error `150` or `101`). When this occurs, Synwave maintains local audio playback and procedural 3D stage effects while logging a descriptive fallback notice.
-3. **Daily YouTube API Quota Ceiling (10,000 units/day):**
-   Heavy multi-song testing can consume the daily quota (100 units per new track search). Quotas reset at midnight PST. We plan to add a local metadata search fallback for offline sessions.
-4. **WebGL Context Loss on Display Sleep:**
+3. **WebGL Context Loss on Display Sleep:**
    On some operating systems, waking a machine from deep sleep or switching external display adapters can trigger a WebGL context loss. Reloading the page restores normal operation.
-5. **Multi-Window High-DPI Canvas Resizing:**
+4. **Multi-Window High-DPI Canvas Resizing:**
    Dragging the browser window across displays with different device pixel ratios (e.g., Retina Mac to standard 1080p monitor) occasionally requires a canvas refresh.
 
 ---

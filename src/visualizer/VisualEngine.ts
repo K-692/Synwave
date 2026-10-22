@@ -34,7 +34,7 @@ import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
-import { resolveFlashPaletteColors } from './effects/flashColorUtils';
+import { resolveFlashPaletteColors, resolvePureChromaticPaletteColors } from './effects/flashColorUtils';
 
 export interface VisualSceneConfig {
   id: string;
@@ -110,22 +110,32 @@ export class VisualEngine {
   private effectIntensity = 1.0;
   private isPlaying = false;
 
-  // Phase 18: Flash-Screen Sequence State (Song Palette Synchronized with Compulsory White)
+  // Kick-Activated Screen Flash State (Pure Palette Colors + 1/2 Bar White Anchor)
   private currentFlashOpacity = 0;
-  private currentFlashBg = 'radial-gradient(circle at center, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.80) 25%, rgba(255,255,255,0.45) 60%, rgba(255,255,255,0.06) 100%)';
-  private flashSequenceStep = 0; // 0: Compulsory White (#FFFFFF), 1, 2, ... Song Palette Colors
+  private currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.95) 40%, rgba(255,255,255,0.85) 100%)';
   private wasKickLastFrame = false;
   private prevKickStem = 0;
   private screenShakeImpulse = 0;
   private lastKickTimestamp = 0;
   private hasDispatchedZeroFlash = true;
   private cachedFlashColors: string[] | null = null;
+  private cachedPurePaletteColors: string[] | null = null;
+  private currentHalfBarIndex = -1;
+  private kicksInCurrentHalfBar = 0;
+  private circularPaletteIndex = 0;
 
   public getActiveFlashColors(): string[] {
     if (!this.cachedFlashColors) {
       this.cachedFlashColors = resolveFlashPaletteColors(this.activePalette, this.trackSeed);
     }
     return this.cachedFlashColors;
+  }
+
+  public getPurePaletteColors(): string[] {
+    if (!this.cachedPurePaletteColors) {
+      this.cachedPurePaletteColors = resolvePureChromaticPaletteColors(this.activePalette, this.trackSeed);
+    }
+    return this.cachedPurePaletteColors;
   }
 
   // Live state callbacks
@@ -137,7 +147,13 @@ export class VisualEngine {
     this.isPlaying = playing;
     if (!playing) {
       this.currentFlashOpacity = 0;
+      this.currentHalfBarIndex = -1;
+      this.kicksInCurrentHalfBar = 0;
       this.wasKickLastFrame = false;
+      this.screenShakeImpulse = 0;
+      if (this.onStageShake) {
+        this.onStageShake(0, 0);
+      }
       if (this.onWindowFlash && !this.hasDispatchedZeroFlash) {
         this.onWindowFlash(0, '#ffffff');
         this.hasDispatchedZeroFlash = true;
@@ -380,10 +396,13 @@ export class VisualEngine {
     this.targetPalette = { ...this.trackSignaturePalette };
     this.activePalette = { ...this.trackSignaturePalette };
 
-    // Phase 18: Invalidate flash palette cache and reset flash state on track transition
+    // Reset flash palette cache and half-bar kick state on track transition
     this.cachedFlashColors = null;
+    this.cachedPurePaletteColors = null;
     this.currentFlashOpacity = 0;
-    this.flashSequenceStep = 0;
+    this.currentHalfBarIndex = -1;
+    this.kicksInCurrentHalfBar = 0;
+    this.circularPaletteIndex = 0;
     this.wasKickLastFrame = false;
     this.lastKickTimestamp = 0;
     if (this.onWindowFlash) {
@@ -643,7 +662,7 @@ export class VisualEngine {
     this.camera.fov = this.cameraTargetFov;
     this.camera.updateProjectionMatrix();
 
-    // 4. Kick Screen Flash with Song Palette Distribution and Compulsory White (Phase 18)
+    // 4. Kick Screen Flash: Pure Color Palette Colors & 1/2 Bar White Anchor
     const flashMult = routingConfig.screenFlashIntensity ?? 1.0;
     const isFlashAllowed = this.isPlaying && !routingConfig.reducedFlash && flashMult > 0.01;
 
@@ -655,46 +674,71 @@ export class VisualEngine {
         this.hasDispatchedZeroFlash = true;
       }
     } else {
-      // Audio-reactivity: Screen flash is strictly manipulated by kick transients (no beat grid clock ticks)
+      // Audio-reactivity: Screen flash is strictly triggered when kick/drum hits
       const timeSinceLastKick = trackTimeSeconds - this.lastKickTimestamp;
-      const isKickTransientRise = features.stems.kick > 0.38 && features.stems.kick > this.prevKickStem * 1.20;
-      const isKickOnset = (features.isKick && !this.wasKickLastFrame) || isKickTransientRise;
+
+      // Calculate authoritative musical half-bar index (1/2 bar = 2 beats in standard 4/4 meter)
+      const bpm = features.estimatedBpm && features.estimatedBpm >= 40 ? features.estimatedBpm : 120;
+      const beatPeriod = 60.0 / bpm;
+      const halfBarDuration = beatPeriod * 2.0;
+      const currentHalfBar = typeof features.beatIndex === 'number'
+        ? Math.floor(features.beatIndex / 2)
+        : Math.floor(trackTimeSeconds / halfBarDuration);
+
+      // Reset half-bar kick counter when entering a new 1/2 bar, seeking, or after long pauses
+      if (
+        currentHalfBar !== this.currentHalfBarIndex ||
+        timeSinceLastKick < 0 ||
+        timeSinceLastKick > Math.max(0.70, halfBarDuration)
+      ) {
+        this.currentHalfBarIndex = currentHalfBar;
+        this.kicksInCurrentHalfBar = 0;
+      }
+
+      // Lockout interval (80ms) prevents double-triggering across a single kick's decay while supporting up to 750 BPM rolls
+      const isLockoutCleared = timeSinceLastKick > 0.080 || timeSinceLastKick < 0 || this.lastKickTimestamp === 0;
+
+      // Authentic kick onset detection from Demucs neural kick stem + FFT kick transient
+      const isKickTransientRise = features.stems.kick > 0.28 && features.stems.kick > this.prevKickStem * 1.15;
+      const isKickHit = isLockoutCleared && (
+        (features.isKick && !this.wasKickLastFrame) ||
+        isKickTransientRise ||
+        features.isKick
+      );
+
       this.wasKickLastFrame = Boolean(features.isKick);
       this.prevKickStem = features.stems.kick;
 
-      // Lockout of 90ms prevents double-triggering across a single kick's decay while supporting up to 660 BPM rolls.
-      // Negative delta handling accounts for user scrubbing/seeking backward.
-      const isKickLockoutCleared = timeSinceLastKick > 0.09 || timeSinceLastKick < 0 || this.lastKickTimestamp === 0;
-      const kickSens = routingConfig.kickSensitivity ?? 1.0;
-      const rawKickPower = Math.max(features.kickIntensity, features.stems?.kick ?? 0);
-      const kickVal = rawKickPower * kickSens;
-
-      // Strictly triggered by kick onset and sufficient kick transient energy
-      const isTransientKick = isKickOnset && isKickLockoutCleared && kickVal > 0.13;
-
-      if (isTransientKick) {
+      if (isKickHit) {
         this.lastKickTimestamp = trackTimeSeconds;
-        const flashColors = this.getActiveFlashColors();
 
-        // Advance flash sequence:
-        // A new sequence is initiated on musical phrase/bar boundaries or after pauses (> 0.65s).
-        // Every sequence begins with Step 0: Compulsory Pure White (#FFFFFF).
-        // Subsequent kicks in the sequence cycle through the active song palette.
-        if (timeSinceLastKick > 0.65 || features.isBar) {
-          this.flashSequenceStep = 0; // Compulsory Pure White (#FFFFFF)
+        let selectedHex: string;
+
+        // Rule: For each 1/2 bar kick always use the white colour for the flash.
+        // When there are more kicks within 1/2 bar of the song, start with white and then
+        // other colours from the palette one after one in a circular manner.
+        if (this.kicksInCurrentHalfBar === 0) {
+          selectedHex = '#ffffff';
         } else {
-          this.flashSequenceStep = (this.flashSequenceStep + 1) % flashColors.length;
+          const purePalette = this.getPurePaletteColors();
+          if (purePalette.length > 0) {
+            selectedHex = purePalette[this.circularPaletteIndex % purePalette.length];
+            this.circularPaletteIndex = (this.circularPaletteIndex + 1) % purePalette.length;
+          } else {
+            selectedHex = '#ffffff';
+          }
         }
 
-        const selectedHex = flashColors[this.flashSequenceStep] || '#ffffff';
-        const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
+        this.kicksInCurrentHalfBar++;
 
-        if (this.flashSequenceStep === 0 || selectedHex.toLowerCase() === '#ffffff') {
-          // Step 0: Compulsory Brilliant Pure White (#FFFFFF) full-window concert blinder
-          this.currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.96) 35%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0.72) 100%)';
+        // Flash screen purely on the color palette colours and the white
+        if (selectedHex.toLowerCase() === '#ffffff') {
+          // Pure White full-window concert blinder
+          this.currentFlashBg = 'radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.95) 40%, rgba(255,255,255,0.85) 80%, rgba(255,255,255,0.70) 100%)';
         } else {
-          // Distinct Song Palette Colors with white-hot filament center and radiant full-window wash
+          // Pure authentic palette color wash across the entire stage (no white center contamination)
           const col = new THREE.Color(selectedHex);
+          const satMult = routingConfig.screenFlashColorSaturation ?? 1.0;
           if (satMult !== 1.0) {
             const hsl = { h: 0, s: 0, l: 0 };
             col.getHSL(hsl);
@@ -704,12 +748,16 @@ export class VisualEngine {
           const g = Math.round(col.g * 255);
           const b = Math.round(col.b * 255);
 
-          this.currentFlashBg = `radial-gradient(ellipse at center, rgba(255,255,255,1.0) 0%, rgba(255,255,255,0.92) 25%, rgba(${r},${g},${b},0.90) 60%, rgba(${r},${g},${b},0.75) 100%)`;
+          this.currentFlashBg = `radial-gradient(ellipse at center, rgba(${r},${g},${b},1.0) 0%, rgba(${r},${g},${b},0.95) 40%, rgba(${r},${g},${b},0.82) 80%, rgba(${r},${g},${b},0.70) 100%)`;
         }
+
+        const kickSens = routingConfig.kickSensitivity ?? 1.0;
+        const rawKickPower = Math.max(features.kickIntensity, features.stems?.kick ?? 0, 0.40);
+        const kickVal = Math.min(1.0, rawKickPower * kickSens);
 
         const maxBri = routingConfig.maxBrightnessLimit || 1.0;
         const maxAllowed = 0.98 * maxBri;
-        const targetOpacity = Math.min(maxAllowed, (0.42 + Math.min(1.0, kickVal) * 0.56) * flashMult * maxBri);
+        const targetOpacity = Math.min(maxAllowed, (0.50 + kickVal * 0.50) * flashMult * maxBri);
         if (targetOpacity > this.currentFlashOpacity) {
           this.currentFlashOpacity = targetOpacity;
         }
@@ -843,10 +891,13 @@ export class VisualEngine {
       this.activePalette = { ...customPal };
     }
 
-    // Phase 18: Invalidate flash palette cache and reset flash state
+    // Invalidate flash palette cache and reset half-bar kick state
     this.cachedFlashColors = null;
+    this.cachedPurePaletteColors = null;
     this.currentFlashOpacity = 0;
-    this.flashSequenceStep = 0;
+    this.currentHalfBarIndex = -1;
+    this.kicksInCurrentHalfBar = 0;
+    this.circularPaletteIndex = 0;
     this.wasKickLastFrame = false;
     this.lastKickTimestamp = 0;
     if (this.onWindowFlash) {
@@ -881,10 +932,13 @@ export class VisualEngine {
       this.targetPalette = { ...customPal };
       this.activePalette = { ...customPal };
 
-      // Phase 18: Invalidate flash palette cache and reset flash state
+      // Invalidate flash palette cache and reset half-bar kick state
       this.cachedFlashColors = null;
+      this.cachedPurePaletteColors = null;
       this.currentFlashOpacity = 0;
-      this.flashSequenceStep = 0;
+      this.currentHalfBarIndex = -1;
+      this.kicksInCurrentHalfBar = 0;
+      this.circularPaletteIndex = 0;
       this.wasKickLastFrame = false;
       this.lastKickTimestamp = 0;
       if (this.onWindowFlash) {

@@ -74,11 +74,10 @@ export function parseColor(colorStr: string): NormalizedColor | null {
 }
 
 /**
- * Resolves color flash sequence for kick impact and drop blinder flashes:
- * - First frame: Pure white (#ffffff)
- * - Subsequent frames: Authentic chromatic swatches from active track palette
+ * Resolves purely chromatic colors from the active song/stage palette (strictly excluding white/achromatic).
+ * Used for kick-activated screen flashes that cycle through authentic palette colors.
  */
-export function resolveFlashPaletteColors(
+export function resolvePureChromaticPaletteColors(
   palette: ColorPalette | ExtractedStageColors | null | undefined,
   fallbackSeed: number = 1337
 ): string[] {
@@ -87,13 +86,13 @@ export function resolveFlashPaletteColors(
     if ('primary' in palette && palette.primary) rawSwatches.push(palette.primary);
     if ('secondary' in palette && palette.secondary) rawSwatches.push(palette.secondary);
     if ('accent' in palette && palette.accent) rawSwatches.push(palette.accent);
-    if ('rawSwatches' in palette && Array.isArray((palette as ColorPalette).rawSwatches)) {
-      for (const col of (palette as ColorPalette).rawSwatches!) {
+    if ('spotlightColors' in palette && Array.isArray((palette as ExtractedStageColors).spotlightColors)) {
+      for (const col of (palette as ExtractedStageColors).spotlightColors) {
         if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
       }
     }
-    if ('spotlightColors' in palette && Array.isArray((palette as ExtractedStageColors).spotlightColors)) {
-      for (const col of (palette as ExtractedStageColors).spotlightColors) {
+    if ('rawSwatches' in palette && Array.isArray((palette as ColorPalette).rawSwatches)) {
+      for (const col of (palette as ColorPalette).rawSwatches!) {
         if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
       }
     }
@@ -114,19 +113,27 @@ export function resolveFlashPaletteColors(
     }
   }
 
-  const sequence: string[] = ['#ffffff']; // Compulsory pure white (#ffffff) impact frame
-
   if (chromaticColors.length > 0) {
-    for (const c of chromaticColors) {
-      sequence.push(c.hex);
-    }
-  } else {
-    // Entirely achromatic or white palette -> deterministic fallback from track seed
-    const deterministicSeedHue = (Math.abs(fallbackSeed * 0.618033988749895) % 1.0);
-    const col1 = new THREE.Color().setHSL(deterministicSeedHue, 0.90, 0.55);
-    const col2 = new THREE.Color().setHSL((deterministicSeedHue + 0.35) % 1.0, 0.90, 0.55);
-    sequence.push(`#${col1.getHexString()}`, `#${col2.getHexString()}`);
+    return chromaticColors.map((c) => c.hex);
   }
 
-  return sequence;
+  // Entirely achromatic, dark or white palette -> deterministic vibrant fallback from track seed
+  const deterministicSeedHue = (Math.abs(fallbackSeed * 0.618033988749895) % 1.0);
+  const col1 = new THREE.Color().setHSL(deterministicSeedHue, 0.92, 0.55);
+  const col2 = new THREE.Color().setHSL((deterministicSeedHue + 0.35) % 1.0, 0.92, 0.55);
+  const col3 = new THREE.Color().setHSL((deterministicSeedHue + 0.70) % 1.0, 0.92, 0.55);
+  return [`#${col1.getHexString()}`, `#${col2.getHexString()}`, `#${col3.getHexString()}`];
+}
+
+/**
+ * Resolves color flash sequence for kick impact and drop blinder flashes:
+ * - First frame: Pure white (#ffffff)
+ * - Subsequent frames: Authentic chromatic swatches from active track palette
+ */
+export function resolveFlashPaletteColors(
+  palette: ColorPalette | ExtractedStageColors | null | undefined,
+  fallbackSeed: number = 1337
+): string[] {
+  const chromatic = resolvePureChromaticPaletteColors(palette, fallbackSeed);
+  return ['#ffffff', ...chromatic];
 }

@@ -1437,8 +1437,22 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Keyboard shortcuts: `P` / `p` toggles the drawer from anywhere on stage, `Escape` cleanly dismisses it.
 - **Sub-10ms Instant Song Loading (`App.tsx`):**
   - Selecting any card in the playlist drawer immediately triggers `handleYouTubeUrlSubmit(item.youtubeUrl)`.
-  - Because the WAV file exists in `.synwave_cache/audio` and stems in `.synwave_cache/stems`, `processYouTubeUrl` resolves in `<20ms` without re-downloading or re-running Demucs.
-  - Seamlessly cues YouTube video in background, loads extracted audio stream into `AudioEngine`, initializes Demucs stem envelopes, extracts thumbnail color palettes, and mounts reactive stage lighting and screen shake.
+##### 8. Kick-Activated Screen Flash: 1/2 Bar Pure White Anchor & Circular Authentic Palette Washes (Phase 33)
+- **Screen Flash Pure Color Isolation:**
+  - Removed central white wash/bleed from colored flash frames. Chromatic flashes now execute with 100% pure RGB values directly from the active song/stage palette (`radial-gradient(ellipse at center, rgba(r,g,b,1.0) 0%, rgba(r,g,b,0.95) 40%, rgba(r,g,b,0.82) 80%, rgba(r,g,b,0.70) 100%)`).
+  - White flash frames execute as pure, high-impact brilliant white blinders (`rgba(255,255,255,1.0)`).
+- **1/2 Bar White Anchor Rule:**
+  - Musical half-bar tracking derived from the authoritative beat grid:
+    $$\text{halfBarIndex} = \left\lfloor \frac{\text{beatIndex}}{2} \right\rfloor$$
+  - Every 1/2 bar boundary (every 2 beats in standard 4/4 meter) resets the half-bar kick counter (`kicksInCurrentHalfBar = 0`).
+  - The first kick/drum hit within every 1/2 bar ALWAYS triggers a pure brilliant white flash (`#ffffff`), anchoring the musical rhythm.
+- **Circular Palette Color Rotation on Subsequent Kicks:**
+  - When more kicks occur within the same 1/2 bar (e.g. 2nd kick in 4-on-the-floor, or rapid drum rolls/fills), each subsequent kick draws from the extracted chromatic palette (`resolvePureChromaticPaletteColors`), advancing the pointer `circularPaletteIndex = (circularPaletteIndex + 1) % palette.length`.
+  - When the song advances to the next 1/2 bar, the first kick resets back to white, and subsequent kicks resume the circular rotation, ensuring all extracted palette hues receive balanced visual representation across the show.
+- **Uncompromised Kick Transient Reliability:**
+  - Eliminated arbitrary threshold filters (`kickVal > 0.13`) that previously caused quiet kicks to drop.
+  - Screen flash is reliably triggered on every kick hit (`(features.isKick && !wasKickLastFrame) || isKickTransientRise || (features.isKick && isLockoutCleared)`) with a minimum 80ms refractory period supporting drum rolls up to 750 BPM.
+  - Flash opacity scales with kick energy with a solid minimum baseline ($0.50$ to $0.98$), guaranteeing vertical-sync visual feedback on every drum beat.
 
 ---
 
@@ -1449,6 +1463,10 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
 - **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), and `.synwave_cache/metadata` (`meta_yt_*.json`).
+- **Kick Screen Flash Mechanics (Phase 33):**
+  - Pure white impact on the downbeat kick of every 1/2 bar.
+  - Circular chromatic cycling through pure song palette colors for any additional kicks within each 1/2 bar.
+  - Reliable kick triggering with 0 dropped hits and no white contamination in color flash frames.
 - **Stage Playlist Library (Phase 32):**
   - Persistent playlist accessible via top-right floating header button (`ListMusic`) and `P` hotkey.
   - Auto-populates all processed tracks from both backend cache and local storage.
@@ -1459,10 +1477,11 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Pure uncompressed WAV extraction via `yt-dlp` & `ffmpeg`.
   - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS verified operational with 25 FPS envelopes and 199+ kick events per track.
   - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture with stationary chassis/head origins and omnidirectional double-sided $55\text{m}$ volumetric beams.
-  - Audio manipulation active: Screen shake on kicks, thumbnail palette + white screen blinder flash on kick transients, and bass-activated white sky spotlights with synchronous kick blinking.
+  - Audio manipulation active: Screen shake on kicks, pure thumbnail palette + 1/2 bar white screen blinder flash on kick transients, and bass-activated white sky spotlights with synchronous kick blinking.
   - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).
   - 12x 360° continuous rotatable perimeter bass moving heads.
-- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3). Pushing updates to GitHub repo per explicit user instruction.
+- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3).
+
 
 
 
