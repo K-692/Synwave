@@ -1479,22 +1479,29 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Added ref-backed container recreation (`cropContainerRef`) in `YouTubeStagePlayer.tsx` to automatically re-instantiate `#synwave-yt-iframe-player` in the DOM if a prior `player.destroy()` call removed the node during video switching.
 ##### 10. High-Fidelity 1K Video Rendering & Strict Authentic Thumbnail Flash Color Isolation (Phase 35)
 - **YouTube 1K Resolution Strict Enforcement:**
-  - Configured `vq: 'hd1080'` in `playerVars` to signal Full HD preference immediately on iframe instantiation.
-  - Created `enforceHighestResolutionTill1K(player)` which introspects `player.getAvailableQualityLevels()`, prioritizing `hd1080` (1080p / 1K) and `hd720` (720p HD), while strictly capping out resolutions $> 1\text{K}$ (e.g. `highres`, 1440p, 4K) to prevent GPU strain and maintain silky 60 FPS concert stage rendering.
-  - Hooked resolution enforcement into `onReady`, `onStateChange` (buffering and playback starts), and `onPlaybackQualityChange` (detecting and pulling back any auto-promoted 1440p/4K streams).
+  - Configured `vq: 'hd1080'` and `suggestedQuality: 'hd1080'` in `playerVars` to signal Full HD preference immediately on iframe instantiation.
+  - Initialized `new window.YT.Player` with explicit `width: '100%'` and `height: '100%'` options to prevent YouTube from defaulting to small 640x360 player bounds.
+  - Implemented `enforceHighestResolutionTill1K(player)` which introspects `player.getAvailableQualityLevels()`, prioritizing `hd1080` (1080p / 1K) and `hd720` (720p HD), while strictly capping out resolutions $> 1\text{K}$ (e.g. `highres`, 1440p, 4K) to maintain peak GPU efficiency and fluid 60 FPS concert rendering.
+  - Utilizes both `player.setPlaybackQuality(best1K)` and `player.setPlaybackQualityRange(best1K, best1K)` to pin down stream quality.
+  - Hooked resolution enforcement into `onReady`, `onStateChange` (buffering and playback starts), and `onPlaybackQualityChange` (detecting and pulling back any auto-promoted 1440p/4K streams or unintended downscales).
 - **Backend CORS-Free Thumbnail Proxy (`server.py`):**
-  - Added `@app.get("/api/thumbnail/{video_id}")` with local caching under `.synwave_cache/thumbnails/thumb_{video_id}.jpg`.
+  - Added `@app.get("/api/thumbnail/{video_id}")` with local disk caching under `.synwave_cache/thumbnails/thumb_{video_id}.jpg`.
+  - Multi-source fallback pipeline inspecting `i.ytimg.com` and `img.youtube.com` across `maxresdefault`, `hqdefault`, and `mqdefault`.
   - Delivers YouTube video thumbnails with permissive `Access-Control-Allow-Origin: *` headers, completely eliminating browser canvas CORS tainted errors and `SecurityError` exceptions during pixel sampling.
 - **Strict Authentic Thumbnail Color Extraction (`thumbnailColorService.ts`):**
   - Completely purged hardcoded synthetic fallback colors (`#ffaa00` orange, `#ff3c00` red, `#00ffcc` teal/green) that previously contaminated monochromatic and blue-dominant video palettes.
+  - Implemented Dominant Hue Family Identification (12 buckets of 30° across the 360° color wheel):
+    - Any isolated fringe hue representing $< 6\%$ of the chromatic volume (such as tiny watermarks, publisher logos, or compression artifacts) is filtered out.
+    - If a video thumbnail is dominated by blue (e.g. 99% blue/cyan content), all non-blue fringe noise is purged, guaranteeing 100% pure blue pixel pools.
   - Implemented 3D Euclidean clustering in normalized RGB space ($r, g, b \in [0, 1]$) with centroid averaging and saturation weighting.
-  - Accurately captures distinct shades within the same color family (e.g. dark navy blue, deep royal blue, vibrant sky blue) instead of discarding similar hues.
-  - If a thumbnail contains 1, 2, or 3 shades of blue, the extracted palette consists strictly of those exact shades of blue. If the image is purely monochromatic/grayscale, it outputs pure white (`#ffffff`).
-- **Screen Flash Pure Thumbnail Color Isolation (`flashColorUtils.ts` & `VisualEngine.ts`):**
-  - Overhauled `resolvePureChromaticPaletteColors`: strictly returns chromatic colors extracted from the video thumbnail. If no chromatic swatches exist, returns an empty array `[]` (forcing white-only flashes).
-  - Eliminated the deterministic golden ratio hue fallback in `flashColorUtils.ts` that previously synthesized green, red, and violet hues when palettes contained single-hue or dark swatches.
-  - In `VisualEngine.ts`, `setTrackProfile` now preserves active `customSongPalette`, preventing procedural track signature palettes from wiping out authentic thumbnail colors upon track load.
-  - In `App.tsx`, `TrackRecord` now includes `extractedColors`, immediately re-applying the authentic thumbnail palette on track selection.
+  - Accurately captures distinct shades within the same color family (e.g. dark navy blue, deep royal blue, vibrant sky blue, electric cyan) instead of discarding similar hues.
+  - Generates luminous stage-emissive hexes (`stageHex`) boosting luminance for deep shades (e.g. navy and cobalt) while strictly preserving authentic hue and chromatic balance so screen blinders flash with vibrant festival luminescence.
+- **Dedicated Screen Flash Thumbnail Color Isolation (`flashColorUtils.ts` & `VisualEngine.ts`):**
+  - Introduced dedicated `thumbnailFlashColors` state in `VisualEngine.ts`, completely decoupling the screen flash system from the procedural 3D scene `activePalette`.
+  - Overhauled `resolvePureChromaticPaletteColors`: strictly prioritizes `spotlightColors` extracted from the video thumbnail. If no chromatic swatches exist, returns an empty array `[]`.
+  - Screen flashes strictly alternate between pure white (`#ffffff`) on the downbeat of every 1/2 bar, and the authentic thumbnail colors (e.g. 2–3 shades of blue) on subsequent kicks.
+  - If a video has not yet loaded its thumbnail, or if the thumbnail is monochromatic, `getPurePaletteColors()` strictly returns `[]`, causing the flash system to flash pure white (`#ffffff`) on all kicks with zero synthetic green, red, or violet bleeding.
+  - In `App.tsx`, `loadTrack` immediately resets `visualEngine.setSongPalette(null)` on track change so previous songs' colors never bleed into newly selected tracks, and immediately re-applies `track.extractedColors` if cached.
 
 ---
 

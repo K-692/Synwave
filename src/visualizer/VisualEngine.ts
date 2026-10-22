@@ -34,7 +34,7 @@ import { StageStructureEffect } from './effects/StageStructureEffect';
 import { StageLightsEffect } from './effects/StageLightsEffect';
 import { ShowDirector } from './director/ShowDirector';
 import { RoutingStore } from './director/RoutingStore';
-import { resolveFlashPaletteColors, resolvePureChromaticPaletteColors } from './effects/flashColorUtils';
+import { resolvePureChromaticPaletteColors } from './effects/flashColorUtils';
 
 export interface VisualSceneConfig {
   id: string;
@@ -118,24 +118,23 @@ export class VisualEngine {
   private screenShakeImpulse = 0;
   private lastKickTimestamp = 0;
   private hasDispatchedZeroFlash = true;
-  private cachedFlashColors: string[] | null = null;
-  private cachedPurePaletteColors: string[] | null = null;
+  private thumbnailFlashColors: string[] | null = null;
   private currentHalfBarIndex = -1;
   private kicksInCurrentHalfBar = 0;
   private circularPaletteIndex = 0;
 
   public getActiveFlashColors(): string[] {
-    if (!this.cachedFlashColors) {
-      this.cachedFlashColors = resolveFlashPaletteColors(this.activePalette, this.trackSeed);
-    }
-    return this.cachedFlashColors;
+    return ['#ffffff', ...this.getPurePaletteColors()];
   }
 
   public getPurePaletteColors(): string[] {
-    if (!this.cachedPurePaletteColors) {
-      this.cachedPurePaletteColors = resolvePureChromaticPaletteColors(this.activePalette, this.trackSeed);
+    if (this.thumbnailFlashColors !== null && this.thumbnailFlashColors.length > 0) {
+      return this.thumbnailFlashColors;
     }
-    return this.cachedPurePaletteColors;
+    // Strictly return empty array if thumbnail colors are not established.
+    // Guarantees screen flashes only show pure white (#ffffff) until authentic thumbnail colors load,
+    // and NEVER injects procedural green, red, or violet.
+    return [];
   }
 
   // Live state callbacks
@@ -395,11 +394,10 @@ export class VisualEngine {
       this.trackSignaturePalette = this.generateTrackSignaturePalette(seed, this.currentMood);
       this.targetPalette = { ...this.trackSignaturePalette };
       this.activePalette = { ...this.trackSignaturePalette };
+      this.thumbnailFlashColors = [];
     }
 
-    // Reset flash palette cache and half-bar kick state on track transition
-    this.cachedFlashColors = null;
-    this.cachedPurePaletteColors = null;
+    // Reset half-bar kick state on track transition
     this.currentFlashOpacity = 0;
     this.currentHalfBarIndex = -1;
     this.kicksInCurrentHalfBar = 0;
@@ -866,6 +864,7 @@ export class VisualEngine {
   public setSongPalette(extracted: ExtractedStageColors | ColorPalette | null): void {
     if (!extracted) {
       this.customSongPalette = null;
+      this.thumbnailFlashColors = [];
       if (this.trackSignaturePalette) {
         this.targetPalette = { ...this.trackSignaturePalette };
         this.activePalette = { ...this.trackSignaturePalette };
@@ -894,11 +893,12 @@ export class VisualEngine {
 
       this.targetPalette = { ...customPal };
       this.activePalette = { ...customPal };
+
+      // Strictly extract ONLY authentic chromatic thumbnail colors for screen flashes
+      this.thumbnailFlashColors = resolvePureChromaticPaletteColors(customPal, this.trackSeed);
     }
 
-    // Invalidate flash palette cache and reset half-bar kick state
-    this.cachedFlashColors = null;
-    this.cachedPurePaletteColors = null;
+    // Reset half-bar kick state
     this.currentFlashOpacity = 0;
     this.currentHalfBarIndex = -1;
     this.kicksInCurrentHalfBar = 0;
@@ -937,9 +937,10 @@ export class VisualEngine {
       this.targetPalette = { ...customPal };
       this.activePalette = { ...customPal };
 
-      // Invalidate flash palette cache and reset half-bar kick state
-      this.cachedFlashColors = null;
-      this.cachedPurePaletteColors = null;
+      // Strictly extract ONLY authentic chromatic thumbnail colors for screen flashes
+      this.thumbnailFlashColors = resolvePureChromaticPaletteColors(customPal, this.trackSeed);
+
+      // Reset half-bar kick state
       this.currentFlashOpacity = 0;
       this.currentHalfBarIndex = -1;
       this.kicksInCurrentHalfBar = 0;
@@ -949,6 +950,11 @@ export class VisualEngine {
       if (this.onWindowFlash) {
         this.onWindowFlash(0, '#ffffff');
         this.hasDispatchedZeroFlash = true;
+      }
+    } else {
+      if (this.customSongPalette?.id === 'custom-spotlight-palette') {
+        this.customSongPalette = null;
+        this.thumbnailFlashColors = [];
       }
     }
   }

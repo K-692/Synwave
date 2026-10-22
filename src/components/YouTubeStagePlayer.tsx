@@ -22,6 +22,8 @@ declare global {
       Player: new (
         elementId: string,
         options: {
+          width?: string | number;
+          height?: string | number;
           videoId: string;
           playerVars?: Record<string, unknown>;
           events?: {
@@ -73,17 +75,25 @@ function enforceHighestResolutionTill1K(player: YTPlayerInstance | null | undefi
       if (Array.isArray(levels) && levels.length > 0) {
         // Available quality levels in descending order:
         // ['highres', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']
-        // Select the highest resolution up to 1K:
+        // Select the highest resolution up to 1K (1080p / 720p):
         const allowed1KLevels = ['hd1080', 'hd720', 'large', 'medium', 'small'];
         const best1K = allowed1KLevels.find((lvl) => levels.includes(lvl));
-        if (best1K && typeof player.setPlaybackQuality === 'function') {
-          player.setPlaybackQuality(best1K);
+        if (best1K) {
+          if (typeof player.setPlaybackQuality === 'function') {
+            player.setPlaybackQuality(best1K);
+          }
+          if (typeof (player as unknown as { setPlaybackQualityRange?: (min: string, max: string) => void }).setPlaybackQualityRange === 'function') {
+            (player as unknown as { setPlaybackQualityRange: (min: string, max: string) => void }).setPlaybackQualityRange(best1K, best1K);
+          }
           return;
         }
       }
     }
     if (typeof player.setPlaybackQuality === 'function') {
       player.setPlaybackQuality('hd1080');
+    }
+    if (typeof (player as unknown as { setPlaybackQualityRange?: (min: string, max: string) => void }).setPlaybackQualityRange === 'function') {
+      (player as unknown as { setPlaybackQualityRange: (min: string, max: string) => void }).setPlaybackQualityRange('hd720', 'hd1080');
     }
   } catch {
     // ignore
@@ -158,6 +168,8 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
 
       try {
         playerRef.current = new window.YT.Player(containerId, {
+          width: '100%',
+          height: '100%',
           videoId,
           playerVars: {
             autoplay: 1,
@@ -172,6 +184,7 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
             enablejsapi: 1,
             origin: window.location.origin,
             vq: 'hd1080',
+            suggestedQuality: 'hd1080',
           },
           events: {
             onReady: (event) => {
@@ -210,9 +223,11 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
               }
             },
             onPlaybackQualityChange: (event: { data: string }) => {
-              // If YouTube attempts to promote beyond 1K (e.g. 'highres'), cap it back to 1K
-              if (event.data === 'highres' && playerRef.current) {
-                enforceHighestResolutionTill1K(playerRef.current);
+              // If YouTube attempts to promote beyond 1K ('highres') or drops below 720p, enforce 1K target
+              if (event.data === 'highres' || (event.data !== 'hd1080' && event.data !== 'hd720')) {
+                if (playerRef.current) {
+                  enforceHighestResolutionTill1K(playerRef.current);
+                }
               }
             },
             onError: (err) => {

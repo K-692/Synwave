@@ -461,10 +461,16 @@ export const App: React.FC = () => {
           if (track.extractedColors.spotlightColors.length > 0) {
             visualEngineRef.current?.setCustomSpotlightColors(track.extractedColors.spotlightColors);
           }
+        } else {
+          // Reset song palette immediately so previous track's colors never bleed into the new track
+          visualEngineRef.current?.setSongPalette(null);
+          visualEngineRef.current?.setCustomSpotlightColors(null);
         }
       } else {
         setIsVideoReady(true);
         setIsVideoLoading(false);
+        visualEngineRef.current?.setSongPalette(null);
+        visualEngineRef.current?.setCustomSpotlightColors(null);
       }
 
       visualEngineRef.current?.setTrackProfile(track.seed, track.analysis);

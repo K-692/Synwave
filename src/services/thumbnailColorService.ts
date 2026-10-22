@@ -50,8 +50,37 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+/**
+ * Converts HSL [0..1] to RGB [0..255]
+ */
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  let r: number, g: number, b: number;
+
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
 interface ColorCluster {
   hex: string;
+  stageHex: string;
   r: number;
   g: number;
   b: number;
@@ -67,7 +96,7 @@ interface ColorCluster {
  * Never introduces arbitrary secondary hues (e.g. orange, red, green) if the image is monochromatic or single-hue.
  */
 function extractClustersFromImageData(data: Uint8ClampedArray, width: number, height: number): string[] {
-  // Sample center 85% to eliminate potential black letterbox/pillarbox borders
+  // Sample center 84% to eliminate potential black letterbox/pillarbox borders
   const startX = Math.floor(width * 0.08);
   const endX = Math.floor(width * 0.92);
   const startY = Math.floor(height * 0.08);
@@ -108,12 +137,40 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
   const chromaticPixels = rawPixels.filter((p) => p.s >= 0.12);
   const pool = chromaticPixels.length > rawPixels.length * 0.15 ? chromaticPixels : rawPixels;
 
+  // Dominant Hue Family Identification (12 buckets of 30° each):
+  // Eliminates tiny fringe noise (e.g. 0.8% watermark, logo, or compression artifact)
+  // so if a thumbnail is blue, NO red/green/violet noise can enter the candidate pool.
+  const hueCounts = new Array(12).fill(0);
+  for (const p of pool) {
+    const bIdx = Math.floor(p.h * 12) % 12;
+    hueCounts[bIdx]++;
+  }
+
+  const totalPool = pool.length;
+  const validBuckets = new Set<number>();
+  for (let bIdx = 0; bIdx < 12; bIdx++) {
+    if (hueCounts[bIdx] / totalPool >= 0.06) {
+      validBuckets.add(bIdx);
+    }
+  }
+
+  // Include immediate neighbor buckets if a dominant bucket exceeds 20% (for smooth gradient shades)
+  for (let bIdx = 0; bIdx < 12; bIdx++) {
+    if (hueCounts[bIdx] / totalPool >= 0.20) {
+      validBuckets.add((bIdx + 11) % 12);
+      validBuckets.add((bIdx + 1) % 12);
+    }
+  }
+
+  const filteredPool = pool.filter((p) => validBuckets.has(Math.floor(p.h * 12) % 12));
+  const activePool = filteredPool.length > 0 ? filteredPool : pool;
+
   // 3D Color Clustering (Euclidean distance in normalized RGB space)
   const clusters: ColorCluster[] = [];
 
-  for (const pixel of pool) {
+  for (const pixel of activePool) {
     let matchedCluster: ColorCluster | null = null;
-    let minDist = 0.16; // Clustering radius threshold
+    let minDist = 0.14; // Clustering radius threshold
 
     for (const cluster of clusters) {
       const dr = (pixel.r - cluster.r) / 255;
@@ -125,7 +182,7 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
       const hDiff = Math.abs(pixel.h - cluster.h);
       const hueDist = Math.min(hDiff, 1 - hDiff);
 
-      if (dist < minDist && (hueDist < 0.10 || pixel.s < 0.20)) {
+      if (dist < minDist && (hueDist < 0.08 || pixel.s < 0.20)) {
         minDist = dist;
         matchedCluster = cluster;
       }
@@ -144,6 +201,7 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
     } else if (clusters.length < 32) {
       clusters.push({
         hex: rgbToHex(pixel.r, pixel.g, pixel.b),
+        stageHex: rgbToHex(pixel.r, pixel.g, pixel.b),
         r: pixel.r,
         g: pixel.g,
         b: pixel.b,
@@ -156,9 +214,16 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
     }
   }
 
-  // Calculate visual prominence weight for each cluster
+  // Calculate visual prominence weight and luminous stage emissive hex for each cluster
   for (const cluster of clusters) {
     cluster.hex = rgbToHex(cluster.r, cluster.g, cluster.b);
+
+    // Boost luminance for stage emissive flash without altering authentic hue or chroma
+    const boostedL = Math.max(0.44, Math.min(0.64, cluster.l < 0.35 ? cluster.l * 1.8 : cluster.l));
+    const boostedS = Math.max(0.65, Math.min(1.0, cluster.s < 0.50 ? cluster.s * 1.25 : cluster.s));
+    const [sr, sg, sb] = hslToRgb(cluster.h, boostedS, boostedL);
+    cluster.stageHex = rgbToHex(sr, sg, sb);
+
     // Prioritize high-saturation and prominent volume, penalizing extreme darkness
     const lightnessBalance = 1 - Math.abs(cluster.l - 0.50) * 0.5;
     cluster.weight = cluster.count * (0.35 + cluster.s * 0.65) * lightnessBalance;
@@ -167,18 +232,18 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
   // Sort clusters descending by weight
   clusters.sort((a, b) => b.weight - a.weight);
 
-  // Filter out microscopic noise clusters (< 1.5% of total pool)
-  const minCount = Math.max(3, pool.length * 0.015);
+  // Filter out microscopic noise clusters (< 4% of active pool)
+  const minCount = Math.max(4, activePool.length * 0.04);
   const significant = clusters.filter((c) => c.count >= minCount && c.s >= 0.10);
 
   const picked: ColorCluster[] = [];
   for (const c of significant) {
-    // Ensure picked colors are visibly distinct in 3D color space (dist >= 0.10)
+    // Ensure picked colors are visibly distinct shades in 3D color space (dist >= 0.08)
     const tooSimilar = picked.some((p) => {
       const dr = (p.r - c.r) / 255;
       const dg = (p.g - c.g) / 255;
       const db = (p.b - c.b) / 255;
-      return Math.sqrt(dr * dr + dg * dg + db * db) < 0.10;
+      return Math.sqrt(dr * dr + dg * dg + db * db) < 0.08;
     });
 
     if (!tooSimilar) {
@@ -188,12 +253,12 @@ function extractClustersFromImageData(data: Uint8ClampedArray, width: number, he
   }
 
   if (picked.length > 0) {
-    return picked.map((p) => p.hex);
+    return picked.map((p) => p.stageHex);
   }
 
   // Fallback to top cluster if available
   if (clusters.length > 0 && clusters[0].s >= 0.08) {
-    return [clusters[0].hex];
+    return [clusters[0].stageHex];
   }
 
   return ['#ffffff'];

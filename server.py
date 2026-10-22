@@ -490,6 +490,8 @@ async def get_thumbnail_proxy(video_id: str):
     candidates = [
         f"https://i.ytimg.com/vi/{clean_id}/maxresdefault.jpg",
         f"https://i.ytimg.com/vi/{clean_id}/hqdefault.jpg",
+        f"https://img.youtube.com/vi/{clean_id}/maxresdefault.jpg",
+        f"https://img.youtube.com/vi/{clean_id}/hqdefault.jpg",
         f"https://i.ytimg.com/vi/{clean_id}/mqdefault.jpg",
     ]
     ctx = ssl._create_unverified_context()

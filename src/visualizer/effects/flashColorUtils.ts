@@ -80,24 +80,25 @@ export function resolvePureChromaticPaletteColors(
 ): string[] {
   const rawSwatches: string[] = [];
   if (palette) {
-    if ('spotlightColors' in palette && Array.isArray((palette as ExtractedStageColors).spotlightColors)) {
+    if ('spotlightColors' in palette && Array.isArray((palette as ExtractedStageColors).spotlightColors) && (palette as ExtractedStageColors).spotlightColors.length > 0) {
       for (const col of (palette as ExtractedStageColors).spotlightColors) {
         if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
       }
-    }
-    if ('rawSwatches' in palette && Array.isArray((palette as ColorPalette).rawSwatches)) {
-      for (const col of (palette as ColorPalette).rawSwatches!) {
-        if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
+    } else {
+      if ('rawSwatches' in palette && Array.isArray((palette as ColorPalette).rawSwatches)) {
+        for (const col of (palette as ColorPalette).rawSwatches!) {
+          if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
+        }
       }
-    }
-    if ('primary' in palette && palette.primary && !rawSwatches.includes(palette.primary)) {
-      rawSwatches.push(palette.primary);
-    }
-    if ('secondary' in palette && palette.secondary && !rawSwatches.includes(palette.secondary)) {
-      rawSwatches.push(palette.secondary);
-    }
-    if ('accent' in palette && palette.accent && !rawSwatches.includes(palette.accent)) {
-      rawSwatches.push(palette.accent);
+      if ('primary' in palette && palette.primary && !rawSwatches.includes(palette.primary)) {
+        rawSwatches.push(palette.primary);
+      }
+      if ('secondary' in palette && palette.secondary && !rawSwatches.includes(palette.secondary)) {
+        rawSwatches.push(palette.secondary);
+      }
+      if ('accent' in palette && palette.accent && !rawSwatches.includes(palette.accent)) {
+        rawSwatches.push(palette.accent);
+      }
     }
   }
 

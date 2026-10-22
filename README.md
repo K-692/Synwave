@@ -253,8 +253,10 @@ flowchart TD
 
 - **Stage Playlist Drawer & Instant Concert Loading:**
   Access your library of processed songs with the top-right `ListMusic` button or the `P` hotkey. Search by track title or artist, preview 16:9 thumbnails, and load any cached song into Synwave with sub-20ms instant startup.
-- **Kick-Activated Screen Flash (1/2 Bar White Anchor + Strict Authentic Thumbnail Colors):**
-  Every 1/2 bar kick triggers a pure brilliant white blinder flash. Any additional kicks within that 1/2 bar rotate strictly through authentic colors extracted from the video thumbnail (e.g. 2-3 shades of blue) with 0 dropped hits and zero synthetic green, red, or violet bleeding. If a video is monochromatic, flashes remain strictly pure white.
+- **High-Definition 1K Stage Video Playback:**
+  The YouTube iframe player automatically locks playback to the highest resolution up to 1K (`hd1080` Full HD / `hd720` HD), while strictly capping out resolutions > 1K (1440p/4K) to safeguard GPU resources and maintain fluid 60 FPS performance. Explicit 100% viewport attributes and quality range constraints guarantee maximum visual sharpness without letterboxing.
+- **Strict Thumbnail-Derived Screen Flash Palette:**
+  Screen flashes strictly follow the authentic color palette extracted from the official video thumbnail (e.g. 2–3 authentic shades of blue for blue-dominant music videos) plus pure white (`#ffffff`) for the 1/2-bar impact anchor. Dominant hue clustering with a 6% chromatic volume threshold filters out small logos or compression artifacts, ensuring zero synthetic green, red, or violet colors bleed into the performance. Monochromatic videos strictly default to pure white.
 - **Dual Corner White Sky Spotlights (Skyward Searchlights):**
   Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen with strictly fixed origins (zero audio shake). Features dynamic beam sweeps across Left, Top (zenith), and Right using colouring spotlight logic (never downward), automated bass-presence illumination, and tight kick/drum hit synchronized blinking.
 - **360° Continuous Perimeter Bass Rig:**
