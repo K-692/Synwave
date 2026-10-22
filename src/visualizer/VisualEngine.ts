@@ -390,11 +390,12 @@ export class VisualEngine {
     this.currentSceneIndex = Math.abs(seed) % CONCERT_SCENES.length;
     this.applyScene(CONCERT_SCENES[this.currentSceneIndex]);
 
-    // Phase 11: Clear previous track's custom palette and establish new track signature palette
-    this.customSongPalette = null;
-    this.trackSignaturePalette = this.generateTrackSignaturePalette(seed, this.currentMood);
-    this.targetPalette = { ...this.trackSignaturePalette };
-    this.activePalette = { ...this.trackSignaturePalette };
+    // Phase 11: Preserve active custom song palette if already established from thumbnail
+    if (!this.customSongPalette) {
+      this.trackSignaturePalette = this.generateTrackSignaturePalette(seed, this.currentMood);
+      this.targetPalette = { ...this.trackSignaturePalette };
+      this.activePalette = { ...this.trackSignaturePalette };
+    }
 
     // Reset flash palette cache and half-bar kick state on track transition
     this.cachedFlashColors = null;
@@ -870,9 +871,13 @@ export class VisualEngine {
         this.activePalette = { ...this.trackSignaturePalette };
       }
     } else {
-      const prim = extracted.primary || '#ffaa00';
-      const sec = extracted.secondary || '#ff3c00';
-      const acc = ('accent' in extracted && extracted.accent) ? extracted.accent : '#00ffcc';
+      const prim = extracted.primary || '#00f0ff';
+      const sec = extracted.secondary || prim;
+      const acc = ('accent' in extracted && extracted.accent) ? extracted.accent : sec;
+
+      const spotlightCols = ('spotlightColors' in extracted && Array.isArray(extracted.spotlightColors) && extracted.spotlightColors.length > 0)
+        ? extracted.spotlightColors
+        : [prim, sec, acc].filter((c, i, a) => a.indexOf(c) === i);
 
       const customPal: ColorPalette = {
         id: 'custom-song-palette',
@@ -883,7 +888,7 @@ export class VisualEngine {
         background: '#04060d',
         glow: prim,
         ambientColor: '#100a20',
-        ...('spotlightColors' in extracted ? { spotlightColors: extracted.spotlightColors } : {}),
+        spotlightColors: spotlightCols,
       };
       this.customSongPalette = customPal;
 
@@ -913,7 +918,7 @@ export class VisualEngine {
     }
     if (colors && colors.length > 0) {
       const prim = colors[0];
-      const sec = colors[1] || colors[0];
+      const sec = colors[1] || prim;
       const acc = colors[2] || sec;
 
       const customPal: ColorPalette = {

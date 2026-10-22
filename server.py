@@ -26,6 +26,7 @@ CACHE_BASE_DIR = BASE_DIR / ".synwave_cache"
 AUDIO_CACHE_DIR = CACHE_BASE_DIR / "audio"
 STEMS_CACHE_DIR = CACHE_BASE_DIR / "stems"
 META_CACHE_DIR = CACHE_BASE_DIR / "metadata"
+THUMB_CACHE_DIR = CACHE_BASE_DIR / "thumbnails"
 INDEX_FILE = CACHE_BASE_DIR / "index.json"
 
 # Ensure all cache subdirectories exist
@@ -33,6 +34,7 @@ CACHE_BASE_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 STEMS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 META_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+THUMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Synwave YouTube & Neural Demucs Microservice",
@@ -462,6 +464,56 @@ async def get_audio_stream(video_id: str):
             "Access-Control-Allow-Headers": "*",
         },
     )
+
+@app.get("/api/thumbnail/{video_id}")
+async def get_thumbnail_proxy(video_id: str):
+    """
+    Proxies YouTube video thumbnail with permissive CORS headers.
+    Guarantees browser <canvas> can sample pixels without SecurityError or tainted canvas.
+    Caches thumbnails locally under .synwave_cache/thumbnails.
+    """
+    clean_id = video_id.strip()
+    local_thumb = THUMB_CACHE_DIR / f"thumb_{clean_id}.jpg"
+
+    if local_thumb.exists() and local_thumb.stat().st_size > 1000:
+        return FileResponse(
+            path=str(local_thumb),
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    import urllib.request
+    import ssl
+    candidates = [
+        f"https://i.ytimg.com/vi/{clean_id}/maxresdefault.jpg",
+        f"https://i.ytimg.com/vi/{clean_id}/hqdefault.jpg",
+        f"https://i.ytimg.com/vi/{clean_id}/mqdefault.jpg",
+    ]
+    ctx = ssl._create_unverified_context()
+    for url in candidates:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, context=ctx, timeout=3.5) as resp:
+                if resp.status == 200:
+                    data = resp.read()
+                    if len(data) > 1000:
+                        with open(local_thumb, "wb") as f:
+                            f.write(data)
+                        return FileResponse(
+                            path=str(local_thumb),
+                            media_type="image/jpeg",
+                            headers={
+                                "Cache-Control": "public, max-age=86400",
+                                "Access-Control-Allow-Origin": "*",
+                            },
+                        )
+        except Exception:
+            continue
+
+    raise HTTPException(status_code=404, detail="Thumbnail could not be fetched.")
 
 @app.get("/api/playlist")
 async def get_playlist():

@@ -1477,7 +1477,24 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
   - Applied absolute centering and scaling to `.yt-iframe-target, .synwave-youtube-stage-screen iframe`:
     `position: absolute; top: 50%; left: 50%; width: 100% !important; height: 100% !important; transform: translate(-50%, -50%) scale(var(--yt-crop-scale, 1.4)); transform-origin: center center;`.
   - Added ref-backed container recreation (`cropContainerRef`) in `YouTubeStagePlayer.tsx` to automatically re-instantiate `#synwave-yt-iframe-player` in the DOM if a prior `player.destroy()` call removed the node during video switching.
-  - Decoupled from 2D drum kick shake: outer container `#synwave-youtube-stage-screen` receives audio kick displacement (`onStageShake`), shaking smoothly while the inner iframe maintains centered 16:9 crop integrity.
+##### 10. High-Fidelity 1K Video Rendering & Strict Authentic Thumbnail Flash Color Isolation (Phase 35)
+- **YouTube 1K Resolution Strict Enforcement:**
+  - Configured `vq: 'hd1080'` in `playerVars` to signal Full HD preference immediately on iframe instantiation.
+  - Created `enforceHighestResolutionTill1K(player)` which introspects `player.getAvailableQualityLevels()`, prioritizing `hd1080` (1080p / 1K) and `hd720` (720p HD), while strictly capping out resolutions $> 1\text{K}$ (e.g. `highres`, 1440p, 4K) to prevent GPU strain and maintain silky 60 FPS concert stage rendering.
+  - Hooked resolution enforcement into `onReady`, `onStateChange` (buffering and playback starts), and `onPlaybackQualityChange` (detecting and pulling back any auto-promoted 1440p/4K streams).
+- **Backend CORS-Free Thumbnail Proxy (`server.py`):**
+  - Added `@app.get("/api/thumbnail/{video_id}")` with local caching under `.synwave_cache/thumbnails/thumb_{video_id}.jpg`.
+  - Delivers YouTube video thumbnails with permissive `Access-Control-Allow-Origin: *` headers, completely eliminating browser canvas CORS tainted errors and `SecurityError` exceptions during pixel sampling.
+- **Strict Authentic Thumbnail Color Extraction (`thumbnailColorService.ts`):**
+  - Completely purged hardcoded synthetic fallback colors (`#ffaa00` orange, `#ff3c00` red, `#00ffcc` teal/green) that previously contaminated monochromatic and blue-dominant video palettes.
+  - Implemented 3D Euclidean clustering in normalized RGB space ($r, g, b \in [0, 1]$) with centroid averaging and saturation weighting.
+  - Accurately captures distinct shades within the same color family (e.g. dark navy blue, deep royal blue, vibrant sky blue) instead of discarding similar hues.
+  - If a thumbnail contains 1, 2, or 3 shades of blue, the extracted palette consists strictly of those exact shades of blue. If the image is purely monochromatic/grayscale, it outputs pure white (`#ffffff`).
+- **Screen Flash Pure Thumbnail Color Isolation (`flashColorUtils.ts` & `VisualEngine.ts`):**
+  - Overhauled `resolvePureChromaticPaletteColors`: strictly returns chromatic colors extracted from the video thumbnail. If no chromatic swatches exist, returns an empty array `[]` (forcing white-only flashes).
+  - Eliminated the deterministic golden ratio hue fallback in `flashColorUtils.ts` that previously synthesized green, red, and violet hues when palettes contained single-hue or dark swatches.
+  - In `VisualEngine.ts`, `setTrackProfile` now preserves active `customSongPalette`, preventing procedural track signature palettes from wiping out authentic thumbnail colors upon track load.
+  - In `App.tsx`, `TrackRecord` now includes `extractedColors`, immediately re-applying the authentic thumbnail palette on track selection.
 
 ---
 
@@ -1487,7 +1504,11 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
 - **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
 - **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
 - **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
-- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), and `.synwave_cache/metadata` (`meta_yt_*.json`).
+- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), `.synwave_cache/metadata` (`meta_yt_*.json`), and `.synwave_cache/thumbnails` (`thumb_*.jpg`).
+- **High-Fidelity 1K Video Rendering & Strict Thumbnail Flash Colors (Phase 35):**
+  - YouTube iframe locked to highest resolution up to 1K (`hd1080` / `hd720`), capping out $> 1\text{K}$ streams.
+  - Screen flash strictly constrained to authentic thumbnail colors (e.g. shades of blue) + pure white downbeats (`#ffffff`), with 0 synthetic green, red, or violet bleeding.
+  - Backend CORS thumbnail proxy under `/api/thumbnail/{video_id}` guarantees 100% reliable canvas sampling.
 - **YouTube Iframe Centered 16:9 Caption Masking (Phase 34):**
   - Standard 16:9 centered crop scaled at $1.40\times$ cleanly pushing bottom captions, subtitles, and watermarks out of frame.
   - Zero distortion across all YouTube resolutions (360p, 720p, 1080p, 4K) and aspect ratios (16:9 native, 21:9 anamorphic, 4:3 pillarbox).

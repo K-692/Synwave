@@ -28,6 +28,7 @@ declare global {
             onReady?: (event: { target: YTPlayerInstance }) => void;
             onStateChange?: (event: { data: number }) => void;
             onError?: (event: { data: number }) => void;
+            onPlaybackQualityChange?: (event: { data: string }) => void;
           };
         }
       ) => YTPlayerInstance;
@@ -53,6 +54,40 @@ interface YTPlayerInstance {
   mute: () => void;
   setVolume: (volume: number) => void;
   destroy: () => void;
+  setPlaybackQuality?: (suggestedQuality: string) => void;
+  getPlaybackQuality?: () => string;
+  getAvailableQualityLevels?: () => string[];
+}
+
+/**
+ * Enforces highest video resolution up to 1K (1080p / 720p).
+ * Prioritizes 'hd1080' (1080p Full HD / 1K) and 'hd720' (720p HD),
+ * while strictly capping out resolutions > 1K (e.g. 'highres'/1440p/4K)
+ * to maintain peak smoothness on the concert stage.
+ */
+function enforceHighestResolutionTill1K(player: YTPlayerInstance | null | undefined): void {
+  if (!player) return;
+  try {
+    if (typeof player.getAvailableQualityLevels === 'function') {
+      const levels = player.getAvailableQualityLevels();
+      if (Array.isArray(levels) && levels.length > 0) {
+        // Available quality levels in descending order:
+        // ['highres', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']
+        // Select the highest resolution up to 1K:
+        const allowed1KLevels = ['hd1080', 'hd720', 'large', 'medium', 'small'];
+        const best1K = allowed1KLevels.find((lvl) => levels.includes(lvl));
+        if (best1K && typeof player.setPlaybackQuality === 'function') {
+          player.setPlaybackQuality(best1K);
+          return;
+        }
+      }
+    }
+    if (typeof player.setPlaybackQuality === 'function') {
+      player.setPlaybackQuality('hd1080');
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
@@ -136,12 +171,16 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
             rel: 0,
             enablejsapi: 1,
             origin: window.location.origin,
+            vq: 'hd1080',
           },
           events: {
             onReady: (event) => {
               // Volume MUST be strictly OFF as audio plays from the local audio file
               event.target.mute();
               event.target.setVolume(0);
+
+              // Enforce highest playback resolution up to 1K (1080p/720p)
+              enforceHighestResolutionTill1K(event.target);
 
               // Phase 15: Captions default-off inspection
               try {
@@ -170,6 +209,12 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
                 event.target.playVideo();
               }
             },
+            onPlaybackQualityChange: (event: { data: string }) => {
+              // If YouTube attempts to promote beyond 1K (e.g. 'highres'), cap it back to 1K
+              if (event.data === 'highres' && playerRef.current) {
+                enforceHighestResolutionTill1K(playerRef.current);
+              }
+            },
             onError: (err) => {
               console.warn('[YouTubeStagePlayer] Video embedding failure or restriction:', err);
               setIsPlayerReady(true);
@@ -177,6 +222,10 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
             },
             onStateChange: (event) => {
               playerRef.current?.mute();
+              // Enforce 1080p/720p on buffer and playback starts
+              if (event.data === 1 || event.data === 3) {
+                enforceHighestResolutionTill1K(playerRef.current);
+              }
               // High-precision sync anchor: When video begins playing (state 1), lock instantly to master audio clock
               if (event.data === 1 && getAudioCurrentTime) {
                 try {

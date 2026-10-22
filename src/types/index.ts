@@ -32,6 +32,13 @@ export interface ColorPalette {
   rawSwatches?: string[];     // Authentic unmapped song swatches for dynamic palette derivation
 }
 
+export interface ExtractedStageColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+  spotlightColors: string[];
+}
+
 export type MusicMood =
   | 'euphoric-drop'
   | 'chill-ambient'
@@ -278,6 +285,7 @@ export interface TrackRecord {
   description?: string;
   seed: number; // Deterministic random seed for this track
   recognitionStatus?: PipelineStatus;
+  extractedColors?: ExtractedStageColors;
 }
 
 export interface VisualEffectContext {

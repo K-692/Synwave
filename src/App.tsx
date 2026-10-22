@@ -192,6 +192,7 @@ export const App: React.FC = () => {
             if (extracted.spotlightColors.length > 0) {
               visualEngineRef.current?.setCustomSpotlightColors(extracted.spotlightColors);
             }
+            setCurrentTrack((prev) => (prev ? { ...prev, extractedColors: extracted } : prev));
           }
         })
         .catch((err) => {
@@ -455,6 +456,12 @@ export const App: React.FC = () => {
         setCurrentVideoId(track.youtubeVideoId);
         setIsVideoReady(false);
         setIsVideoLoading(true);
+        if (track.extractedColors) {
+          visualEngineRef.current?.setSongPalette(track.extractedColors);
+          if (track.extractedColors.spotlightColors.length > 0) {
+            visualEngineRef.current?.setCustomSpotlightColors(track.extractedColors.spotlightColors);
+          }
+        }
       } else {
         setIsVideoReady(true);
         setIsVideoLoading(false);

@@ -1,20 +1,16 @@
 /**
  * Synwave Video Thumbnail Color Extraction Service
  * 
- * Extracts dominant vibrant color gradients and swatches from the synchronized
- * YouTube video thumbnail image. Sets concert spotlights and stage palette
- * to match the artistic color grading of the official music video.
+ * Accurately extracts dominant color swatches and gradients strictly from the
+ * official YouTube video thumbnail. Strictly preserves the authentic color grading
+ * of the music video without injecting unrequested or synthetic colors.
  */
 
-export interface ExtractedStageColors {
-  primary: string;
-  secondary: string;
-  accent: string;
-  spotlightColors: string[];
-}
+import type { ExtractedStageColors } from '../types';
+export type { ExtractedStageColors };
 
 /**
- * Converts RGB to HSL
+ * Converts RGB to HSL [0..1]
  */
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   r /= 255;
@@ -47,15 +43,165 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 }
 
 /**
- * Converts RGB values to a 6-character hex string
+ * Converts RGB values to a 6-character hex string (#rrggbb)
  */
 function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (n: number) => Math.min(255, Math.max(0, Math.round(n))).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+interface ColorCluster {
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+  h: number;
+  s: number;
+  l: number;
+  count: number;
+  weight: number;
+}
+
 /**
- * Extracts the top vibrant color gradients from a YouTube video thumbnail.
+ * Quantizes and extracts authentic dominant colors strictly from the thumbnail image.
+ * Never introduces arbitrary secondary hues (e.g. orange, red, green) if the image is monochromatic or single-hue.
+ */
+function extractClustersFromImageData(data: Uint8ClampedArray, width: number, height: number): string[] {
+  // Sample center 85% to eliminate potential black letterbox/pillarbox borders
+  const startX = Math.floor(width * 0.08);
+  const endX = Math.floor(width * 0.92);
+  const startY = Math.floor(height * 0.08);
+  const endY = Math.floor(height * 0.92);
+
+  const rawPixels: { r: number; g: number; b: number; h: number; s: number; l: number }[] = [];
+
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const idx = (y * width + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+
+      if (a < 128) continue;
+
+      const [h, s, l] = rgbToHsl(r, g, b);
+
+      // Discard pitch black (< 0.06) and specular blown-out pure white (> 0.95)
+      if (l < 0.06 || l > 0.95) continue;
+
+      rawPixels.push({ r, g, b, h, s, l });
+    }
+  }
+
+  if (rawPixels.length === 0) {
+    return ['#ffffff'];
+  }
+
+  // Check if image is purely monochromatic/grayscale (e.g. vintage B&W)
+  const isAchromatic = rawPixels.every((p) => p.s < 0.10);
+  if (isAchromatic) {
+    return ['#ffffff'];
+  }
+
+  // Filter for chromatic pixels if available; keep muted ones if low saturation image
+  const chromaticPixels = rawPixels.filter((p) => p.s >= 0.12);
+  const pool = chromaticPixels.length > rawPixels.length * 0.15 ? chromaticPixels : rawPixels;
+
+  // 3D Color Clustering (Euclidean distance in normalized RGB space)
+  const clusters: ColorCluster[] = [];
+
+  for (const pixel of pool) {
+    let matchedCluster: ColorCluster | null = null;
+    let minDist = 0.16; // Clustering radius threshold
+
+    for (const cluster of clusters) {
+      const dr = (pixel.r - cluster.r) / 255;
+      const dg = (pixel.g - cluster.g) / 255;
+      const db = (pixel.b - cluster.b) / 255;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+
+      // Require closer distance if hues differ significantly
+      const hDiff = Math.abs(pixel.h - cluster.h);
+      const hueDist = Math.min(hDiff, 1 - hDiff);
+
+      if (dist < minDist && (hueDist < 0.10 || pixel.s < 0.20)) {
+        minDist = dist;
+        matchedCluster = cluster;
+      }
+    }
+
+    if (matchedCluster) {
+      // Running centroid average
+      matchedCluster.count++;
+      matchedCluster.r = (matchedCluster.r * (matchedCluster.count - 1) + pixel.r) / matchedCluster.count;
+      matchedCluster.g = (matchedCluster.g * (matchedCluster.count - 1) + pixel.g) / matchedCluster.count;
+      matchedCluster.b = (matchedCluster.b * (matchedCluster.count - 1) + pixel.b) / matchedCluster.count;
+      const [h, s, l] = rgbToHsl(matchedCluster.r, matchedCluster.g, matchedCluster.b);
+      matchedCluster.h = h;
+      matchedCluster.s = s;
+      matchedCluster.l = l;
+    } else if (clusters.length < 32) {
+      clusters.push({
+        hex: rgbToHex(pixel.r, pixel.g, pixel.b),
+        r: pixel.r,
+        g: pixel.g,
+        b: pixel.b,
+        h: pixel.h,
+        s: pixel.s,
+        l: pixel.l,
+        count: 1,
+        weight: 0,
+      });
+    }
+  }
+
+  // Calculate visual prominence weight for each cluster
+  for (const cluster of clusters) {
+    cluster.hex = rgbToHex(cluster.r, cluster.g, cluster.b);
+    // Prioritize high-saturation and prominent volume, penalizing extreme darkness
+    const lightnessBalance = 1 - Math.abs(cluster.l - 0.50) * 0.5;
+    cluster.weight = cluster.count * (0.35 + cluster.s * 0.65) * lightnessBalance;
+  }
+
+  // Sort clusters descending by weight
+  clusters.sort((a, b) => b.weight - a.weight);
+
+  // Filter out microscopic noise clusters (< 1.5% of total pool)
+  const minCount = Math.max(3, pool.length * 0.015);
+  const significant = clusters.filter((c) => c.count >= minCount && c.s >= 0.10);
+
+  const picked: ColorCluster[] = [];
+  for (const c of significant) {
+    // Ensure picked colors are visibly distinct in 3D color space (dist >= 0.10)
+    const tooSimilar = picked.some((p) => {
+      const dr = (p.r - c.r) / 255;
+      const dg = (p.g - c.g) / 255;
+      const db = (p.b - c.b) / 255;
+      return Math.sqrt(dr * dr + dg * dg + db * db) < 0.10;
+    });
+
+    if (!tooSimilar) {
+      picked.push(c);
+      if (picked.length >= 4) break;
+    }
+  }
+
+  if (picked.length > 0) {
+    return picked.map((p) => p.hex);
+  }
+
+  // Fallback to top cluster if available
+  if (clusters.length > 0 && clusters[0].s >= 0.08) {
+    return [clusters[0].hex];
+  }
+
+  return ['#ffffff'];
+}
+
+/**
+ * Extracts dominant vibrant color gradients and swatches strictly from a YouTube video thumbnail.
+ * Guaranteed to only return authentic colors found in the video thumbnail.
  */
 export async function extractThumbnailColors(videoId: string): Promise<ExtractedStageColors | null> {
   if (!videoId) return null;
@@ -63,13 +209,17 @@ export async function extractThumbnailColors(videoId: string): Promise<Extracted
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    // Use hqdefault (universally available on all YouTube videos)
-    img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+    // Prefer local backend CORS proxy, fallback to direct YouTube CDN
+    const proxyUrl = `http://127.0.0.1:8765/api/thumbnail/${videoId}`;
+    const directUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+    let triedDirect = false;
 
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) {
           resolve(null);
           return;
@@ -81,95 +231,25 @@ export async function extractThumbnailColors(videoId: string): Promise<Extracted
         canvas.height = height;
 
         ctx.drawImage(img, 0, 0, width, height);
+        const imgData = ctx.getImageData(0, 0, width, height).data;
 
-        // Sample center 80% to avoid letterboxing black bars
-        const startX = Math.floor(width * 0.1);
-        const endX = Math.floor(width * 0.9);
-        const startY = Math.floor(height * 0.1);
-        const endY = Math.floor(height * 0.9);
+        const colors = extractClustersFromImageData(imgData, width, height);
 
-        const imgData = ctx.getImageData(startX, startY, endX - startX, endY - startY).data;
-
-        interface ColorCandidate {
-          hex: string;
-          r: number;
-          g: number;
-          b: number;
-          h: number;
-          s: number;
-          l: number;
-          score: number;
-        }
-
-        const candidates: ColorCandidate[] = [];
-
-        for (let i = 0; i < imgData.length; i += 4) {
-          const r = imgData[i];
-          const g = imgData[i + 1];
-          const b = imgData[i + 2];
-
-          const [h, s, l] = rgbToHsl(r, g, b);
-
-          // Discard near-black, pure white, and desaturated grey pixels
-          if (l < 0.16 || l > 0.88 || s < 0.18) continue;
-
-          // Vibrancy score: prioritize high saturation with balanced lightness
-          const score = s * 1.5 + (1 - Math.abs(l - 0.52)) * 1.0;
-
-          candidates.push({
-            hex: rgbToHex(r, g, b),
-            r,
-            g,
-            b,
-            h,
-            s,
-            l,
-            score,
-          });
-        }
-
-        if (candidates.length === 0) {
-          // Deliberate fallback if video is purely black/monochrome (avoids locking to cyan/blue)
+        if (!colors || colors.length === 0) {
           resolve({
-            primary: '#ffaa00',
-            secondary: '#ff3c00',
-            accent: '#00ffcc',
-            spotlightColors: ['#ffaa00', '#ff3c00', '#00ffcc'],
+            primary: '#ffffff',
+            secondary: '#ffffff',
+            accent: '#ffffff',
+            spotlightColors: ['#ffffff'],
           });
           return;
         }
 
-        // Sort by vibrancy score
-        candidates.sort((a, b) => b.score - a.score);
-
-        // Pick distinct color clusters (separate hue ranges)
-        const picked: ColorCandidate[] = [];
-        for (const c of candidates) {
-          const tooClose = picked.some((p) => {
-            const hDiff = Math.abs(p.h - c.h);
-            const hueDistance = Math.min(hDiff, 1 - hDiff);
-            return hueDistance < 0.12; // Minimum hue separation
-          });
-
-          if (!tooClose) {
-            picked.push(c);
-            if (picked.length >= 4) break;
-          }
-        }
-
-        // If not enough distinct hues, add highest scored candidates
-        for (const c of candidates) {
-          if (picked.length >= 4) break;
-          if (!picked.some((p) => p.hex === c.hex)) {
-            picked.push(c);
-          }
-        }
-
-        const primary = picked[0]?.hex || '#ff5500';
-        const secondary = picked[1]?.hex || '#ffaa00';
-        const accent = picked[2]?.hex || '#ff0044';
-
-        const spotlightColors = [primary, secondary, accent];
+        // Strictly assign ONLY colors found in the thumbnail (no synthetic orange, red, green)
+        const primary = colors[0];
+        const secondary = colors[1] || primary;
+        const accent = colors[2] || secondary;
+        const spotlightColors = colors.slice(0, 4);
 
         resolve({
           primary,
@@ -178,13 +258,20 @@ export async function extractThumbnailColors(videoId: string): Promise<Extracted
           spotlightColors,
         });
       } catch (err) {
-        console.warn('Thumbnail color extraction exception:', err);
+        console.warn('[ThumbnailColorService] Canvas extraction warning:', err);
         resolve(null);
       }
     };
 
     img.onerror = () => {
-      resolve(null);
+      if (!triedDirect) {
+        triedDirect = true;
+        img.src = directUrl;
+      } else {
+        resolve(null);
+      }
     };
+
+    img.src = proxyUrl;
   });
 }

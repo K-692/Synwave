@@ -236,9 +236,10 @@ flowchart TD
 
 #### 4. Presentation & Hardware-Accelerated Rendering Layer
 - **Three.js r186 WebGL2 Canvas (`z-index: 2`):** Transparent canvas overlaying the stage video with additive volumetric lighting, stage trusses, moving heads, and atmosphere dust.
-- **Synchronized 4K YouTube Stage Aperture (`z-index: 1`):**
+- **Synchronized 1K YouTube Stage Aperture (`z-index: 1`):**
   - Muted video playback (`volume = 0`) complying with browser autoplay policies while local lossless audio serves as the master clock.
   - Continuous 100ms drift monitor: if video drifts $> 140\text{ms}$ from master audio, micro-seeks snap the playhead back into phase.
+  - **Highest Resolution till 1K (`hd1080` / `hd720`):** Enforces 1080p Full HD video playback via `vq: 'hd1080'` and proactive quality negotiations on buffer and playback starts, capping out $> 1\text{K}$ streams to preserve 60 FPS stage performance.
   - **Centered 16:9 Caption-Masking Crop:** Scaled uniformly at $1.40\times$ from the center within an `overflow: hidden` aperture. Eliminates bottom closed captions, roll-up auto-subtitles, and player watermarks while maintaining a non-distorted, standard 16:9 aspect ratio without over-cropping the concert performance.
   - Clean video aperture: zero Synwave-generated text overlays, badges, or titles over the video; captions disabled by default (`cc_load_policy: 0`, `controls: 0`).
 - **Responsive Glassmorphic HUD & Stage Playlist Drawer (`z-index: 25` & `z-index: 30`):**
@@ -252,8 +253,8 @@ flowchart TD
 
 - **Stage Playlist Drawer & Instant Concert Loading:**
   Access your library of processed songs with the top-right `ListMusic` button or the `P` hotkey. Search by track title or artist, preview 16:9 thumbnails, and load any cached song into Synwave with sub-20ms instant startup.
-- **Kick-Activated Screen Flash (1/2 Bar White Anchor + Pure Palette Colors):**
-  Every 1/2 bar kick triggers a pure brilliant white blinder flash. Any additional kicks within that 1/2 bar rotate through authentic song palette colors in a circular sequence with 0 dropped hits and no white color-bleeding.
+- **Kick-Activated Screen Flash (1/2 Bar White Anchor + Strict Authentic Thumbnail Colors):**
+  Every 1/2 bar kick triggers a pure brilliant white blinder flash. Any additional kicks within that 1/2 bar rotate strictly through authentic colors extracted from the video thumbnail (e.g. 2-3 shades of blue) with 0 dropped hits and zero synthetic green, red, or violet bleeding. If a video is monochromatic, flashes remain strictly pure white.
 - **Dual Corner White Sky Spotlights (Skyward Searchlights):**
   Two dedicated concert spotlights mounted near the left and right corners of the YouTube iframe screen with strictly fixed origins (zero audio shake). Features dynamic beam sweeps across Left, Top (zenith), and Right using colouring spotlight logic (never downward), automated bass-presence illumination, and tight kick/drum hit synchronized blinking.
 - **360° Continuous Perimeter Bass Rig:**

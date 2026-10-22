@@ -26,11 +26,11 @@ export function isNearWhiteOrAchromatic(
   hsl: { h: number; s: number; l: number },
   rgb: { r: number; g: number; b: number }
 ): boolean {
-  if (hsl.l >= 0.88) return true;
-  if (rgb.r > 0.90 && rgb.g > 0.90 && rgb.b > 0.90) return true;
-  if (hsl.l >= 0.78 && hsl.s <= 0.12) return true;
-  if (hsl.l <= 0.08) return true;
-  if (hsl.s <= 0.12) return true;
+  if (hsl.l >= 0.90) return true;
+  if (rgb.r > 0.92 && rgb.g > 0.92 && rgb.b > 0.92) return true;
+  if (hsl.l >= 0.82 && hsl.s <= 0.08) return true;
+  if (hsl.l <= 0.04) return true;
+  if (hsl.s <= 0.08) return true;
   return false;
 }
 
@@ -38,20 +38,15 @@ export function isNearWhiteOrAchromatic(
  * Checks if two chromatic colors are visually near-identical using perceptual distance.
  */
 export function areColorsNearIdentical(c1: NormalizedColor, c2: NormalizedColor): boolean {
-  const hDiff = Math.abs(c1.hsl.h - c2.hsl.h);
-  const hueDist = Math.min(hDiff, 1.0 - hDiff);
+  if (c1.hex.toLowerCase() === c2.hex.toLowerCase()) return true;
 
   const dr = c1.rgb.r - c2.rgb.r;
   const dg = c1.rgb.g - c2.rgb.g;
   const db = c1.rgb.b - c2.rgb.b;
   const rgbDist = Math.sqrt(dr * dr + dg * dg + db * db);
 
-  const lDist = Math.abs(c1.hsl.l - c2.hsl.l);
-
-  if (rgbDist < 0.14) return true;
-  if (hueDist < 0.08 && lDist < 0.15) return true;
-
-  return false;
+  // Only merge if virtually indistinguishable
+  return rgbDist < 0.05;
 }
 
 /**
@@ -74,18 +69,17 @@ export function parseColor(colorStr: string): NormalizedColor | null {
 }
 
 /**
- * Resolves purely chromatic colors from the active song/stage palette (strictly excluding white/achromatic).
- * Used for kick-activated screen flashes that cycle through authentic palette colors.
+ * Resolves purely chromatic colors strictly from the active video thumbnail palette.
+ * Strictly guarantees that ONLY colors actually present in the thumbnail are returned.
+ * If the thumbnail has only shades of one hue (e.g. blue), strictly returns those shades.
+ * Never injects synthetic or procedural colors (no random green, red, violet).
  */
 export function resolvePureChromaticPaletteColors(
   palette: ColorPalette | ExtractedStageColors | null | undefined,
-  fallbackSeed: number = 1337
+  _fallbackSeed: number = 1337
 ): string[] {
   const rawSwatches: string[] = [];
   if (palette) {
-    if ('primary' in palette && palette.primary) rawSwatches.push(palette.primary);
-    if ('secondary' in palette && palette.secondary) rawSwatches.push(palette.secondary);
-    if ('accent' in palette && palette.accent) rawSwatches.push(palette.accent);
     if ('spotlightColors' in palette && Array.isArray((palette as ExtractedStageColors).spotlightColors)) {
       for (const col of (palette as ExtractedStageColors).spotlightColors) {
         if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
@@ -95,6 +89,15 @@ export function resolvePureChromaticPaletteColors(
       for (const col of (palette as ColorPalette).rawSwatches!) {
         if (col && !rawSwatches.includes(col)) rawSwatches.push(col);
       }
+    }
+    if ('primary' in palette && palette.primary && !rawSwatches.includes(palette.primary)) {
+      rawSwatches.push(palette.primary);
+    }
+    if ('secondary' in palette && palette.secondary && !rawSwatches.includes(palette.secondary)) {
+      rawSwatches.push(palette.secondary);
+    }
+    if ('accent' in palette && palette.accent && !rawSwatches.includes(palette.accent)) {
+      rawSwatches.push(palette.accent);
     }
   }
 
@@ -117,12 +120,9 @@ export function resolvePureChromaticPaletteColors(
     return chromaticColors.map((c) => c.hex);
   }
 
-  // Entirely achromatic, dark or white palette -> deterministic vibrant fallback from track seed
-  const deterministicSeedHue = (Math.abs(fallbackSeed * 0.618033988749895) % 1.0);
-  const col1 = new THREE.Color().setHSL(deterministicSeedHue, 0.92, 0.55);
-  const col2 = new THREE.Color().setHSL((deterministicSeedHue + 0.35) % 1.0, 0.92, 0.55);
-  const col3 = new THREE.Color().setHSL((deterministicSeedHue + 0.70) % 1.0, 0.92, 0.55);
-  return [`#${col1.getHexString()}`, `#${col2.getHexString()}`, `#${col3.getHexString()}`];
+  // If no chromatic colors are found in the thumbnail, strictly return an empty array.
+  // The screen flash system will strictly flash pure white (#ffffff) on all kicks.
+  return [];
 }
 
 /**
