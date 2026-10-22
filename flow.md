@@ -1534,45 +1534,70 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
     $$\text{kickGlowFactor} = 1.0 + 1.5 \cdot \text{kickStem} + \text{transientBurst}$$
   - Lens and volumetric beam opacity scale proportionally with kick drum strikes, widening beam cone geometry during impactful transients.
 
+##### 12. Spotlight Static Aim & Movement Decoupling (Phase 37)
+- **Decoupling Movement from Audio Characteristics:**
+  - Removed audio manipulation of spotlight movements (continuous 360° sub-bass conical rotation, IPOP peak segment gating, transient pan/tilt sweeps, drop-spread oscillations, and kick drum glow/scale pulsations).
+  - All stage spotlights, perimeter fixtures, and bottom-corner white sky searchlights are rendered statically aimed at fixed reference targets.
+- **Preserved Dynamic Spotlight Spawning:**
+  - Retained track tempo/BPM auto-mapping (`mapBpmToSpotlightCount`) mapping song tempo to active fixture slots ($1$ to $8$).
+  - Bilateral symmetrical stage coordinate computation (`getSymmetricalSpotlightLayout`) dynamically positions spawned fixtures around the YouTube screen frame.
+  - Smooth positional translation lerping and activation factor fading ($0.0 \leftrightarrow 1.0$) upon spawning/despawning.
+  - Fixed volumetric cone scale $(1.0, 1.0, 1.0)$ and stable chromatic illumination scaled solely by global brightness (`maxBrightnessLimit`) and fixture activation factors.
+
+##### 13. Neural Stem Frequency Pre-Analysis & Audio-Reactive 360° Spotlight Movements (Phase 38)
+- **Dedicated DSP Pre-Analysis Engine (`spotlight_analysis.py`):**
+  - Implemented standalone & modular Python analysis microservice for extracted Demucs audio STEMs.
+  - Computes continuous time-series frequencies for both **Instrument STEM** ($150\text{Hz} - 7500\text{Hz}$) and **Bass STEM** ($25\text{Hz} - 450\text{Hz}$) against millisecond timestamps throughout the entire audio file.
+  - Extracts global frequency bounds and midpoint averages:
+    $$f_{\text{inst\_avg}} = \frac{f_{\text{inst\_min}} + f_{\text{inst\_max}}}{2}, \quad f_{\text{bass\_avg}} = \frac{f_{\text{bass\_min}} + f_{\text{bass\_max}}}{2}$$
+  - Applies Hann window STFT and 5-point temporal smoothing convolution to guarantee smooth, mathematically continuous frequency trajectories.
+- **360° Angular Distribution (remember 1):**
+  - Normalizes the continuous Instrument frequency range into full $[0^\circ, 360^\circ]$ rotation angles:
+    $$\theta_{\text{deg}}(t) = \frac{f_{\text{inst}}(t) - f_{\text{inst\_min}}}{f_{\text{inst\_max}} - f_{\text{inst\_min}}} \cdot 360^\circ$$
+  - Left side spotlights framing the YouTube screen move in perfect synchrony with angle $\theta(t)$.
+  - Right side spotlights move in perfect synchrony with each other, but with **opposite movement angles** ($-\theta(t)$).
+  - Top side spotlights move in sync together across 360°.
+- **Simultaneous Dual-STEM Average Frequency Crossing Gate:**
+  - Evaluates dual threshold crossing across the timeline:
+    - When both Instrument and Bass STEM frequencies cross and rise above their respective midpoint averages together at the exact same timestamp ($f_{\text{inst}} \ge f_{\text{inst\_avg}} \land f_{\text{bass}} \ge f_{\text{bass\_avg}}$), all spotlights (colouring fixtures + 2 bottom white searchlights) turn **ON**.
+    - Before this initial crossing occurs, all spotlights remain **OFF**.
+    - When both frequencies together drop below their respective averages ($f_{\text{inst}} < f_{\text{inst\_avg}} \land f_{\text{bass}} < f_{\text{bass\_avg}}$), all spotlights turn **OFF**.
+- **Continuous Bass STEM Glowing Factor ($0.0$ to $1.0$):**
+  - Maps continuous Bass STEM frequency between min ($0.0$) and max ($1.0$):
+    $$\text{glowingFactor}(t) = \frac{f_{\text{bass}}(t) - f_{\text{bass\_min}}}{f_{\text{bass\_max}} - f_{\text{bass\_min}}}$$
+  - Modulates spotlight lens and volumetric beam cone opacities continuously without discrete jumps.
+- **Kick STEM Transient Project Synchronization:**
+  - Transient kick hits from the Kick/Drums STEM dynamically trigger random beam projection directions:
+    - Left side spotlights take a randomized projection target in sync together.
+    - Right side spotlights take the mirrored opposite angle in sync together.
+    - Top side spotlights take a randomized projection target in sync together.
+- **Dual White Bottom Sky Spotlights Specialization:**
+  - Flank the bottom corners of the YouTube player aperture, strictly projecting upwards into the sky ($Y \ge \text{topY} + 4.5\text{m}$).
+  - Follow identical 360° frequency movement (left follows $\theta$, right follows $-\theta$), dual-stem average crossing ON/OFF gating, and continuous bass glowing factor.
+  - **Kick Sync Exception:** White searchlights maintain their upward beam alignment without random scattering, but kick strikes trigger an **intense white flash glow boost** ($\le 2.8\times$) with volumetric beam cone expansion.
+- **End-to-End Pipeline Integration:**
+  - Integrated into `demucs_service.py` (auto-analyzed during neural separation) and `server.py` (`/api/spotlight/{video_id}`).
+  - Cached directly into `.synwave_cache/stems/stems_*.json` for instantaneous sub-millisecond retrieval.
+  - TypeScript types (`SpotlightAnalysisData`) and `StageLightsEffect.ts` fully connected with smooth interpolation and freeze-on-pause protection.
+
 ---
 
 ## 6. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build`).
-- **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all files.
-- **Unified Dev Runner:** Single-command execution via `./start.sh` or `npm start` orchestrating both FastAPI microservice (`server.py`) and Vite frontend with clean signal handling.
-- **Vite Development Server:** Ready for launch at `http://localhost:5173/`.
-- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) running on port 8765 with canonical single-file caching and alias indexing under `.synwave_cache/audio` (`yt_*.wav`), `.synwave_cache/stems` (`stems_yt_*.json`), `.synwave_cache/metadata` (`meta_yt_*.json`), and `.synwave_cache/thumbnails` (`thumb_*.jpg`).
-- **Spotlight Movement & Pre-Analysis Dynamics (Phase 36):**
-  - Iterative Peak-of-Peaks (IPOP) pre-analysis on instrument STEM amplitude envelope turning on spotlights strictly during peak segments.
-  - 20–85 Hz sub-bass frequency analysis on BASS STEM driving continuous 360° rotation around forward axes.
-  - Dual white bottom stage spotlights following the same logics with strictly upward sky projection ($Y \ge \text{topY} + 4.0\text{m}$).
-  - Kick STEM synchronization dynamically scaling spotlight glow intensity on every kick transient without shutter dropouts.
-- **High-Fidelity 1K Video Rendering & Strict Thumbnail Flash Colors (Phase 35):**
-  - YouTube iframe locked to highest resolution up to 1K (`hd1080` / `hd720`), capping out $> 1\text{K}$ streams.
-  - Screen flash strictly constrained to authentic thumbnail colors (e.g. shades of blue) + pure white downbeats (`#ffffff`), with 0 synthetic green, red, or violet bleeding.
-  - Backend CORS thumbnail proxy under `/api/thumbnail/{video_id}` guarantees 100% reliable canvas sampling.
-- **YouTube Iframe Centered 16:9 Caption Masking (Phase 34):**
-  - Standard 16:9 centered crop scaled at $1.40\times$ cleanly pushing bottom captions, subtitles, and watermarks out of frame.
-  - Zero distortion across all YouTube resolutions (360p, 720p, 1080p, 4K) and aspect ratios (16:9 native, 21:9 anamorphic, 4:3 pillarbox).
-  - Defensively maintains DOM element nodes across video transitions and synchronizes with kick stage shake.
-- **Kick Screen Flash Mechanics (Phase 33):**
-  - Pure white impact on the downbeat kick of every 1/2 bar.
-  - Circular chromatic cycling through pure song palette colors for any additional kicks within each 1/2 bar.
-  - Reliable kick triggering with 0 dropped hits and no white contamination in color flash frames.
-- **Stage Playlist Library (Phase 32):**
-  - Persistent playlist accessible via top-right floating header button (`ListMusic`) and `P` hotkey.
-  - Auto-populates all processed tracks from both backend cache and local storage.
-  - Instant single-click loading into Synwave with zero wait time for pre-cached tracks.
-  - `.env` and `.env.example` removed from repository root.
-- **YouTube Concert Stage Architecture (Phase 31):**
-  - Direct YouTube URL workflow with automatic video ID extraction and stage iframe mounting.
-  - Pure uncompressed WAV extraction via `yt-dlp` & `ffmpeg`.
-  - Meta Demucs v4 4-stem neural source separation on Apple Silicon MPS verified operational with 25 FPS envelopes and 199+ kick events per track.
-  - Dual corner white stage sky spotlights mounted flanking the YouTube screen aperture with stationary chassis/head origins and omnidirectional double-sided $55\text{m}$ volumetric beams.
-  - Symmetrical BPM-mapped colouring moving heads (2 to 12 fixtures).
-  - 12x 360° continuous rotatable perimeter bass moving heads.
-- **Repository Hygiene:** Clean workspace with no stray temporary test scripts (all removed per User Rule 3).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~345ms).
+- **Linter Status:** `npm run lint` passes cleanly with **0 errors** across all 43 files.
+- **Dedicated Pre-Analysis Engine (`spotlight_analysis.py`):** Standalone CLI and modular Python engine for STFT frequency extraction, 360° mapping, dual-stem average crossing, and kick transient extraction.
+- **Audio Intelligence Microservice:** Unified Python backend (`server.py`) with `/api/spotlight/{video_id}` and Demucs stem cache backfill.
+- **StageLightsEffect 3D Audio-Reactivity (Phase 38):**
+  - Left spotlights in sync with 360° frequency angle.
+  - Right spotlights in sync with opposite 360° angle.
+  - Top spotlights in sync together.
+  - Dual-stem simultaneous average crossing ON/OFF gating.
+  - Continuous Bass STEM glowing factor (0.0 to 1.0).
+  - Kick hits trigger synchronized random projection positions for left, right (opposite), and top spotlights.
+  - Bottom 2 white searchlights strictly project upward and glow intensely on Kick hits.
+- **Repository Hygiene:** All temporary scratch scripts removed per User Rule 3. Clean git tree ready for push.
+
 
 
 

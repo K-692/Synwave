@@ -267,6 +267,17 @@ async def process_youtube(
             thumbnail = meta_data.get("thumbnailUrl") or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
             duration = meta_data.get("duration", cached_stems.get("durationSeconds", 0))
 
+            # On-demand spotlight analysis check
+            spotlight_analysis = cached_stems.get("spotlightAnalysis")
+            if not spotlight_analysis and wav_path.exists():
+                try:
+                    from spotlight_analysis import get_spotlight_analyzer
+                    analyzer = get_spotlight_analyzer()
+                    spotlight_analysis = analyzer.analyze_audio_file(wav_path, save_to_cache=True)
+                    cached_stems["spotlightAnalysis"] = spotlight_analysis
+                except Exception as ex:
+                    print(f"[Server] Note computing on-demand spotlight analysis: {ex}")
+
             print(f"[Server] Cache HIT for YouTube link: {canonical_url} (ID: {video_id})")
             return {
                 "success": True,
@@ -280,6 +291,7 @@ async def process_youtube(
                 "thumbnailUrl": thumbnail,
                 "audioUrl": f"http://127.0.0.1:8765/api/audio/{video_id}",
                 "stems": cached_stems,  # Full DemucsStemData with fps, envelopes, kick events, BPM
+                "spotlightAnalysis": spotlight_analysis,
                 "kickEvents": cached_stems.get("kickEvents", []),
                 "kickOnsets": cached_stems.get("kickOnsets", []),
                 "instrumentalActivity": cached_stems.get("instrumentalActivity", []),
@@ -422,6 +434,7 @@ async def process_youtube(
         "thumbnailUrl": thumbnail,
         "audioUrl": f"http://127.0.0.1:8765/api/audio/{video_id}",
         "stems": stems_result,  # Complete DemucsStemData with fps, envelopes, kickEvents, BPM
+        "spotlightAnalysis": stems_result.get("spotlightAnalysis"),
         "kickEvents": stems_result.get("kickEvents", []),
         "kickOnsets": stems_result.get("kickOnsets", []),
         "instrumentalActivity": stems_result.get("instrumentalActivity", []),
@@ -431,6 +444,47 @@ async def process_youtube(
         "triStemDropSections": stems_result.get("triStemDropSections", []),
         "demucsBpm": stems_result.get("demucsBpm", {}),
     }
+
+@app.get("/api/spotlight/{video_id}")
+async def get_spotlight_analysis(video_id: str):
+    """
+    Returns the pre-computed stage spotlight movement & frequency analysis for a track.
+    Computes analysis on-demand if not already cached.
+    """
+    clean_id = video_id.strip()
+    unique_id = get_unique_identifier(clean_id)
+    stems_path = STEMS_CACHE_DIR / f"stems_{unique_id}.json"
+    wav_path = AUDIO_CACHE_DIR / f"{unique_id}.wav"
+
+    if stems_path.exists():
+        try:
+            with open(stems_path, "r") as f:
+                stems_data = json.load(f)
+            if stems_data and "spotlightAnalysis" in stems_data:
+                return {
+                    "success": True,
+                    "videoId": clean_id,
+                    "cached": True,
+                    "spotlightAnalysis": stems_data["spotlightAnalysis"],
+                }
+        except Exception:
+            pass
+
+    if wav_path.exists():
+        try:
+            from spotlight_analysis import get_spotlight_analyzer
+            analyzer = get_spotlight_analyzer()
+            analysis = analyzer.analyze_audio_file(wav_path, save_to_cache=True)
+            return {
+                "success": True,
+                "videoId": clean_id,
+                "cached": False,
+                "spotlightAnalysis": analysis,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate spotlight analysis: {str(e)}")
+
+    raise HTTPException(status_code=404, detail="Audio track not found in cache for spotlight analysis")
 
 @app.get("/api/audio/{video_id}")
 async def get_audio_stream(video_id: str):

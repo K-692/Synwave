@@ -204,6 +204,26 @@ export interface TimedEvent {
   label?: string;
 }
 
+export interface SpotlightAnalysisData {
+  fps: number;
+  durationSeconds: number;
+  frameCount: number;
+  instMinFreq: number;
+  instMaxFreq: number;
+  instAvgFreq: number;
+  bassMinFreq: number;
+  bassMaxFreq: number;
+  bassAvgFreq: number;
+  timestampsMs: number[];
+  instFrequencies: number[];
+  bassFrequencies: number[];
+  movementAnglesDeg: number[];
+  bassAnglesDeg?: number[];
+  glowingFactors: number[];
+  spotlightsActive: boolean[];
+  kickEvents?: Array<{ time: number; timestampMs: number; intensity: number }>;
+}
+
 export interface DemucsStemData {
   fps: number;
   durationSeconds: number;
@@ -229,6 +249,7 @@ export interface DemucsStemData {
   drumsAverageAmplitude?: number;
   bassAverageAmplitude?: number;
   instAverageAmplitude?: number;
+  spotlightAnalysis?: SpotlightAnalysisData;
 }
 
 export interface TrackAnalysis {
@@ -308,6 +329,8 @@ export interface VisualEffectContext {
   hasVideo?: boolean;
   /** Full Demucs stem data for per-track pre-analysis (e.g. IPOP on instrument stem). */
   demucsStems?: DemucsStemData;
+  /** Pre-computed spotlight frequency and 360-degree movement trajectory */
+  spotlightAnalysis?: SpotlightAnalysisData;
 }
 
 export interface VisualEffect {

@@ -772,6 +772,20 @@ class DemucsService:
         result["deviceUsed"] = self.device
         result["separationTimeSeconds"] = round(elapsed, 2)
 
+        # Pre-compute spotlight movement and frequency analysis
+        try:
+            from spotlight_analysis import analyze_spotlight_stems
+            result["spotlightAnalysis"] = analyze_spotlight_stems(
+                instruments_audio=separated.get("other", separated.get("instruments")),
+                bass_audio=separated.get("bass"),
+                drums_audio=separated.get("drums"),
+                sr=sr,
+                target_fps=self.target_fps,
+            )
+            print(f"[DemucsService] Pre-computed spotlight frequency analysis ({result['spotlightAnalysis']['frameCount']} frames)")
+        except Exception as e:
+            print(f"[DemucsService] Note on spotlight analysis: {e}")
+
         # Save to cache as a single canonical stems_{id}.json with index aliases
         self.save_cached_result(file_hash, result, song_key=song_key, fingerprint=fingerprint)
 

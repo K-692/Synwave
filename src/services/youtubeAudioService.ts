@@ -22,6 +22,7 @@ export interface YouTubeProcessResult {
   thumbnailUrl: string;
   audioUrl: string;
   stems: DemucsStemData;
+  spotlightAnalysis?: DemucsStemData['spotlightAnalysis'];
   error?: string;
   kickEvents?: { time: number; intensity: number }[];
   kickOnsets?: number[];

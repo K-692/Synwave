@@ -35,6 +35,7 @@ export interface StemSeparationResult {
   drumsAverageAmplitude?: number;
   bassAverageAmplitude?: number;
   instAverageAmplitude?: number;
+  spotlightAnalysis?: import('../types').SpotlightAnalysisData;
   error?: string;
 }
 
@@ -230,6 +231,7 @@ export async function checkServerStemsCache(
           bassAverageAmplitude: data.bassAverageAmplitude,
           instAverageAmplitude: data.instAverageAmplitude,
           demucsBpm: data.demucsBpm,
+          spotlightAnalysis: data.spotlightAnalysis || (data.stems as any)?.spotlightAnalysis,
         },
       };
     }

@@ -1,26 +1,17 @@
 /**
  * Synwave Concert Moving-Head Stage Lights Effect
  *
- * Professional concert stage lighting rig with per-song pre-analysis:
+ * Concert stage lighting rig with dynamic BPM spotlight spawning:
  *
  * ─── Colouring Spotlights ─────────────────────────────────────────────────────
- *   - Activated ONLY during Iterative Peak-of-Peaks (IPOP) segments of the
- *     instrument STEM. Pre-analyzed per track from DemucsStemData.
- *   - 360° beam sweep speed is driven by the sub-bass frequency range (20-80 Hz)
- *     of the BASS STEM. Rotation occurs continuously ONLY when sub-bass energy
- *     exceeds the per-song threshold (modern EDM sub-bass window).
- *   - Kick/drum hits from the Kick STEM cause a bright intensity glow burst,
- *     fully synchronized with each drum transient event.
+ *   - Symmetrical spawning around YouTube screen dynamically mapped from track BPM.
+ *   - Smooth mount position and activation lerping on spawn/despawn.
+ *   - Static stage aiming at default targets (no audio-driven movement).
  *
- * ─── 360° Perimeter Bass Lights ───────────────────────────────────────────────
- *   - Continuous 360° orbital rotation driven by the BASS STEM sub-bass energy.
- *   - Rotation speed scales with sub-bass amplitude reaching into the threshold.
- *   - Kick hits expand beam width and add an intensity flash.
- *
- * ─── White Sky Spotlights (bottom corners) ────────────────────────────────────
- *   - Governed by the same IPOP logic as colouring spotlights (instrument STEM).
- *   - Beam direction is strictly upward (sky / zenith only — NEVER downward).
- *   - Kick hits from the Kick STEM cause a bright blink cycle on these lights.
+ * ─── Perimeter Lights & White Sky Spotlights ──────────────────────────────────
+ *   - Static stage perimeter fixtures framing the arena.
+ *   - Static upward white sky beams at bottom corners of YouTube screen.
+ *   - Audio manipulation of spotlight movements removed.
  *
  * ─── General ──────────────────────────────────────────────────────────────────
  *   - Freeze support: when playback is paused (deltaSeconds === 0), all lights
@@ -72,46 +63,6 @@ interface WhiteSkySpotlight {
   corner: 'left' | 'right';
 }
 
-/** A segment of time where the instrument STEM peaks above the IPOP threshold. */
-interface IpopSegment {
-  startTime: number;
-  endTime: number;
-  /** 0.0–1.0 relative intensity of the peak within this segment. */
-  intensity: number;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/**
- * Sub-bass frequency range for EDM/modern music: 20–85 Hz.
- * At 44100 Hz sample rate with FFT size 2048, each bin ≈ 21.53 Hz.
- *   Bin 1  ≈ 21.5 Hz  (deep sub-bass, 808 fundamental)
- *   Bin 2  ≈ 43.1 Hz  (sub-bass core punch)
- *   Bin 3  ≈ 64.6 Hz  (upper sub-bass thump)
- *   Bin 4  ≈ 86.1 Hz  (sub-bass to low-bass boundary)
- * We analyze bins 1–4 inclusive (indices 1 to 5 with exclusive bound 5)
- * for a comprehensive 20–86 Hz sub-bass window.
- */
-export const SUB_BASS_FREQ_MIN_HZ = 20;
-export const SUB_BASS_FREQ_MAX_HZ = 85;
-const SUB_BASS_BIN_START = 1;
-const SUB_BASS_BIN_END   = 5; // exclusive bound: iterates bins 1, 2, 3, 4 (21.5 to 86.1 Hz)
-
-/**
- * Minimum sub-bass energy (0–1) needed to trigger 360° perimeter rotation.
- * Calibrated for modern EDM: sub-bass must be clearly audible before rotation starts.
- */
-const SUB_BASS_ROTATION_THRESHOLD = 0.18;
-
-/**
- * Kick glow burst multiplier applied to both colouring spotlights and sky lights
- * when a kick transient is detected.
- */
-const KICK_GLOW_MULTIPLIER = 2.8;
-
-/** Duration (seconds) of the kick glow burst cycle. */
-const KICK_GLOW_DURATION = 0.13;
-
 // ─── Class ────────────────────────────────────────────────────────────────────
 
 export class StageLightsEffect extends BaseEffect {
@@ -138,69 +89,19 @@ export class StageLightsEffect extends BaseEffect {
   private washLight1!: THREE.PointLight;
   private washLight2!: THREE.PointLight;
 
-  // ── IPOP (Iterative Peak-of-Peaks Detection) state ─────────────────────────
-  /**
-   * Pre-analyzed IPOP segments for the current track's instrument STEM.
-   * Spotlights and sky lights are only active within these windows.
-   */
-  private ipopSegments: IpopSegment[] = [];
+  // ── Frequency pre-analysis & audio-reactive spotlight state ─────────────────
+  private isSpotlightsTurnedOn: boolean = false;
+  private currentMovementAngle: number = 0; // radians
+  private currentGlowingFactor: number = 0; // 0.0 to 1.0 continuous
+  private smoothTurnOnFactor: number = 0;   // 0.0 to 1.0 smooth fade
 
-  /**
-   * Per-track IPOP analysis identifier so we only re-compute when the track changes.
-   * Stores the first 8 values of the instrument stem as a simple fingerprint.
-   */
-  private ipopTrackFingerprint = '';
-
-  /**
-   * Real-time smoothed instrument activation factor (0–1) derived from whether
-   * the current playback time falls inside an IPOP segment.
-   */
-  private instActivationFactor = 0;
-
-  /**
-   * Real-time smoothed intensity of the IPOP segment currently active (0–1).
-   * Used to scale spotlight brightness during active instrument peak windows.
-   */
-  private ipopSegmentIntensity = 0;
-
-  // ── Sub-bass state for 360° rotation gate ──────────────────────────────────
-  /**
-   * Smoothed sub-bass energy extracted from FFT frequencyData bins 1–4.
-   * Used to gate and drive perimeter light rotation speed.
-   */
-  private smoothedSubBassEnergy = 0;
-
-  /**
-   * Whether sub-bass energy is currently above the rotation threshold.
-   * Drives the gate: perimeter lights only spin when this is true.
-   */
-  private subBassRotationActive = false;
-
-  // ── White Sky Spotlight state ────────────────────────────────────────────────
-  /**
-   * Smoothed presence factor for white sky spotlights driven by IPOP instrument activation.
-   * Replaces the old bass-presence gating.
-   */
-  private whiteSpotlightInstPresence = 0;
-
-  // ── Kick glow state ──────────────────────────────────────────────────────────
-  /**
-   * Remaining time (seconds) for the current kick glow burst.
-   * Set on every kick onset detection.
-   */
-  private kickGlowTimer = 0;
-
-  /**
-   * Previous kick stem value used for transient detection (rise detection).
-   */
-  private prevKickStem = 0;
-
-  // ── Internal time ──────────────────────────────────────────────────────────
-  /** Monotonically advancing time, frozen when deltaSeconds === 0. */
-  private internalTime = 0;
-
-  /** Accumulated rotation angle for perimeter lights (radians). */
-  private perimeterRotationAngle = 0;
+  // ── Kick trigger & intense white flash state ─────────────────────────────────
+  private leftKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  private rightKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  private topKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  private kickImpulseTime: number = 0;
+  private whiteKickIntensity: number = 1.0;
+  private wasKickTriggered: boolean = false;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Public API
@@ -212,6 +113,10 @@ export class StageLightsEffect extends BaseEffect {
 
   public getSpotlightCount(): number {
     return this.targetSpotlightCount;
+  }
+
+  public getIsSpotlightsTurnedOn(): boolean {
+    return this.isSpotlightsTurnedOn;
   }
 
   public setSpotlightLimits(min: number, max: number): void {
@@ -227,192 +132,6 @@ export class StageLightsEffect extends BaseEffect {
     if (colors && colors.length > 0) {
       this.customSpotlightColors = colors.map((hex) => new THREE.Color(hex));
     }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // IPOP: Iterative Peak-of-Peaks Detection on the Instrument STEM
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Pre-analyzes the instrument STEM amplitude envelope using Iterative Peak-of-Peaks
-   * Detection (IPOP). In each iteration, the algorithm:
-   *   1. Finds the global maximum of the remaining envelope.
-   *   2. Declares a segment around that peak (±halfWindow).
-   *   3. Removes that segment from the candidate pool.
-   *   4. Repeats until the peak falls below threshold (fracOfMax × peak decay).
-   *
-   * The result is a set of non-overlapping time windows where the instrument
-   * stem is at its highest-energy peaks. Spotlights only activate inside these.
-   *
-   * @param instEnvelope  Normalized amplitude envelope of the instrument STEM.
-   * @param fps           Frames per second of the envelope.
-   * @param fracOfMax     Stop iterating when next peak < fracOfMax × first peak.
-   * @param halfWindowSec Half-width (seconds) of each segment around a peak.
-   * @returns Sorted, non-overlapping IPOP segments.
-   */
-  private computeIpopSegments(
-    instEnvelope: number[],
-    fps: number,
-    fracOfMax = 0.52,
-    halfWindowSec = 1.8
-  ): IpopSegment[] {
-    if (!instEnvelope || instEnvelope.length < fps * 2) return [];
-
-    const n = instEnvelope.length;
-    const halfWin = Math.round(halfWindowSec * fps);
-
-    // Working copy: will be zeroed out iteratively as peaks are consumed
-    const remaining = Float32Array.from(instEnvelope);
-    const segments: IpopSegment[] = [];
-
-    // Find initial global maximum to set stop threshold
-    let globalMax = 0;
-    for (let i = 0; i < n; i++) {
-      if (remaining[i] > globalMax) globalMax = remaining[i];
-    }
-    if (globalMax < 0.05) return []; // No meaningful instrument activity
-
-    const stopThreshold = globalMax * fracOfMax;
-
-    // Iterative peak search
-    for (let iter = 0; iter < 256; iter++) {
-      // Find current maximum
-      let peakVal = 0;
-      let peakIdx = -1;
-      for (let i = 0; i < n; i++) {
-        if (remaining[i] > peakVal) {
-          peakVal = remaining[i];
-          peakIdx = i;
-        }
-      }
-
-      // Stop when remaining peaks are below relative threshold
-      if (peakIdx < 0 || peakVal < stopThreshold) break;
-
-      const startFrame = Math.max(0, peakIdx - halfWin);
-      const endFrame   = Math.min(n - 1, peakIdx + halfWin);
-
-      segments.push({
-        startTime: startFrame / fps,
-        endTime:   endFrame / fps,
-        intensity: Math.min(1.0, peakVal),
-      });
-
-      // Zero out consumed region so it won't be re-selected
-      for (let j = startFrame; j <= endFrame; j++) {
-        remaining[j] = 0;
-      }
-    }
-
-    // Sort chronologically and merge overlapping/adjacent windows
-    segments.sort((a, b) => a.startTime - b.startTime);
-    const merged: IpopSegment[] = [];
-    for (const seg of segments) {
-      const last = merged[merged.length - 1];
-      if (last && seg.startTime <= last.endTime + 0.15) {
-        // Merge: extend end, keep max intensity
-        last.endTime  = Math.max(last.endTime, seg.endTime);
-        last.intensity = Math.max(last.intensity, seg.intensity);
-      } else {
-        merged.push({ ...seg });
-      }
-    }
-
-    return merged;
-  }
-
-  /**
-   * Returns whether the given playback time falls inside an IPOP segment,
-   * and if so, the normalized intensity of that segment.
-   */
-  private queryIpopActive(timeSeconds: number): { active: boolean; intensity: number } {
-    if (this.ipopSegments.length === 0) {
-      return { active: false, intensity: 0 };
-    }
-    for (const seg of this.ipopSegments) {
-      if (timeSeconds >= seg.startTime && timeSeconds <= seg.endTime) {
-        return { active: true, intensity: seg.intensity };
-      }
-    }
-    return { active: false, intensity: 0 };
-  }
-
-  /**
-   * Updates IPOP segments when a new track is loaded.
-   * Computes a simple fingerprint from the instrument stem to avoid re-computing
-   * for the same track.
-   */
-  private maybeRecomputeIpop(context: VisualEffectContext): void {
-    // Access pre-analyzed Demucs stem data passed through VisualEffectContext
-    const demucsStems = context.demucsStems;
-
-    // Prefer DemucsStemData from context if available (injected by VisualEngine)
-    const instArr: number[] | undefined = demucsStems?.stems?.instruments;
-    const fps = demucsStems?.fps ?? 25;
-
-    if (!instArr || instArr.length === 0) {
-      if (this.ipopTrackFingerprint !== '') {
-        this.ipopTrackFingerprint = '';
-        this.ipopSegments = [];
-      }
-      return;
-    }
-
-    // Build a short fingerprint from the first 8 values
-    const fp = instArr.slice(0, 8).map(v => v.toFixed(3)).join(',');
-    if (fp === this.ipopTrackFingerprint) return; // Same track — skip
-
-    this.ipopTrackFingerprint = fp;
-    this.ipopSegments = this.computeIpopSegments(instArr, fps);
-    console.info(
-      `[StageLightsEffect] IPOP analysis: ${this.ipopSegments.length} instrument peak segments detected.`
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Sub-bass frequency analysis on BASS STEM
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Frequency analysis on the BASS STEM (20–85 Hz sub-bass range for modern EDM):
-   * Analyzes raw FFT bins 1–4 (~21.5–86.1 Hz) and correlates with features.stems.bass.
-   * Finds the dominant sub-bass frequency in Hz, checks if it falls within [20, 85] Hz,
-   * and computes the combined sub-bass intensity.
-   */
-  private analyzeBassStemFrequency(
-    frequencyData: Uint8Array,
-    bassStem: number
-  ): { energy: number; dominantFreqHz: number; isInRange: boolean } {
-    let sum = 0;
-    let maxVal = 0;
-    let peakBin = SUB_BASS_BIN_START;
-    const binWidth = 44100 / 2048; // ~21.53 Hz per FFT bin
-
-    const count = SUB_BASS_BIN_END - SUB_BASS_BIN_START;
-    for (let i = SUB_BASS_BIN_START; i < SUB_BASS_BIN_END; i++) {
-      const val = frequencyData[i] ?? 0;
-      sum += val;
-      if (val > maxVal) {
-        maxVal = val;
-        peakBin = i;
-      }
-    }
-
-    const rawEnergy = Math.min(1.0, (sum / count) / 255 * 2.2);
-    const dominantFreqHz = peakBin * binWidth;
-
-    // Check if dominant frequency falls in the calibrated sub-bass EDM range (20–85 Hz)
-    const isFreqInRange = dominantFreqHz >= SUB_BASS_FREQ_MIN_HZ && dominantFreqHz <= SUB_BASS_FREQ_MAX_HZ;
-
-    // Couple the spectral energy with the separated BASS STEM amplitude
-    const combinedEnergy = rawEnergy * 0.55 + bassStem * 0.45;
-    const isInRange = isFreqInRange && combinedEnergy >= SUB_BASS_ROTATION_THRESHOLD && (bassStem > 0.12 || rawEnergy > 0.22);
-
-    return {
-      energy: combinedEnergy,
-      dominantFreqHz,
-      isInRange,
-    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -885,44 +604,52 @@ export class StageLightsEffect extends BaseEffect {
       {
         pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.65 * dims.halfHeight, dims.screenZ + 0.4),
         target: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.70 * dims.halfHeight, 12.0),
-        side: 'right', phaseOffset: 3.2,
+        side: 'right',
+        phaseOffset: 3.2,
       },
       {
         pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.20 * dims.halfHeight, dims.screenZ + 0.4),
         target: new THREE.Vector3(dims.leftX, dims.screenCenterY - 0.20 * dims.halfHeight, 14.0),
-        side: 'right', phaseOffset: 4.0,
+        side: 'right',
+        phaseOffset: 4.0,
       },
       {
         pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.25 * dims.halfHeight, dims.screenZ + 0.4),
         target: new THREE.Vector3(dims.leftX + 1.0, dims.screenCenterY + 0.20 * dims.halfHeight, 16.0),
-        side: 'right', phaseOffset: 4.8,
+        side: 'right',
+        phaseOffset: 4.8,
       },
       {
         pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.70 * dims.halfHeight, dims.screenZ + 0.4),
         target: new THREE.Vector3(dims.leftX + 2.0, dims.screenCenterY + 0.55 * dims.halfHeight, 18.0),
-        side: 'right', phaseOffset: 5.6,
+        side: 'right',
+        phaseOffset: 5.6,
       },
       // Top truss fixtures
       {
         pos: new THREE.Vector3(-0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
         target: new THREE.Vector3(0.65 * dims.halfWidth, 0.8, 14.0),
-        side: 'top', phaseOffset: 1.2,
+        side: 'top',
+        phaseOffset: 1.2,
       },
       {
         pos: new THREE.Vector3(0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
         target: new THREE.Vector3(-0.65 * dims.halfWidth, 0.8, 14.0),
-        side: 'top', phaseOffset: 4.4,
+        side: 'top',
+        phaseOffset: 4.4,
       },
       // Bottom screen frame fixtures
       {
         pos: new THREE.Vector3(-0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
         target: new THREE.Vector3(0.70 * dims.halfWidth, 6.0, 15.0),
-        side: 'bottom', phaseOffset: 2.0,
+        side: 'bottom',
+        phaseOffset: 2.0,
       },
       {
         pos: new THREE.Vector3(0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
         target: new THREE.Vector3(-0.70 * dims.halfWidth, 6.0, 15.0),
-        side: 'bottom', phaseOffset: 5.2,
+        side: 'bottom',
+        phaseOffset: 5.2,
       },
     ];
 
@@ -942,10 +669,6 @@ export class StageLightsEffect extends BaseEffect {
 
   public update(context: VisualEffectContext): void {
     const { features, deltaSeconds, palette, directorState, routingConfig } = context;
-
-    // Time advances only when playing
-    this.internalTime += deltaSeconds;
-    const time = this.internalTime;
 
     const isLightsEnabled =
       (routingConfig?.enabledEffects?.lights ?? true) &&
@@ -969,91 +692,7 @@ export class StageLightsEffect extends BaseEffect {
       return;
     }
 
-    const bassBeamMult   = routingConfig?.bassToBeamIntensity ?? 1.0;
-    const maxBri         = routingConfig?.maxBrightnessLimit ?? 1.0;
-    const periSpeedMult  = routingConfig?.perimeterBassRotationSpeed ?? 1.0;
-
-    const bassStem  = features.stems.bass;
-    const instStem  = features.stems.instruments;
-    const kickStem  = features.stems.kick;
-
-    // ─── Attempt IPOP analysis on new track ──────────────────────────────────
-    this.maybeRecomputeIpop(context);
-
-    // ─── Sub-bass frequency analysis on BASS STEM (20–85 Hz EDM sub-bass) ─────
-    const bassAnalysis = this.analyzeBassStemFrequency(features.frequencyData, bassStem);
-    const targetSubBass = bassAnalysis.energy;
-
-    if (deltaSeconds > 0) {
-      // Fast attack, moderate release for snappy response
-      const attackRate = targetSubBass > this.smoothedSubBassEnergy
-        ? Math.min(1.0, deltaSeconds * 20.0)
-        : Math.min(1.0, deltaSeconds * 6.0);
-      this.smoothedSubBassEnergy += (targetSubBass - this.smoothedSubBassEnergy) * attackRate;
-    } else {
-      this.smoothedSubBassEnergy = targetSubBass;
-    }
-
-    // Gate: continuous 360° rotation active when bass reaches frequency in sub-bass range
-    this.subBassRotationActive = bassAnalysis.isInRange || this.smoothedSubBassEnergy >= SUB_BASS_ROTATION_THRESHOLD;
-
-    // Normalised excess energy above threshold (0 if below, 0–1 above)
-    const subBassExcess = Math.max(0, this.smoothedSubBassEnergy - SUB_BASS_ROTATION_THRESHOLD)
-      / (1.0 - SUB_BASS_ROTATION_THRESHOLD);
-
-    // Continuous 360° rotation angle advances only when sub-bass reaches target frequency range
-    if (this.subBassRotationActive && deltaSeconds > 0) {
-      const bassRotationSpeed = (1.0 + subBassExcess * 6.5) * periSpeedMult;
-      this.perimeterRotationAngle += deltaSeconds * bassRotationSpeed;
-    }
-
-    // ─── IPOP: Is the instrument STEM currently in a peak segment? ────────────
-    const trackTime = context.trackTimeSeconds;
-    const ipopQuery = this.queryIpopActive(trackTime);
-
-    // Smooth the instrument IPOP activation factor for graceful fade-in/out
-    const targetInstActivation = ipopQuery.active ? 1.0 : 0.0;
-    if (deltaSeconds > 0) {
-      const lerpRate = ipopQuery.active
-        ? Math.min(1.0, deltaSeconds * 8.0)   // Fast attack when entering IPOP window
-        : Math.min(1.0, deltaSeconds * 3.0);  // Slower release when leaving
-      this.instActivationFactor += (targetInstActivation - this.instActivationFactor) * lerpRate;
-    } else {
-      this.instActivationFactor = targetInstActivation;
-    }
-    // Also smooth the segment intensity
-    const targetSegIntensity = ipopQuery.active ? ipopQuery.intensity : 0.0;
-    if (deltaSeconds > 0) {
-      this.ipopSegmentIntensity += (targetSegIntensity - this.ipopSegmentIntensity) * Math.min(1.0, deltaSeconds * 5.0);
-    }
-
-    // Fallback: if no IPOP data (no Demucs stems), fall back to live instStem
-    const effectiveInstActivation = this.ipopSegments.length > 0
-      ? this.instActivationFactor
-      : (context.demucsStems ? 0.0 : Math.min(1.0, instStem * 2.2));
-
-    // ─── Kick glow burst detection (Kick STEM synchronization) ───────────────
-    // Transient rise detection: kick stem must rise sharply (not just sustain)
-    const isKickRise = kickStem > 0.32 && kickStem > this.prevKickStem * 1.12;
-    const isKickHit  = features.isKick || isKickRise;
-    this.prevKickStem = kickStem;
-
-    if (isKickHit && this.kickGlowTimer <= 0.01) {
-      this.kickGlowTimer = KICK_GLOW_DURATION;
-    }
-    if (deltaSeconds > 0 && this.kickGlowTimer > 0) {
-      this.kickGlowTimer = Math.max(0, this.kickGlowTimer - deltaSeconds);
-    }
-
-    // Kick glow intensity: completely synchronized with Kick STEM
-    // Direct kick stem amplitude + punchy transient onset burst
-    const kickStemBoost = kickStem * 1.5;
-    let transientBurst = 0;
-    if (this.kickGlowTimer > 0) {
-      const progress = 1.0 - (this.kickGlowTimer / KICK_GLOW_DURATION);
-      transientBurst = Math.max(0, 1.0 - progress) * (KICK_GLOW_MULTIPLIER - 1.0);
-    }
-    const kickGlowFactor = 1.0 + kickStemBoost + transientBurst;
+    const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
 
     // ─── Colour palette ──────────────────────────────────────────────────────
     const hasCustomColors   = this.customSpotlightColors.length > 0;
@@ -1068,27 +707,11 @@ export class StageLightsEffect extends BaseEffect {
       ? this.customSpotlightColors
       : [primaryCol, secondaryCol, accentCol];
 
-    // ─── Tempo / BPM state ───────────────────────────────────────────────────
-    const bpmSource       = features.bpmSource || 'unavailable';
-    const bpmConfidence   = features.bpmConfidence ?? (bpmSource === 'demucs' ? 0.85 : (bpmSource === 'manual' ? 1.0 : 0.0));
-    const verifiedTempoSpeed = (bpmSource !== 'unavailable' && features.estimatedBpm > 0)
-      ? Math.max(0.6, Math.min(1.8, features.estimatedBpm / 128.0))
-      : 1.0;
-
-    const beatPulse = (bpmSource !== 'unavailable')
-      ? Math.sin(features.beatPhase * Math.PI) * (0.015 + bpmConfidence * 0.02)
-      : 0.0;
-
-    const rawBrightness  = 0.07 + (bassStem * 0.09 * bassBeamMult) + beatPulse + (features.isDrop ? 0.05 : 0);
-    const baseBrightness = Math.min(0.22 * maxBri, rawBrightness * maxBri);
-
     // ═══════════════════════════════════════════════════════════════════════════
-    // 1. COLOURING SPOTLIGHTS
-    //    Activated ONLY during IPOP instrument peak segments.
-    //    Kick hits cause a synchronised glow burst.
+    // 1. FREQUENCY PRE-ANALYSIS EVALUATION & AUDIO-REACTIVE TRACKING
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // Auto BPM-based spotlight count mapping
+    // Auto BPM-based spotlight count mapping (preserves dynamic spawning)
     if (routingConfig?.minSpotlightCount !== undefined) this.minSpotlightCount = routingConfig.minSpotlightCount;
     if (routingConfig?.maxSpotlightCount !== undefined) this.maxSpotlightCount = routingConfig.maxSpotlightCount;
     if (routingConfig?.autoBpmSpotlightSpawning !== undefined) this.autoBpmSpawning = routingConfig.autoBpmSpotlightSpawning;
@@ -1108,16 +731,145 @@ export class StageLightsEffect extends BaseEffect {
       this.targetSpotlightCount,
       this.currentDimensions
     );
-    const activeCount = this.targetSpotlightCount;
+
+    // Retrieve pre-analyzed frequency movement data from Demucs stem pre-analysis
+    const spotlightAnalysis = context.spotlightAnalysis || context.demucsStems?.spotlightAnalysis;
+    let targetThetaRad = 0;
+    let targetGlowFactor = 0.5;
+    let isTurnedOn = false;
+
+    if (spotlightAnalysis && spotlightAnalysis.frameCount > 0 && spotlightAnalysis.timestampsMs?.length > 0) {
+      const fps = spotlightAnalysis.fps || 25;
+      const t = Math.max(0, context.trackTimeSeconds);
+      const exactFrame = t * fps;
+      const frameIdx = Math.min(spotlightAnalysis.frameCount - 1, Math.floor(exactFrame));
+      const nextIdx = Math.min(spotlightAnalysis.frameCount - 1, frameIdx + 1);
+      const frac = exactFrame - frameIdx;
+
+      // 360° frequency movement distribution (remember 1)
+      const degA = spotlightAnalysis.movementAnglesDeg[frameIdx] ?? 0;
+      const degB = spotlightAnalysis.movementAnglesDeg[nextIdx] ?? degA;
+      let dDeg = degB - degA;
+      if (dDeg > 180) dDeg -= 360;
+      if (dDeg < -180) dDeg += 360;
+      const interpDeg = (degA + dDeg * frac + 360) % 360;
+      targetThetaRad = (interpDeg * Math.PI) / 180.0;
+
+      // Continuous glowing factor (0.0 to 1.0) based on Bass STEM min/max
+      const glowA = spotlightAnalysis.glowingFactors[frameIdx] ?? 0.5;
+      const glowB = spotlightAnalysis.glowingFactors[nextIdx] ?? glowA;
+      targetGlowFactor = Math.max(0.0, Math.min(1.0, glowA + (glowB - glowA) * frac));
+
+      // Simultaneous dual-stem average crossing state:
+      // Turn ON when both Instrument and Bass frequencies cross and rise above average at the same time.
+      // Turn OFF before that, and turn OFF if both go below average together.
+      isTurnedOn = spotlightAnalysis.spotlightsActive[frameIdx] ?? false;
+    } else {
+      // Graceful real-time DSP fallback if pre-analysis is still generating
+      const instSig = Math.max(features.highMid * 0.4 + features.treble * 0.6, features.stems?.instruments ?? 0);
+      const bassSig = Math.max(features.bass * 0.7 + features.subBass * 0.3, features.stems?.bass ?? 0);
+      targetThetaRad = ((instSig * 360.0) * Math.PI) / 180.0;
+      targetGlowFactor = Math.max(0.0, Math.min(1.0, bassSig));
+      isTurnedOn = instSig > 0.28 && bassSig > 0.28;
+    }
+
+    this.isSpotlightsTurnedOn = isTurnedOn;
+
+    // ── Kick Transient Detection from Kick STEM ────────────────────────────────
+    const kickPower = Math.max(
+      features.stems?.kick ?? 0,
+      features.isKick ? (features.kickIntensity || 1.0) : 0
+    );
+    const isKickOnset = (features.isKick || kickPower > 0.36) && !this.wasKickTriggered;
+    this.wasKickTriggered = features.isKick || kickPower > 0.36;
+
+    if (isKickOnset && deltaSeconds > 0) {
+      // If Kick/drum hits from Kick STEM, all spotlight light beams take a random position
+      const randAngle = Math.random() * Math.PI * 2;
+      const randDist = 4.2 + Math.random() * 3.8;
+      const randElev = (Math.random() - 0.5) * 3.2;
+
+      const kX = Math.cos(randAngle) * randDist;
+      const kY = randElev;
+      const kZ = Math.sin(randAngle) * randDist;
+
+      // Spotlights at left side will be in sync together
+      this.leftKickOffset.set(kX, kY, kZ);
+
+      // Spotlights at right side will be in sync together, opposite movement angles to left
+      this.rightKickOffset.set(-kX, kY, -kZ);
+
+      // Spotlights at top side will be in sync together
+      const topAngle = Math.random() * Math.PI * 2;
+      const topDist = 3.8 + Math.random() * 3.0;
+      this.topKickOffset.set(
+        Math.cos(topAngle) * topDist,
+        -1.2 - Math.random() * 2.2,
+        Math.sin(topAngle) * topDist
+      );
+
+      this.kickImpulseTime = 1.0;
+
+      // The 2 white spotlights at bottom: Kick will make those 2 spotlights glow intensely
+      this.whiteKickIntensity = Math.min(2.8, 1.0 + 1.8 * Math.max(kickPower, 0.65));
+    }
+
+    // Dynamic interpolation & continuous updates (strictly zero drift when paused)
+    if (deltaSeconds > 0) {
+      this.kickImpulseTime = Math.max(0.0, this.kickImpulseTime - deltaSeconds * 3.2);
+      this.whiteKickIntensity = Math.max(1.0, this.whiteKickIntensity - deltaSeconds * 5.8);
+
+      // Continuous movement angle and glowing factor lerping
+      this.currentMovementAngle += (targetThetaRad - this.currentMovementAngle) * Math.min(1.0, deltaSeconds * 12.0);
+      this.currentGlowingFactor += (targetGlowFactor - this.currentGlowingFactor) * Math.min(1.0, deltaSeconds * 14.0);
+
+      // Smooth attack/release for simultaneous dual-stem average crossing activation
+      if (isTurnedOn) {
+        this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 9.0);
+      } else {
+        this.smoothTurnOnFactor = Math.max(0.0, this.smoothTurnOnFactor - deltaSeconds * 6.0);
+      }
+    }
+
+    // Effective continuous glowing factor (0.0 to 1.0) scaled by activation
+    const effectiveGlow = this.currentGlowingFactor * this.smoothTurnOnFactor;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 2. COLOURING SPOTLIGHTS (360° Movement, Opposite Right, Kick Sync)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const thetaRad = this.currentMovementAngle;
+    const radiusX = 4.2;
+    const radiusY = 2.6;
+    const radiusZ = 3.6;
+
+    // Left side: in sync together with thetaRad across 360 degrees
+    const leftOffsetX = radiusX * Math.cos(thetaRad);
+    const leftOffsetY = radiusY * Math.sin(thetaRad);
+    const leftOffsetZ = radiusZ * Math.sin(2.0 * thetaRad);
+
+    // Right side: in sync together, movement angles opposite to left (-thetaRad)
+    const rightOffsetX = radiusX * Math.cos(-thetaRad);
+    const rightOffsetY = radiusY * Math.sin(-thetaRad);
+    const rightOffsetZ = radiusZ * Math.sin(-2.0 * thetaRad);
+
+    // Top side: in sync together across 360 degrees
+    const topRadiusX = 4.6;
+    const topRadiusY = 2.0;
+    const topRadiusZ = 3.0;
+    const topOffsetX = topRadiusX * Math.sin(thetaRad);
+    const topOffsetY = topRadiusY * Math.cos(thetaRad);
+    const topOffsetZ = topRadiusZ * Math.cos(2.0 * thetaRad);
 
     for (let i = 0; i < this.fixtures.length; i++) {
-      const fix     = this.fixtures[i];
+      const fix = this.fixtures[i];
       const isActive = i < currentLayout.length;
 
-      // Activation factor (position-wise: is this fixture slot in use?)
+      // Activation factor lerping (smooth appearance/disappearance on dynamic BPM count change)
       if (isActive) {
-        fix.targetSlotPos.copy(currentLayout[i].pos);
-        fix.side = currentLayout[i].side;
+        const slot = currentLayout[i];
+        fix.targetSlotPos.copy(slot.pos);
+        fix.side = slot.side;
+        fix.targetPos.copy(slot.defaultTarget);
         if (deltaSeconds > 0) {
           fix.activationFactor = Math.min(1.0, fix.activationFactor + deltaSeconds * 3.5);
         } else {
@@ -1131,325 +883,160 @@ export class StageLightsEffect extends BaseEffect {
         }
       }
 
-      // Smooth mount position lerp
+      // Smooth mount position lerp to target slot
       if (deltaSeconds > 0) {
         fix.group.position.lerp(fix.targetSlotPos, deltaSeconds * 4.5);
       } else {
         fix.group.position.copy(fix.targetSlotPos);
       }
 
-      // Fully deactivated slot
-      if (fix.activationFactor <= 0.001) {
-        (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        continue;
-      }
-
-      // IPOP gate: turned ON only during instrument peak segments detected by IPOP analysis
-      const ipopGatedFactor = effectiveInstActivation;
-      if (ipopGatedFactor <= 0.01) {
-        // Outside IPOP instrument peak segment — turn OFF completely
-        (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        continue;
-      }
-
-      // Movement calculation:
-      // When bass reaches the sub-bass frequency range, rotate continuously in 360°!
-      const offset     = (i / Math.max(1, activeCount)) * Math.PI * 2;
-      const rotAngle   = this.perimeterRotationAngle + offset;
-      const sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed;
-
-      if (this.subBassRotationActive) {
-        // ── 360° continuous rotation when sub-bass frequency is reached ──────
-        const rotRadiusX = 5.0 + subBassExcess * 4.0;
-        const rotRadiusY = 3.8 + subBassExcess * 3.2;
-        const circleX    = Math.sin(rotAngle) * rotRadiusX;
-        const circleY    = Math.cos(rotAngle) * rotRadiusY;
-        const circleZ    = 14.0 + Math.sin(rotAngle * 2.0) * 2.0;
-
-        if (fix.side === 'top') {
-          fix.targetPos.set(fix.targetSlotPos.x + circleX, 1.8 + circleY, circleZ);
-        } else if (fix.side === 'left') {
-          fix.targetPos.set(2.5 + circleX, 2.4 + circleY, circleZ);
-        } else {
-          fix.targetPos.set(-2.5 + circleX, 2.4 + circleY, circleZ);
-        }
-      } else {
-        // Melodic / tempo pan-tilt sweep when not in 360° sub-bass rotation
-        if (fix.side === 'top') {
-          if (features.isDrop) {
-            const spreadX = fix.targetSlotPos.x * 0.6 + Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 8.0;
-            const spreadY = 1.8 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 1.8;
-            const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
-            fix.targetPos.set(spreadX, spreadY, spreadZ);
-          } else {
-            const sweepX = fix.targetSlotPos.x * 0.5 + Math.sin(time * sweepSpeed + offset) * 6.5;
-            const sweepY = 1.8 + Math.sin(time * 0.6 * verifiedTempoSpeed + offset * 0.5) * 1.4;
-            const sweepZ = 13.5 + Math.cos(time * 0.5 + offset) * 2.2;
-            fix.targetPos.set(sweepX, sweepY, sweepZ);
-          }
-        } else if (fix.side === 'left') {
-          if (features.isDrop) {
-            const spreadX = 2.5 + Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 6.0;
-            const spreadY = 2.4 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 2.2;
-            const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
-            fix.targetPos.set(spreadX, spreadY, spreadZ);
-          } else {
-            const sweepX = 3.0 + Math.sin(time * sweepSpeed + offset) * 5.0;
-            const sweepY = 2.5 + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 2.0;
-            const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.2;
-            fix.targetPos.set(sweepX, sweepY, sweepZ);
-          }
-        } else {
-          // Right side — mirror of left
-          if (features.isDrop) {
-            const spreadX = -2.5 - Math.sin(time * (3.0 * verifiedTempoSpeed) + i * 1.2) * 6.0;
-            const spreadY = 2.4 + Math.cos(time * (2.6 * verifiedTempoSpeed) + i * 0.8) * 2.2;
-            const spreadZ = 14.0 + Math.sin(time * 2.0 + i) * 3.0;
-            fix.targetPos.set(spreadX, spreadY, spreadZ);
-          } else {
-            const sweepX = -3.0 - Math.sin(time * sweepSpeed + offset) * 5.0;
-            const sweepY = 2.5 + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 2.0;
-            const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.2;
-            fix.targetPos.set(sweepX, sweepY, sweepZ);
-          }
-        }
-      }
-
-      if (deltaSeconds > 0) {
-        fix.currentTarget.lerp(fix.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
-      }
-      fix.group.lookAt(fix.currentTarget);
-
-      // Colour assignment
-      const lightCol = colorPaletteArray[i % colorPaletteArray.length];
-
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
-      lensMat.color.copy(lightCol);
-
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
-      coneMat.color.copy(lightCol);
 
-      // Opacity: base brightness × IPOP gate × kick glow burst
-      const ipopBoost  = 1.0 + this.ipopSegmentIntensity * 0.6;
-      const lensBase   = Math.min(0.95 * maxBri, baseBrightness * 4.2) * fix.activationFactor * ipopGatedFactor * ipopBoost;
-      const coneBase   = Math.min(0.22 * maxBri, baseBrightness) * fix.activationFactor * ipopGatedFactor * ipopBoost;
-
-      lensMat.opacity = Math.min(0.99, lensBase * kickGlowFactor);
-      coneMat.opacity = Math.min(0.30, coneBase * kickGlowFactor);
-
-      // Beam scale driven by bass with kick expansion
-      const beamScale = (1.0 + bassStem * 0.35 * bassBeamMult) * (kickGlowFactor > 1.5 ? 1.25 : 1.0);
-      fix.coneMesh.scale.set(beamScale, beamScale, 1.0);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 2. 360° PERIMETER BASS LIGHTS
-    //    Continuous rotation ONLY when sub-bass energy exceeds threshold.
-    //    Rotation speed scales linearly with sub-bass amplitude above threshold.
-    //    Kick hits expand beam width and add an intensity flash.
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Instrumental activity for perimeter count scaling
-    const instActivity  = features.instrumentalActivity ?? (features.stems.instruments * 0.7 + (features.highMid + features.treble) * 0.3);
-    const freqChangeRate = features.onsetStrength || 0;
-    const dynamicInstrumentScore = Math.min(1.0, (instActivity * 0.65) + (freqChangeRate * 0.35));
-
-    const minPerimeter    = 2;
-    const maxPerimeter    = this.perimeterBassLights.length;
-    const activePerimeterCount = Math.max(
-      minPerimeter,
-      Math.min(maxPerimeter, Math.round(THREE.MathUtils.lerp(minPerimeter, maxPerimeter, dynamicInstrumentScore)))
-    );
-
-    for (let i = 0; i < this.perimeterBassLights.length; i++) {
-      const pLight = this.perimeterBassLights[i];
-
-      if (i >= activePerimeterCount) {
-        (pLight.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (pLight.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        continue;
-      }
-
-      // If sub-bass is below threshold, dim perimeter lights to near-zero
-      if (!this.subBassRotationActive) {
-        const idleOpacity = 0.08 * maxBri;
-        (pLight.lensMesh.material as THREE.MeshBasicMaterial).opacity = idleOpacity;
-        (pLight.coneMesh.material as THREE.MeshBasicMaterial).opacity = idleOpacity * 0.3;
-        // Hold position during idle — no lookAt update
-        pLight.group.position.copy(pLight.basePos);
-        continue;
-      }
-
-      // 360° orbital rotation driven by sub-bass energy
-      const orbitAngle   = this.perimeterRotationAngle + pLight.phaseOffset;
-      const orbitRadiusX = 5.5 + subBassExcess * 6.5;
-      const orbitRadiusY = 3.8 + subBassExcess * 5.0;
-
-      const target = pLight.baseTarget.clone();
-
-      if (pLight.side === 'left') {
-        target.x += Math.sin(orbitAngle) * orbitRadiusX;
-        target.y += Math.cos(orbitAngle) * orbitRadiusY;
-        target.z += Math.sin(orbitAngle * 1.5) * 5.0 + subBassExcess * 4.0;
-      } else if (pLight.side === 'right') {
-        target.x -= Math.sin(orbitAngle) * orbitRadiusX;
-        target.y += Math.cos(orbitAngle) * orbitRadiusY;
-        target.z += Math.sin(orbitAngle * 1.5) * 5.0 + subBassExcess * 4.0;
-      } else if (pLight.side === 'top') {
-        target.x += Math.cos(orbitAngle) * orbitRadiusX;
-        target.y += Math.sin(orbitAngle) * (orbitRadiusY * 0.7);
-        target.z += Math.cos(orbitAngle * 2.0) * 4.0;
-      } else {
-        // Bottom lights sweep up into the arena
-        target.x += Math.sin(orbitAngle) * orbitRadiusX;
-        target.y += Math.abs(Math.cos(orbitAngle)) * orbitRadiusY + 1.0;
-        target.z += Math.sin(orbitAngle) * 4.0;
-      }
-
-      pLight.group.position.copy(pLight.basePos);
-
-      if (deltaSeconds > 0) {
-        pLight.currentTarget.lerp(target, deltaSeconds * (6.0 + subBassExcess * 9.0));
-      }
-      pLight.group.lookAt(pLight.currentTarget);
-
-      // Colour from thumbnail palette
-      const crossCol = colorPaletteArray[(i + 1) % colorPaletteArray.length];
-
-      const pLensMat = pLight.lensMesh.material as THREE.MeshBasicMaterial;
-      pLensMat.color.copy(crossCol);
-
-      const pConeMat = pLight.coneMesh.material as THREE.MeshBasicMaterial;
-      pConeMat.color.copy(crossCol);
-
-      // Opacity: driven by sub-bass excess + kick glow
-      const periLensOpacity  = Math.min(0.98 * maxBri, (0.55 + subBassExcess * 0.45) * maxBri * kickGlowFactor);
-      const periBassOpacity  = Math.min(0.48 * maxBri, (0.14 + subBassExcess * 0.34 * bassBeamMult) * maxBri * kickGlowFactor);
-
-      pLensMat.opacity = periLensOpacity;
-      pConeMat.opacity = periBassOpacity;
-
-      // Beam expansion with sub-bass and kick hit
-      const beamExpansion = (1.0 + subBassExcess * 0.45 * bassBeamMult) * (kickGlowFactor > 1.5 ? 1.20 : 1.0);
-      pLight.coneMesh.scale.set(beamExpansion, beamExpansion, 1.0);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 3. WHITE SKY SPOTLIGHTS (Bottom corners → strictly upward projection)
-    //
-    //    ● Turned ON only during IPOP instrument peak segments (same as colouring
-    //      spotlights). NOT driven by bass presence anymore.
-    //    ● Beam direction is strictly upward (sky/zenith). The lookAt target Y
-    //      is always clamped well above the screen top.
-    //    ● Kick hits from the Kick STEM trigger a bright blink cycle.
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Smooth white-spotlight presence from IPOP instrument activation
-    const targetWhitePresence = effectiveInstActivation;
-    if (deltaSeconds > 0) {
-      const wpRate = targetWhitePresence > this.whiteSpotlightInstPresence
-        ? Math.min(1.0, deltaSeconds * 14.0)   // Fast attack
-        : Math.min(1.0, deltaSeconds * 4.0);   // Slower release
-      this.whiteSpotlightInstPresence += (targetWhitePresence - this.whiteSpotlightInstPresence) * wpRate;
-    } else {
-      this.whiteSpotlightInstPresence = targetWhitePresence;
-    }
-
-    const skyBaseY    = Math.max(14.0, this.currentDimensions.topY + 5.0);
-    const instPresence = this.whiteSpotlightInstPresence;
-
-    for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
-      const spot   = this.whiteSkySpotlights[i];
-      const isLeft = spot.corner === 'left';
-      const offset = isLeft ? 0.0 : 0.65;
-      const sweepSpeed = (0.8 + instStem * 1.4) * verifiedTempoSpeed;
-
-      // ── Strictly upward target computation ──────────────────────────────────
-      // Clamp target Y to always be above the screen top — never allow downward aim
-      const minTargetY = this.currentDimensions.topY + 4.0;
-
-      if (this.subBassRotationActive) {
-        // ── 360° continuous rotation strictly projected in upward sky direction ─
-        const rotAngle   = this.perimeterRotationAngle + (isLeft ? 0.0 : Math.PI);
-        const skyRadiusX = 5.5 + subBassExcess * 4.5;
-        const skyRadiusZ = 5.0 + subBassExcess * 4.0;
-        const sweepX     = spot.basePos.x + Math.sin(rotAngle) * skyRadiusX;
-        const sweepZ     = 14.0 + Math.cos(rotAngle) * skyRadiusZ;
-        const sweepY     = skyBaseY + 3.0 + Math.sin(rotAngle * 2.0) * 2.5;
-        spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
-      } else {
-        // Melodic crossing skyward scissor / tempo sweeps
-        if (isLeft) {
-          if (features.isDrop) {
-            const spreadX = (this.currentDimensions.leftX * 0.3) + Math.sin(time * (3.0 * verifiedTempoSpeed)) * (this.currentDimensions.halfWidth + 5.5);
-            const spreadY = skyBaseY + 3.0 + Math.cos(time * (2.6 * verifiedTempoSpeed)) * 4.0;
-            const spreadZ = 14.0 + Math.sin(time * 2.0) * 3.0;
-            spot.targetPos.set(spreadX, Math.max(minTargetY, spreadY), spreadZ);
-          } else {
-            const sweepX = (this.currentDimensions.leftX + 2.0) + Math.sin(time * sweepSpeed) * (this.currentDimensions.halfWidth + 4.5);
-            const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed) * 3.0;
-            const sweepZ = 13.5 + Math.sin(time * 0.5) * 2.5;
-            spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
-          }
-        } else {
-          if (features.isDrop) {
-            const spreadX = (this.currentDimensions.rightX * 0.3) - Math.sin(time * (3.0 * verifiedTempoSpeed) + offset) * (this.currentDimensions.halfWidth + 5.5);
-            const spreadY = skyBaseY + 3.0 + Math.cos(time * (2.6 * verifiedTempoSpeed) + offset) * 4.0;
-            const spreadZ = 14.0 + Math.sin(time * 2.0 + offset) * 3.0;
-            spot.targetPos.set(spreadX, Math.max(minTargetY, spreadY), spreadZ);
-          } else {
-            const sweepX = (this.currentDimensions.rightX - 2.0) - Math.sin(time * sweepSpeed + offset) * (this.currentDimensions.halfWidth + 4.5);
-            const sweepY = skyBaseY + Math.cos(time * 0.7 * verifiedTempoSpeed + offset) * 3.0;
-            const sweepZ = 13.5 + Math.sin(time * 0.5 + offset) * 2.5;
-            spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
-          }
-        }
-      }
-
-      // Smooth pan/tilt tracking
-      if (deltaSeconds > 0) {
-        spot.currentTarget.lerp(spot.targetPos, deltaSeconds * (4.0 + instStem * 5.0));
-      }
-      // Enforce upward constraint on live tracked target as well
-      spot.currentTarget.y = Math.max(minTargetY, spot.currentTarget.y);
-
-      // Strictly fixed origins (no translation or shake)
-      spot.fixedBaseMesh.position.copy(spot.basePos);
-      spot.headGroup.position.copy(spot.basePos);
-      spot.headGroup.lookAt(spot.currentTarget);
-
-      const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
-      const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
-
-      // Turn OFF when outside IPOP instrument peak segment
-      if (instPresence <= 0.01) {
+      // Fully turned OFF when slot deactivated OR dual-stem average frequency condition not met
+      if (fix.activationFactor <= 0.001 || this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
         continue;
       }
 
-      // Base opacities driven by instrument presence and drop state
-      const rawLensOpacity = (0.88 + instStem * 0.16 + (features.isDrop ? 0.10 : 0)) * instPresence;
-      const rawConeOpacity = (0.36 + instStem * 0.20 + (features.isDrop ? 0.10 : 0)) * instPresence;
+      // Target aiming with 360° frequency movement & synced Kick jumps
+      if (isActive) {
+        const slot = currentLayout[i];
+        if (fix.side === 'left') {
+          // Left side spotlights in sync together
+          const targetX = slot.defaultTarget.x + leftOffsetX + this.leftKickOffset.x * this.kickImpulseTime;
+          const targetY = slot.defaultTarget.y + leftOffsetY + this.leftKickOffset.y * this.kickImpulseTime;
+          const targetZ = slot.defaultTarget.z + leftOffsetZ + this.leftKickOffset.z * this.kickImpulseTime;
+          fix.targetPos.set(targetX, targetY, targetZ);
+        } else if (fix.side === 'right') {
+          // Right side spotlights in sync together, opposite movement angles to left
+          const targetX = slot.defaultTarget.x + rightOffsetX + this.rightKickOffset.x * this.kickImpulseTime;
+          const targetY = slot.defaultTarget.y + rightOffsetY + this.rightKickOffset.y * this.kickImpulseTime;
+          const targetZ = slot.defaultTarget.z + rightOffsetZ + this.rightKickOffset.z * this.kickImpulseTime;
+          fix.targetPos.set(targetX, targetY, targetZ);
+        } else {
+          // Top side spotlights in sync together
+          const targetX = slot.defaultTarget.x + topOffsetX + this.topKickOffset.x * this.kickImpulseTime;
+          const targetY = slot.defaultTarget.y + topOffsetY + this.topKickOffset.y * this.kickImpulseTime;
+          const targetZ = slot.defaultTarget.z + topOffsetZ + this.topKickOffset.z * this.kickImpulseTime;
+          fix.targetPos.set(targetX, targetY, targetZ);
+        }
+      }
 
-      // Apply kick glow burst to sky spotlights as well
-      lensMat.opacity = Math.min(1.0, Math.min(0.99 * maxBri, rawLensOpacity * kickGlowFactor));
-      coneMat.opacity = Math.min(0.90, Math.min(0.68 * maxBri, rawConeOpacity * kickGlowFactor));
+      if (deltaSeconds > 0) {
+        fix.currentTarget.lerp(fix.targetPos, Math.min(1.0, deltaSeconds * 9.5));
+      }
+      fix.group.lookAt(fix.currentTarget);
 
-      // Beam scale expands on kick hits (fixed origin)
-      const skyBeamScale = (1.0 + subBassExcess * 0.35 * bassBeamMult) * (kickGlowFactor > 1.5 ? 1.18 : 1.0);
-      spot.coneMesh.scale.set(skyBeamScale, skyBeamScale, 1.0);
+      // Colors & continuous glowing intensity factor (0.0 to 1.0) based on Bass STEM
+      const lightCol = colorPaletteArray[i % colorPaletteArray.length];
+      lensMat.color.copy(lightCol);
+      coneMat.color.copy(lightCol);
+
+      const glow = effectiveGlow * fix.activationFactor;
+      lensMat.opacity = Math.min(0.98, 0.88 * maxBri * glow);
+      coneMat.opacity = Math.min(0.35, 0.22 * maxBri * glow);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 4. WASH LIGHTS (Tinted by Thumbnail Palette)
+    // 3. PERIMETER LIGHTS (360° Coordinated Sweeps)
+    // ═══════════════════════════════════════════════════════════════════════════
+    for (let i = 0; i < this.perimeterBassLights.length; i++) {
+      const pLight = this.perimeterBassLights[i];
+      const pLensMat = pLight.lensMesh.material as THREE.MeshBasicMaterial;
+      const pConeMat = pLight.coneMesh.material as THREE.MeshBasicMaterial;
+
+      if (this.smoothTurnOnFactor <= 0.001) {
+        pLensMat.opacity = 0;
+        pConeMat.opacity = 0;
+        continue;
+      }
+
+      pLight.group.position.copy(pLight.basePos);
+      const isRight = pLight.side === 'right';
+      const sideAngle = isRight ? -thetaRad : thetaRad;
+
+      const sweepOffsetX = Math.cos(sideAngle + pLight.phaseOffset) * 2.8;
+      const sweepOffsetY = Math.sin(sideAngle + pLight.phaseOffset) * 1.8;
+      const sweepOffsetZ = Math.sin((sideAngle + pLight.phaseOffset) * 2.0) * 2.4;
+
+      const pTargetX = pLight.baseTarget.x + sweepOffsetX;
+      const pTargetY = pLight.baseTarget.y + sweepOffsetY;
+      const pTargetZ = pLight.baseTarget.z + sweepOffsetZ;
+      pLight.currentTarget.set(pTargetX, pTargetY, pTargetZ);
+
+      pLight.group.lookAt(pLight.currentTarget);
+
+      const crossCol = colorPaletteArray[(i + 1) % colorPaletteArray.length];
+      pLensMat.color.copy(crossCol);
+      pConeMat.color.copy(crossCol);
+
+      pLensMat.opacity = Math.min(0.95, 0.72 * maxBri * effectiveGlow);
+      pConeMat.opacity = Math.min(0.30, 0.16 * maxBri * effectiveGlow);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 4. WHITE SKY SPOTLIGHTS (Bottom Corners, 360° Sweeps, Intense Kick Glow)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const skyBaseY = Math.max(16.0, this.currentDimensions.topY + 6.0);
+    const minTargetY = this.currentDimensions.topY + 4.5;
+    const skyRadiusX = 4.2;
+    const skyRadiusZ = 3.8;
+
+    for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
+      const spot = this.whiteSkySpotlights[i];
+      const isLeft = spot.corner === 'left';
+      const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
+      const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
+
+      // Turn OFF if dual-stem frequency condition not met
+      if (this.smoothTurnOnFactor <= 0.001) {
+        lensMat.opacity = 0;
+        coneMat.opacity = 0;
+        continue;
+      }
+
+      // Left follows left angle (thetaRad), Right follows opposite angle (-thetaRad)
+      const cornerAngle = isLeft ? thetaRad : -thetaRad;
+      const baseCornerX = isLeft
+        ? this.currentDimensions.leftX - 3.0
+        : this.currentDimensions.rightX + 3.0;
+
+      // 360 degree upward sky orbit (strictly projecting upward)
+      const sweepX = baseCornerX + Math.cos(cornerAngle) * skyRadiusX;
+      const sweepZ = 14.0 + Math.sin(cornerAngle) * skyRadiusZ;
+      const sweepY = skyBaseY + Math.sin(2.0 * cornerAngle) * 2.5;
+
+      spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
+
+      if (deltaSeconds > 0) {
+        spot.currentTarget.lerp(spot.targetPos, Math.min(1.0, deltaSeconds * 9.5));
+      }
+      spot.currentTarget.y = Math.max(minTargetY, spot.currentTarget.y);
+
+      spot.fixedBaseMesh.position.copy(spot.basePos);
+      spot.headGroup.position.copy(spot.basePos);
+      spot.headGroup.lookAt(spot.currentTarget);
+
+      // The Kick makes these 2 bottom white spotlights glow intensely when kick hits!
+      const whiteGlow = effectiveGlow * this.whiteKickIntensity;
+
+      lensMat.opacity = Math.min(1.0, 0.90 * maxBri * whiteGlow);
+      coneMat.opacity = Math.min(0.85, 0.28 * maxBri * whiteGlow);
+
+      // Beam flare expansion on intense kick glow
+      const kickScale = 1.0 + (this.whiteKickIntensity - 1.0) * 0.20;
+      spot.coneMesh.scale.set(kickScale, kickScale, 1.0);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 5. WASH LIGHTS (Dynamic Stage Ambient Illumination)
     // ═══════════════════════════════════════════════════════════════════════════
     this.washLight1.color.copy(primaryCol);
-    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.45 + bassStem * 0.55 * bassBeamMult) * maxBri);
+    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.35 + 0.55 * effectiveGlow) * maxBri);
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.45 + instStem * 0.55 * bassBeamMult) * maxBri);
+    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.35 + 0.55 * effectiveGlow) * maxBri);
   }
 }

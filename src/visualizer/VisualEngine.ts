@@ -345,6 +345,7 @@ export class VisualEngine {
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
       hasVideo: this.hasActiveVideo,
       demucsStems: this.demucsStems || undefined,
+      spotlightAnalysis: this.demucsStems?.spotlightAnalysis,
     };
   }
 
