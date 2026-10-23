@@ -39,7 +39,11 @@
 
 ## 🎬 Live Demo Preview
 
-https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/2b475ec5-99e2-4cbe-8975-9841f29ee006" width="100%" controls="controls" poster="demo/poster.png" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);"></video>
+</div>
+
+https://github.com/user-attachments/assets/2b475ec5-99e2-4cbe-8975-9841f29ee006
 
 > [!NOTE]
 > ### 🎵 Music & Visual Attribution
