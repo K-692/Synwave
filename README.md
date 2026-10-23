@@ -22,6 +22,21 @@
 
 ---
 
+> [!WARNING]
+> ### ⚠️ Photosensitivity & Flashing Lights Warning
+> **Synwave contains intense flashing lights, high-contrast strobe blinders, and rapid color oscillations that may trigger discomfort or seizures for individuals with photosensitive epilepsy or light sensitivities.**
+> 
+> - If you are sensitive to flashing lights, enable **Reduced Flash Mode** by pressing the `M` key or toggling it inside the **Routing Console (`C`)**.
+> - Viewer discretion is strongly advised.
+
+> [!CAUTION]
+> ### 🥁 Music Compatibility Notice: Do Not Use on Songs Without Beats
+> **Synwave is engineered specifically for rhythmically driven music (EDM, house, dubstep, rock, hip-hop, trap, synthwave, electronic, and high-tempo pop) with clear drum kicks, basslines, and percussive transients.**
+> 
+> **Do NOT use on songs without beats (such as sad acoustic songs, ambient soundscapes, classical solo piano, or percussion-free ballads).** The procedural lighting directors, kick deflection mechanisms, and drop pinpointers rely on percussive drum transients and neural kick envelopes; running beatless tracks will result in inert or misaligned lighting choreographies.
+
+---
+
 ## 🎬 Live Demo Preview
 
 https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
@@ -50,12 +65,15 @@ https://github.com/user-attachments/assets/c813d12a-8a76-4ba4-ac8e-d8f42dc462b0
   - [Functional Block Topology (ASCII)](#functional-block-topology-ascii)
   - [Deep Architectural Walkthrough](#deep-architectural-walkthrough)
 - [✨ Key Features](#-key-features)
+- [🎛️ Audio-to-Visual Routing Console Specification](#️-audio-to-visual-routing-console-specification)
 - [⌨️ Controls & Keyboard Shortcuts](#-controls--keyboard-shortcuts)
 - [🚀 Installation & Development Setup](#-installation--development-setup)
 - [🛠️ Technologies & Official Repositories](#️-technologies--official-repositories)
 - [📜 Third-Party Libraries, Licenses & Attribution](#-third-party-libraries-licenses--attribution)
 - [🐛 Known Issues & Roadmap](#-known-issues--roadmap)
 - [🤝 How to Contribute](#-how-to-contribute)
+  - [🌟 Call for Contributors: Lasers & Stage Elements](#-call-for-contributors-lasers--stage-elements)
+  - [Contribution Workflow](#contribution-workflow)
 - [📄 License](#-license)
 
 ---
@@ -96,7 +114,7 @@ flowchart TD
             G --> H["4-Stem Isolation\n(Drums, Bass, Inst, Vocals)"]
             H --> I["25 FPS RMS Envelopes &\nStatic Track Averages"]
             H --> J["Kick Comb Filter & Transient Onsets"]
-            H --> SPOT_ENGINE["spotlight_analysis.py (DSP Frequency & all-in-one Structure Segmentation)\n(Inst & Bass Freqs in ms, 360° Angles, Verses-Only Activation Gate, Bass Glow)"]
+            H --> SPOT_ENGINE["spotlight_analysis.py (DSP Frequency, all-in-one Structure Segmentation, Musical Energy Scoring)\n(Inst & Bass Freqs in ms, 360° Angles, verse/solo/inst Gating, 10 vs 4 Dynamic Population, Bass Glow)"]
             E --> PL_API["GET /api/playlist\n(Processed Track Library)"]
             E --> SPOT_API["GET /api/spotlight/{video_id}\n(Pre-Computed Spotlight Choreography)"]
         end
@@ -127,9 +145,9 @@ flowchart TD
         B --> V["Thumbnail Color Palette Extractor"]
         V --> W["flashColorUtils: Pure Chromatic Palette Normalization"]
         
-        P & S & W --> X["Dual Corner White Sky Spotlights\n(Left & Right Stage Flanks, Zenith Skyward Sweeps)"]
-        T --> Y["Symmetrical BPM Moving-Head Lights\n(2 to 12 Fixtures, Monotonic 70-160 BPM)"]
-        Q --> Z["Audience Camera FOV Punch\n(60° to 63.5° Dynamic Zoom)"]
+        P & S & W --> X["Dual Corner White Sky Spotlights\n(Left & Right Stage Flanks, Zenith Skyward Sweeps, Continuous Operation)"]
+        T & D --> Y["Symmetrical Moving-Head Lights\n(10 High-Energy vs 4 Smooth-Energy Fixtures, Stationary Mounts)"]
+        Q --> Z["Audience Camera FOV Punch\n(60° Steady Projection)"]
         R --> AA["YouTube Iframe Screen Shake\n(Isolated Kick Transform)"]
         R & T & W --> AB["Direct-DOM Window Blinder\n(1/2 Bar Pure White + Circular Palette Washes)"]
         PL_STORE --> PL_DRAWER["Stage Playlist Drawer (Hotkey: P)\n(Search, Thumbnails, BPM, Fast Load)"]
@@ -144,7 +162,7 @@ flowchart TD
         AB --> AF["Festival Window Blinder Overlay\n(z-index: 15, Direct DOM Mutation)"]
         PL_DRAWER --> AG["Glassmorphic Stage Playlist Panel\n(z-index: 30, Slide-Out Drawer)"]
         
-        AD & AE & AF --> AH["Glassmorphic Top Header & Transport Dock\n(z-index: 25: Playlist [P], Console [C], Telemetry [D])"]
+        AD & AE & AF --> AH["Glassmorphic Top Header & Transport Dock\n(z-index: 25: Playlist [P], Console [C], Telemetry [D], YouTube Ingest)"]
     end
 ```
 
@@ -157,47 +175,48 @@ flowchart TD
                                       SYNWAVE SYSTEM TOPOLOGY
 ====================================================================================================
 
- [ YouTube URL / Stage Playlist ] ──► [ Video ID & Cache Resolver ]
-                                             │
-               ┌─────────────────────────────┴────────────────────────────┐
-               ▼ (Cache Hit < 10ms)                                       ▼ (Cache Miss)
-    [ Persistent Cache Store ]                                  [ FastAPI Daemon (:8765) ]
-    • Tier 1: In-Memory Map                                     • Direct Audio Stream via yt-dlp & FFmpeg
-    • Tier 2: Browser LocalStorage                              • Meta Demucs v4 (htdemucs on MPS)
-    • Tier 3: Local Disk (.synwave_cache)                       • Static Averages (D_avg, B_avg, I_avg)
-    • Tier 4: GET /api/playlist                                 • Kick Onsets & Comb Filtering
-               │                                                          │
-               └─────────────────────────────┬────────────────────────────┘
-                                             │
-                                             ▼
-                            [ Real-Time Audio Engine ]
-                            • Web Audio API Master Clock (t)
-                            • 2048-Point FFT Spectral Decomp
-                            • Tri-STEM Peak Drop Activation:
-                              (D > D_avg) ∧ (B > B_avg) ∧ (I > I_avg) ∧ (Joint ≥ Thresh)
-                                             │
-        ┌────────────────────────────────────┼────────────────────────────────────┐
-        ▼                                    ▼                                    ▼
- [ Sub-Bass (20-100Hz) ]          [ Kick Transient (40-150Hz) ]        [ Mid-Range Spectral (250Hz-4kHz) ]
-   FOV Camera Punch (60°-63.5°)     Screen Shake & Blinder Trigger       White Sky Searchlights & Moving Heads
-        │                                    │                                    │
-        └────────────────────────────────────┼────────────────────────────────────┘
-                                             │
-                                             ▼
-                            [ Show Director & Visual Engine ]
-                            • Dual Corner White Sky Searchlights (Upward Zenith Projection)
-                            • Symmetrical BPM-Synchronized Moving Heads (2-12)
-                            • 12x 360° Continuous Rotatable Perimeter Bass Lights
-                            • Full-Window Blinder Wash (1/2 Bar White Anchor + Pure Palette Colors)
-                            • Stage Playlist Drawer (Instant One-Click Concert Loading)
-                                             │
-       ┌─────────────────────────────────────┴────────────────────────────────────┐
-       ▼                                                                          ▼
-[ Three.js r186 Scene Graph ]                                  [ YouTube 4K Stage Screen ]
-• Transparent WebGL2 Canvas (z: 2)                             • 16:9 Stage Aperture (z: 1)
-• 45m Skyward White Beams (Left, Zenith, Right)                • Muted Video Playback (vol: 0)
-• Stage Truss & Jumbotron Bezels                               • Master Clock Continuous Sync Loop
-• Stage Playlist Drawer (z: 30)                                • Zero Synwave Text Overlays
+ [ YouTube URL / Stage Playlist / Instant Switch ] ──► [ Video ID & Cache Resolver ]
+                                                             │
+               ┌─────────────────────────────────────────────┴────────────────────────────┐
+               ▼ (Cache Hit < 10ms)                                                       ▼ (Cache Miss)
+    [ Persistent Cache Store ]                                                  [ FastAPI Daemon (:8765) ]
+    • Tier 1: In-Memory Map                                                     • Direct Audio Stream via yt-dlp & FFmpeg
+    • Tier 2: Browser LocalStorage                                              • Meta Demucs v4 (htdemucs on MPS)
+    • Tier 3: Local Disk (.synwave_cache)                                       • mir-aidj/all-in-one Structure Segmentation
+    • Tier 4: GET /api/playlist                                                 • Multi-Feature Acoustic Energy Scoring
+               │                                                                          │
+               └─────────────────────────────────────────────┬────────────────────────────┘
+                                                             │
+                                                             ▼
+                                            [ Real-Time Audio Engine ]
+                                            • Web Audio API Master Clock (t)
+                                            • 2048-Point FFT Spectral Decomp
+                                            • Tri-STEM Peak Drop Activation:
+                                              (D > D_avg) ∧ (B > B_avg) ∧ (I > I_avg) ∧ (Joint ≥ Thresh)
+                                                             │
+        ┌────────────────────────────────────────────────────┼────────────────────────────────────┐
+        ▼                                                    ▼                                    ▼
+ [ Sub-Bass (20-100Hz) ]                          [ Kick Transient (40-150Hz) ]        [ Mid-Range Spectral (250Hz-4kHz) ]
+   Locked 60° FOV Camera                            Screen Shake & Blinder Trigger       White Sky Searchlights & Moving Heads
+        │                                                    │                                    │
+        └────────────────────────────────────────────────────┼────────────────────────────────────┘
+                                                             │
+                                                             ▼
+                                            [ Show Director & Visual Engine ]
+                                            • Dynamic Symmetrical Fixtures (10 High Energy vs 4 Smooth Energy)
+                                            • Explicit Section Gating (Active strictly during verse, solo, inst)
+                                            • Double-Sided Volumetric Cones with Beam Brightness Slider (50% - 300%)
+                                            • Dual Corner White Sky Searchlights (Continuous Operation & Kick Surges)
+                                            • Full-Window Blinder Wash (1/2 Bar White Anchor + Pure Palette Colors)
+                                            • Atomic Stage State Purge & Seamless In-Place YouTube Video Switching
+                                                             │
+       ┌─────────────────────────────────────────────────────┴────────────────────────────────────┐
+       ▼                                                                                          ▼
+[ Three.js r186 Scene Graph ]                                                  [ YouTube 4K Stage Screen ]
+• Transparent WebGL2 Canvas (z: 2)                                             • 16:9 Stage Aperture (z: 1)
+• 10 Symmetrical Stationary Moving Heads + 2 White Sky Beams                   • Muted Video Playback (vol: 0)
+• Stage Truss & Jumbotron Bezels                                               • Seamless In-Place Iframe Teardown
+• Stage Playlist Drawer (z: 30)                                                • Zero Synwave Text Overlays
 ====================================================================================================
 ```
 
@@ -245,17 +264,40 @@ flowchart TD
   - **Right-Side Group:** All right-side spotlights move in synchronization with each other, governed by the opposite angular reference $\theta_R(t) = \text{wrap}_{360}(-\theta(t) + \theta_{R0})$ with spatial elevation/lateral offsets, completely preventing central "X" beam collisions.
   - **Top-Side Group:** All top-side spotlights move in synchronization along the overhead box-truss.
   - **Two White Bottom Spotlights:** Two corner searchlights projecting broad skyward trajectories across the viewport. They **never change beam direction on kick events**.
-- **Multi-Class Verse and Solo Detection & Activation (`mir-aidj/all-in-one`):**
-  - Uses `allin1_infer` with direct `StemsInput` to feed Demucs neural stems directly into spectrogram extraction, bypassing redundant 4-minute CPU separation and completing inference in ~5 seconds.
+- **Dynamic Symmetrical Spotlight Population (10 vs 4 Fixtures):**
+  - **Physical Rig (10 Primary + 2 White Sky Searchlights):**
+    - **Top Overhead Truss (4 Fixtures):** Mounted at $Y = Y_{\text{top}} + 1.25, Z = Z_{\text{screen}} + 0.5$ at symmetrical X-offsets $\pm 0.22 W$ and $\pm 0.65 W$ (Indices `[0, 1, 2, 3]`).
+    - **Left Vertical Tower (3 Fixtures):** Mounted at $X = X_{\text{left}} - 1.55$ spanning Upper ($Y_{\text{center}} + 0.65 H$), Middle ($Y_{\text{center}}$), and Lower ($Y_{\text{center}} - 0.65 H$) (Indices `[4, 5, 6]`).
+    - **Right Vertical Tower (3 Fixtures):** Mounted symmetrically at $X = X_{\text{right}} + 1.55$ spanning Upper, Middle, and Lower (Indices `[7, 8, 9]`).
+    - **Corner White Sky Searchlights (2 Fixtures):** Bottom-left and bottom-right corners, operating independently outside the 10-primary count.
+  - **Symmetrical Subset Selection:**
+    - **High-Energy Tracks (10 Spotlights):** Enables all 10 fixtures (`[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`).
+    - **Smooth / Low-Energy Tracks (4 Spotlights):** Symmetrically enables 4 fixtures (`[1, 2, 5, 8]`: top inner pair and middle fixtures on left/right towers).
+  - **Multi-Feature Acoustic Energy Scoring:**
+    $$S = 0.35 \cdot \min\left(1.0, \frac{D_{\text{kick}}}{1.75}\right) + 0.25 \cdot \min\left(1.0, \frac{R_{\text{drum}}}{0.32}\right) + 0.15 \cdot \min\left(1.0, \frac{C_{\text{active}}}{0.55}\right) + 0.15 \cdot \min\left(1.0, \frac{I_{\text{rms}}}{0.14}\right) + 0.10 \cdot \min\left(1.0, \frac{B_{\text{rms}}}{0.16}\right)$$
+    Tracks are classified as High-Energy ($10\text{ fixtures}$) if $S \ge 0.46 \lor (D_{\text{kick}} \ge 0.95 \land R_{\text{drum}} \ge 0.18) \lor D_{\text{kick}} \ge 1.25$; otherwise Smooth ($4\text{ fixtures}$).
+- **Section-Based Activation Policy (`verse`, `solo`, `inst`):**
+  - Uses `mir-aidj/all-in-one` structural classification with direct stem inputs to segment songs into functional blocks.
   - Multi-class classification pipeline identifies:
     - Verses (`verse`): confidence $\ge 0.95$.
     - Instrumental Solos (`instrumental_solo`): confidence $0.88-0.92$.
     - Lead-Instrument Solos (`lead_instrument_solo`): confidence $0.92$.
     - Vocal Solos (`vocal_solo`): confidence $0.90$.
+    - Instrumental Passages (`inst` / `instrumental`): confidence $0.92$.
     - Inactive sections (`chorus`, `intro`, `outro`, `break`, `bridge`, `start`, `end`).
-  - **Activation Policy:** The eligible spotlight timeline is the exact union of confidently identified verse and solo segments. Spotlights illuminate with smooth attack/release fades ($0.3\text{s}$) during verses and solos, and fade out cleanly outside eligible sections. Kick events outside verses/solos do NOT reactivate spotlights.
+  - **Activation Policy:** Primary coloured spotlights illuminate with smooth attack/release fades ($0.3\text{s}$) strictly during sections labeled `verse`, `solo`, or `inst`. Outside eligible sections, coloured spotlight beams remain cleanly off; kick transients outside eligible sections do NOT reactivate coloured spotlights.
+- **Volumetric Beam Radiance & In-App Brightness Calibration:**
+  - **Double-Sided Volumetric Cones (`THREE.DoubleSide`):** Renders volumetric beam geometries with physical depth and high luminous transmittance across both dark arena backgrounds and live video.
+  - **Luminance Formulation:**
+    $$\text{opacity}_{\text{coloured}} = \min\left(0.92, \; 0.44 \cdot \text{maxBri} \cdot \text{intensity} \cdot \text{beamBri}\right)$$
+    $$\text{opacity}_{\text{white}} = \min\left(0.95, \; 0.52 \cdot \text{maxBri} \cdot \text{whiteGlow} \cdot \text{beamBri}\right)$$
+  - **Spotlight Beam Brightness Slider (`RoutingConsole.tsx`):** Dedicated slider in Section 5 of the Audio-to-Visual Routing Console (`C`) providing interactive calibration from $50\%$ to $300\%$ (default $150\%$) with real-time percentage feedback.
+  - **Stage Wash Coupling:** Moving-head point lights scale proportionally with beam brightness, casting radiant chromatic wash across the stage deck and truss rig.
+- **Initial Off-State & Seamless In-Place YouTube Video Switching:**
+  - **Initial Off-State:** Merely loading or pasting a YouTube video leaves all fixtures completely dark (opacity 0.0), including both primary coloured spotlights and white searchlights. Spotlights only activate once media playback begins and authoritatively enters an eligible section.
+  - **Seamless Switching Without Refresh:** Switch between any YouTube links directly in the top navigation pill without page reloads. Instantly tears down existing `YT.Player` instances, clears neural stem caches and kick-event buffers, resets screen shake impulses, recenters the iframe, and isolates lighting envelopes so no state leaks between songs.
 - **Kick-Synchronized Direction Changes & White Spotlight Glow:**
-  - On valid kick events during verses/solos, active main coloured spotlights deflect smoothly to precomputed deterministic 3D targets across the full viewport (attack $35\text{ms}$, hold $40\text{ms}$, decay $180\text{ms}$) before resuming ongoing trajectories.
+  - On valid kick events during verses/solos/inst, active main coloured spotlights deflect smoothly to precomputed deterministic 3D targets across the full viewport (attack $35\text{ms}$, hold $40\text{ms}$, decay $180\text{ms}$) before resuming ongoing trajectories.
   - Two white bottom spotlights respond to kicks through **glow intensity only** (+1.8 to +2.8x surge), decaying smoothly back to ongoing bass glow. Beam directions never change.
 - **Continuous Frequency-Driven Glow Factor ($0.0 \to 1.0$):**
   - Continuous Bass STEM frequency drives continuous glow intensity:
@@ -282,7 +324,7 @@ flowchart TD
   - Clean video aperture: zero Synwave-generated text overlays, badges, or titles over the video; captions disabled by default (`cc_load_policy: 0`, `controls: 0`).
 - **Responsive Glassmorphic HUD & Stage Playlist Drawer (`z-index: 25` & `z-index: 30`):**
   - **Stage Playlist Drawer (`P`):** Slide-out drawer with real-time title/artist search, 16:9 YouTube thumbnail previews, 3-bar animated soundwave equalizer for active tracks, `STEMS READY` / `BPM` badges, and instant single-click song loading.
-  - **Audio-to-Visual Routing Console (`C`):** Full calibration of sensitivity, blinder intensity, and photosensitive safety mode.
+  - **Audio-to-Visual Routing Console (`C`):** Full real-time calibration of spotlight beam brightness (50%–300%), active fixture counts, shake, blinders, decay, and photosensitive safety mode.
   - **Real-Time Telemetry HUD (`D`):** Live FFT, neural stem meters, BPM confidence, and MPS hardware diagnostics.
 
 ---
@@ -333,11 +375,36 @@ flowchart TD
 - **Dual-Layer Audio Impact:**
   Deep sub-bass ($20-100\text{Hz}$) drives camera FOV zoom punch ($60^\circ \to 63.5^\circ$), while percussive kicks shake the YouTube stage screen in 2D space.
 - **Symmetrical BPM-Scaled Moving Heads:**
-  Moving-head spotlights scale dynamically from 2 to 12 fixtures framing the screen based on verified track tempo.
+- **Volumetric Beam Radiance & In-App Brightness Calibration (50% to 300%):**
+  Volumetric spotlight cones render with double-sided geometry (`THREE.DoubleSide`) and amplified luminous transmittance ($0.44 \times \text{beamBri}$ up to $0.92$ peak opacity for moving heads, and $0.52 \times \text{beamBri}$ up to $0.95$ for white searchlights). Includes an interactive slider in the Audio-to-Visual Routing Console (`C`) to adjust beam brightness in real time between 50% ($0.5\times$) and 300% ($3.0\times$) with 150% ($1.5\times$) default.
 - **Freeze-on-Pause Engine:**
   Pausing playback instantly halts visual time accumulators (`deltaSeconds = 0`). Moving heads, perimeter lights, and white sky spotlights freeze in place without snapping.
 - **Interactive Routing Console & Telemetry HUD:**
-  Press `C` for real-time calibration of shake, blinders, decay, and photosensitive safety mode. Press `D` for live FFT, stem energy, and MPS hardware telemetry.
+  Press `C` for real-time calibration of spotlight beam brightness, active fixtures, shake, blinders, decay, and photosensitive safety mode. Press `D` for live FFT, stem energy, and MPS hardware telemetry.
+
+---
+
+## 🎛️ Audio-to-Visual Routing Console Specification
+
+Press `C` at any time to open the glassmorphic **Audio-to-Visual Routing Console**. All parameters calibrate live visual synthesis in real time without pausing audio or dropping frames:
+
+| Section | Parameter | Type / Range | Default | Functional Description |
+|---|---|---|---|---|
+| **Drums & Kicks** | `screenShakeIntensity` | Float ($0.0\times - 2.5\times$) | $1.0\times$ | Bounded 2D pixel displacement strictly applied to the YouTube stage screen iframe on heavy percussive kicks (window stays steady). |
+| **Drums & Kicks** | `screenFlashIntensity` | Float ($0.0\times - 2.5\times$) | $1.0\times$ | Full-window radial blinder strobe flash intensity triggered by drum kick onsets. |
+| **Drums & Kicks** | `kickSensitivity` | Float ($0.2\times - 2.0\times$) | $1.0\times$ | Threshold scaling sensitivity for drum kick transient detection. |
+| **Bass Spectrum** | `perimeterBassRotationSpeed` | Float ($0.2\times - 3.0\times$) | $1.0\times$ | Continuous 360° orbital rotation speed of perimeter screen lights driven by bass frequency. |
+| **Bass Spectrum** | `bassToBeamIntensity` | Float ($0.2\times - 2.5\times$) | $1.0\times$ | Modulates moving-head beam thickness, floor wash radiance, and perimeter radiance. |
+| **Bass Spectrum** | `screenFlashColorSaturation` | Float ($0.0\times - 2.0\times$) | $1.0\times$ | Blends video thumbnail gradient colors into screen flash on high bass hits (white at low bass). |
+| **Bass Spectrum** | `effectDecay` | Float ($0.5\times - 2.5\times$) | $1.0\times$ | Attack and release envelope decay speed for flashes and bass pulses. |
+| **White Searchlights** | `instrumentalMovementSpeed` | Float ($0.2\times - 3.0\times$) | $1.0\times$ | Controls tempo-synced pan/tilt sweep agility for the two white corner sky searchlights. |
+| **Stage Spotlights** | `spotlightBeamBrightness` | Float ($0.5\times - 3.0\times$) | $1.5\times$ (150%) | **Interactive beam brightness level:** Controls volumetric cone radiance, atmospheric luminous presence, and stage wash. |
+| **Stage Spotlights** | `spotlightCount` | Integer ($1 - 10$) | $4$ Fixtures | Manual override for active colour-tinted spotlights placed symmetrically on Top, Left, and Right of stage screen. |
+| **Stage Spotlights** | `minSpotlightCount` | Integer ($1 - 4$) | $1$ Fixture | Minimum spotlight floor for calm, low-tempo tracks below 70 BPM. |
+| **Stage Spotlights** | `maxSpotlightCount` | Integer ($4 - 10$) | $10$ Fixtures | Maximum spotlight ceiling for high-energy tracks above 160 BPM. |
+| **Stage Spotlights** | `maxBrightnessLimit` | Float ($30\% - 100\%$) | $100\%$ | Global concert lumen ceiling preventing venue overexposure. |
+| **Thumbnail Palette** | `colorExtractionSensitivity` | Float ($0.2\times - 2.0\times$) | $1.0\times$ | Sensitivity scaling for video thumbnail chromatic clustering and palette extraction. |
+| **Safety & Access** | `reducedFlash` | Toggle (Boolean) | `false` | Photosensitive mode: dampens high-contrast blinder strobing and rapid flash sequences. |
 
 ---
 
@@ -510,6 +577,7 @@ npm run lint
 | **Vite** | Next-generation frontend tooling and HMR dev server | [vitejs/vite](https://github.com/vitejs/vite) |
 | **Lucide Icons** | Minimalist modern icon set for controls and navigation | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |
 | **Web Audio API** | Hardware-synchronized audio clock, multi-band FFT analyser | [W3C Web Audio API Spec](https://www.w3.org/TR/webaudio/) |
+| **All-In-One (allin1)** | Neural music structure segmentation and section boundary classification | [mir-aidj/all-in-one](https://github.com/mir-aidj/all-in-one) |
 
 ---
 
@@ -543,6 +611,7 @@ All third-party libraries incorporated into Synwave are free and open-source sof
 | `numpy` | `^1.26.0` | [BSD-3-Clause](https://github.com/numpy/numpy/blob/main/LICENSE.txt) | Travis Oliphant & NumPy Developers | [numpy/numpy](https://github.com/numpy/numpy) |
 | `aiofiles` | `^23.2.0` | [Apache-2.0](https://github.com/Tinche/aiofiles/blob/master/LICENSE) | Tin Tvrtković & aiofiles Contributors | [Tinche/aiofiles](https://github.com/Tinche/aiofiles) |
 | `python-multipart` | `^0.0.12` | [Apache-2.0](https://github.com/Kludex/python-multipart/blob/master/LICENSE.txt) | Andrew Chen Wang & Kludex | [Kludex/python-multipart](https://github.com/Kludex/python-multipart) |
+| `allin1` | `^0.1.0` | [Apache-2.0](https://github.com/mir-aidj/all-in-one/blob/main/LICENSE) | Taegyun Kwon et al. (KAIST) | [mir-aidj/all-in-one](https://github.com/mir-aidj/all-in-one) |
 
 ### 🎬 Demonstration Media & Audio Attribution
 
@@ -570,6 +639,28 @@ Here are the currently known bugs and areas under active improvement:
 ## 🤝 How to Contribute
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+### 🌟 Call for Contributors: Lasers & Concert Stage Elements
+
+> [!TIP]
+> **Synwave actively requires passionate contributors to help build and expand 3D procedural laser systems and immersive concert stage elements!**
+
+If you have experience with Three.js, WebGL/GLSL shaders, procedural math, or concert stage production, we warmly invite you to collaborate on the following stage elements:
+
+1. **3D Concert Laser Systems:**
+   - Multi-beam aerial RGB laser projectors mounted on overhead trusses and stage wings.
+   - Razor-sharp audience scanning planes, aerial liquid sky fans, laser sheets, and diffraction grating effects.
+   - Audio-reactive laser frequency modulation, beam pulsation, and Pangolin/ILDA-style geometric beam tunneling.
+2. **Specialized Stage Production Elements:**
+   - Cryogenic CO2 jet cannons and cold-spark pyrotechnic geysers synced to track drops.
+   - Motorized kinetic box-trusses (tilting overhead truss pods, winch hoists, and articulating light bars).
+   - Stadium crowd blinders, molefays, and high-intensity strobe arrays.
+   - Dynamic stage haze, smoke fluid simulation, and volumetric beam scattering shaders.
+   - Modular LED video wall backdrops and festival stage façade themes (EDC, Tomorrowland, Ultra).
+
+Feel free to open an issue, start a discussion, or submit a pull request with your ideas and implementations!
+
+---
 
 ### Contribution Workflow
 

@@ -1750,14 +1750,48 @@ To reflect musical energy without altering the established, stationary fixture o
   - On pause (`deltaSeconds === 0`), all beam movements and glow envelopes freeze in place with zero drift.
   - On seek ($|\Delta t| > 0.40\text{s}$), kick impulse timers are zeroed and lighting state immediately matches the target timestamp without replaying historical kick hits.
 
+#### 5. Volumetric Beam Radiance Amplification & In-App Spotlight Brightness Calibration
+- **Luminance & Radiance Challenge:**
+  Previously, spotlight volumetric beam cones appeared faint and washed out against bright music videos due to a conservative opacity cap ($0.38$) and single-sided mesh rendering (`side: THREE.FrontSide`).
+- **Double-Sided Volumetric Cone Rendering (`StageLightsEffect.ts`):**
+  - Updated moving-head cone mesh material to `side: THREE.DoubleSide`. This preserves luminous cylindrical volume from all viewing angles without backface culling artifacts.
+  - Amplified primary coloured moving-head beam opacity:
+    $$\text{opacity}_{\text{coloured}} = \min\left(0.92, \; 0.44 \cdot \text{maxBri} \cdot \text{combinedIntensity} \cdot \text{beamBri}\right)$$
+  - Amplified white sky searchlight beam opacity:
+    $$\text{opacity}_{\text{white}} = \min\left(0.95, \; 0.52 \cdot \text{maxBri} \cdot \text{whiteGlow} \cdot \text{beamBri}\right)$$
+  - Scaled moving-head point light intensities proportionally to cast radiant chromatic wash across the stage truss and deck.
+- **In-App Routing Console Integration (`RoutingConsole.tsx`):**
+  - Added `spotlightBeamBrightness: number` to `AudioVisualRoutingConfig` (range $0.5\times - 3.0\times$, step $0.05$, default $1.5$ / $150\%$).
+  - Added dedicated "Spotlight Beam Brightness" interactive slider in Section 5 ("STAGE SPOTLIGHTS & THUMBNAIL PALETTE") with real-time percentage feedback.
+  - Coupled `spotlightBeamBrightness` with `spotlightIntensity` to synchronize lens flare glow and beam volume simultaneously.
+  - Versioned localStorage keys to `synwave_routing_config_v6` and `synwave_active_profile_v6` in `RoutingStore.ts` to seamlessly upgrade existing user configurations to the enhanced brightness baseline.
+
+#### 6. Safety, Compatibility Boundaries & Community Architecture Extension
+- **Photosensitive Safety Protocols:**
+  - Added authoritative Photosensitivity & Strobe Warning alerting users to high-contrast strobe blinders and rapid color oscillations.
+  - Documents standard keyboard shortcut (`M`) and Routing Console (`C`) reduced flash mode.
+- **Rhythmic Acoustic Design Invariant (Beat Requirement):**
+  - Explicitly bounds the acoustic design domain: Synwave requires rhythmically driven music (EDM, rock, hip-hop, electronic, pop) with distinct percussive drum transients.
+  - Warns against beatless or percussion-free songs (ambient soundscapes, sad acoustic ballads, classical solo piano), as neural kick onset gates and drop pinpointers require percussive markers to direct stage choreographies.
+- **Open-Source Contribution Roadmap:**
+  - Formulated call for contributors targeting 3D procedural laser projections (multi-beam RGB aerial projectors, liquid sky planes, audience scanning sheets, ILDA tunneling) and stage production mechanisms (cryo CO2 jets, cold-spark fountains, kinetic moving trusses, crowd blinders, volumetric haze).
+
 ---
 
 ## 8. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~650ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~360ms).
 - **Backend Microservice:** `server.py` and `spotlight_analysis.py` verified with 100% test contract pass rate.
-- **Verification Suite:** Symmetrical fixture layouts, energy classification (10 vs 4 fixtures), `verse`/`solo`/`inst` activation, and initial off-state verified.
-- **Repository Hygiene:** All code fully commented, clean architecture, ready for push.
+- **Verification Suite:**
+  - Symmetrical dynamic fixture population (10 High-Energy vs 4 Smooth-Energy fixtures) verified.
+  - Section-based activation (`verse`, `solo`, `inst`) verified.
+  - Initial off-state before playback verified.
+  - In-place seamless YouTube switching verified.
+  - Volumetric beam brightness amplification and interactive slider calibration verified.
+  - Documentation, safety alerts, and community roadmap synchronized.
+- **Repository Hygiene:** All code fully commented, clean architecture, documentation synchronized. Ready for deployment and git synchronization.
+
+
 
 
 

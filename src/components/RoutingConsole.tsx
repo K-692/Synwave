@@ -289,18 +289,39 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
               <span>STAGE SPOTLIGHTS & THUMBNAIL PALETTE</span>
             </h4>
             <div className="sliders-grid">
+              {/* Spotlight Beam Brightness Level */}
+              <div className="slider-control">
+                <div className="slider-label-row">
+                  <span>Spotlight Beam Brightness</span>
+                  <span className="slider-val">{Math.round((config.spotlightBeamBrightness ?? 1.5) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="3.0"
+                  step="0.05"
+                  value={config.spotlightBeamBrightness ?? 1.5}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleSliderChange('spotlightBeamBrightness', val);
+                    handleSliderChange('spotlightIntensity', val);
+                  }}
+                />
+                <span className="slider-hint">Controls the radiance, atmospheric visibility, and volumetric luminance of spotlight beams</span>
+              </div>
+
               {/* Colouring Spotlight Active Count */}
               <div className="slider-control">
                 <div className="slider-label-row">
                   <span>Active Spotlights</span>
-                  <span className="slider-val">{config.spotlightCount ?? 3} Fixtures</span>
+                  <span className="slider-val">{config.spotlightCount ?? 4} Fixtures</span>
                 </div>
                 <input
                   type="range"
                   min="1"
-                  max="8"
+                  max="10"
                   step="1"
-                  value={config.spotlightCount ?? 3}
+                  value={config.spotlightCount ?? 4}
                   onChange={(e) => {
                     const count = parseInt(e.target.value, 10);
                     RoutingStore.getInstance().setSpotlightCount(count);
@@ -323,7 +344,7 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
                   value={config.minSpotlightCount ?? 1}
                   onChange={(e) => {
                     const min = parseInt(e.target.value, 10);
-                    const max = config.maxSpotlightCount ?? 7;
+                    const max = config.maxSpotlightCount ?? 10;
                     RoutingStore.getInstance().setSpotlightCountLimits(min, max);
                   }}
                 />
@@ -334,14 +355,14 @@ export const RoutingConsole: React.FC<RoutingConsoleProps> = ({ isOpen, onClose 
               <div className="slider-control">
                 <div className="slider-label-row">
                   <span>Max Spotlights (BPM ≥ 160)</span>
-                  <span className="slider-val">{config.maxSpotlightCount ?? 7} Fixtures</span>
+                  <span className="slider-val">{config.maxSpotlightCount ?? 10} Fixtures</span>
                 </div>
                 <input
                   type="range"
                   min="4"
-                  max="8"
+                  max="10"
                   step="1"
-                  value={config.maxSpotlightCount ?? 7}
+                  value={config.maxSpotlightCount ?? 10}
                   onChange={(e) => {
                     const max = parseInt(e.target.value, 10);
                     const min = config.minSpotlightCount ?? 1;

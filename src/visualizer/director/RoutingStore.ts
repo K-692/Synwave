@@ -39,7 +39,8 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
       screenFlashColorSaturation: 1.0,
       perimeterBassRotationSpeed: 1.0,
       instrumentalMovementSpeed: 1.0,
-      spotlightIntensity: 1.0,
+      spotlightIntensity: 1.5,
+      spotlightBeamBrightness: 1.5,
       reducedFlash: false,
       maxBrightnessLimit: 1.0,
       enabledEffects: {
@@ -49,8 +50,8 @@ export const STAGE_PROFILES: Record<StageProfile, StageProfileMetadata> = {
   },
 };
 
-const STORAGE_KEY_CONFIG = 'synwave_routing_config_v5';
-const STORAGE_KEY_PROFILE = 'synwave_active_profile_v5';
+const STORAGE_KEY_CONFIG = 'synwave_routing_config_v6';
+const STORAGE_KEY_PROFILE = 'synwave_active_profile_v6';
 
 export class RoutingStore {
   private static instance: RoutingStore;

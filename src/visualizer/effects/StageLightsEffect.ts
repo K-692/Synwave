@@ -300,7 +300,7 @@ export class StageLightsEffect extends BaseEffect {
         opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.FrontSide,
+        side: THREE.DoubleSide,
       });
       this.disposables.push(coneMat);
 
@@ -500,6 +500,7 @@ export class StageLightsEffect extends BaseEffect {
     }
 
     const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+    const beamBri = (routingConfig?.spotlightBeamBrightness ?? routingConfig?.spotlightIntensity ?? 1.5);
     const tSec = Math.max(0, context.trackTimeSeconds);
 
     // ── Seek Detection & Immediate State Restoration ───────────────────────────
@@ -775,8 +776,8 @@ export class StageLightsEffect extends BaseEffect {
       coneMat.color.copy(lightCol);
 
       const combinedIntensity = continuousGlow * fix.activationFactor * this.smoothTurnOnFactor;
-      lensMat.opacity = Math.min(0.98, 0.88 * maxBri * combinedIntensity);
-      coneMat.opacity = Math.min(0.38, 0.22 * maxBri * combinedIntensity);
+      lensMat.opacity = Math.min(1.0, 0.96 * maxBri * combinedIntensity * Math.min(1.4, beamBri));
+      coneMat.opacity = Math.min(0.92, 0.44 * maxBri * combinedIntensity * beamBri);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -815,8 +816,8 @@ export class StageLightsEffect extends BaseEffect {
       // Continuous Bass-driven glow + sharp kick transient impulse
       const whiteGlow = Math.min(1.0, continuousGlow * this.whiteKickIntensity) * this.whitePlaybackFactor;
 
-      lensMat.opacity = Math.min(1.0, 0.92 * maxBri * whiteGlow);
-      coneMat.opacity = Math.min(0.85, 0.28 * maxBri * whiteGlow);
+      lensMat.opacity = Math.min(1.0, 0.98 * maxBri * whiteGlow * Math.min(1.4, beamBri));
+      coneMat.opacity = Math.min(0.95, 0.52 * maxBri * whiteGlow * beamBri);
 
       // Subtle volumetric beam flare expansion on intense kick glow
       const flareScale = 1.0 + (this.whiteKickIntensity - 1.0) * 0.18;
@@ -827,10 +828,10 @@ export class StageLightsEffect extends BaseEffect {
     // 4. WASH LIGHTS (Dynamic Stage Ambient Lighting)
     // ═══════════════════════════════════════════════════════════════════════════
     this.washLight1.color.copy(primaryCol);
-    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * continuousGlow) * maxBri) * this.whitePlaybackFactor;
+    this.washLight1.intensity = Math.min(2.2 * maxBri, (0.35 + 0.75 * continuousGlow) * maxBri * Math.min(1.5, beamBri)) * this.whitePlaybackFactor;
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * continuousGlow) * maxBri) * this.whitePlaybackFactor;
+    this.washLight2.intensity = Math.min(2.2 * maxBri, (0.35 + 0.75 * continuousGlow) * maxBri * Math.min(1.5, beamBri)) * this.whitePlaybackFactor;
   }
 
   private turnOffAllLights(): void {

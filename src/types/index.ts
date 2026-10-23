@@ -120,6 +120,7 @@ export interface AudioVisualRoutingConfig {
   maxSpotlightCount?: number;           // 4 to 8 (default 7 at BPM >= 160)
   autoBpmSpotlightSpawning?: boolean;   // Automatically map track BPM to spotlight count (default true)
   spotlightIntensity: number;           // 0.5 to 2.5 (default 1.3)
+  spotlightBeamBrightness: number;      // 0.5 to 3.0 (default 1.5, multiplier for beam cone radiance)
   effectDecay: number;                  // 0.5 to 2.0 (default 1.0)
   cameraShakeStrength: number;          // Legacy alias
   reducedFlash: boolean;                // true/false
