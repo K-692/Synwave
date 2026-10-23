@@ -40,7 +40,7 @@
 ## 🎬 Live Demo Preview
 
 <div align="center">
-  <video src="demo/demo.mp4" width="100%" controls="controls" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);"></video>
+  <video src="https://github.com/K-692/Synwave/raw/main/demo/demo.mp4" width="100%" controls="controls" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);"></video>
 </div>
 
 > [!NOTE]
