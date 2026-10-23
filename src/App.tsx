@@ -315,6 +315,7 @@ export const App: React.FC = () => {
       if (playing) {
         setHasPlaybackStarted(true);
         hasPlaybackStartedRef.current = true;
+        visualEngineRef.current?.setHasPlaybackStarted(true);
       }
     };
 
@@ -326,6 +327,7 @@ export const App: React.FC = () => {
     audioEngine.onPlaybackStarted = () => {
       setHasPlaybackStarted(true);
       hasPlaybackStartedRef.current = true;
+      visualEngineRef.current?.setHasPlaybackStarted(true);
     };
 
     if (canvasRef.current) {
@@ -449,6 +451,7 @@ export const App: React.FC = () => {
       setCurrentTime(0);
       setHasPlaybackStarted(false);
       hasPlaybackStartedRef.current = false;
+      visualEngineRef.current?.setHasPlaybackStarted(false);
       setIsAudioReady(false);
       isAudioReadyRef.current = false;
 
@@ -496,12 +499,18 @@ export const App: React.FC = () => {
           resolvedBpm.source
         );
 
-        // Update spotlight count according to resolved track BPM
-        const routingCfg = RoutingStore.getInstance().getConfig();
-        if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
-          const count = mapBpmToSpotlightCount(resolvedBpm.bpm, routingCfg.minSpotlightCount, routingCfg.maxSpotlightCount);
-          visualEngineRef.current?.setSpotlightCount(count);
-          RoutingStore.getInstance().setSpotlightCount(count);
+        // Update spotlight count according to song's musical energy classification
+        const sa = track.demucsStems?.spotlightAnalysis;
+        const energyCount = sa?.spotlightCount ||
+          sa?.musicalEnergy?.spotlightCount ||
+          (sa?.energyLevel === 'high' ? 10 : (sa?.energyLevel ? 4 : undefined));
+        if (typeof energyCount === 'number') {
+          visualEngineRef.current?.setSpotlightCount(energyCount);
+          RoutingStore.getInstance().setSpotlightCount(energyCount);
+        } else if (resolvedBpm.bpm) {
+          const fallbackCount = resolvedBpm.bpm >= 115 ? 10 : 4;
+          visualEngineRef.current?.setSpotlightCount(fallbackCount);
+          RoutingStore.getInstance().setSpotlightCount(fallbackCount);
         }
 
         // Load Demucs neural stems (from cache or track record)
@@ -532,11 +541,17 @@ export const App: React.FC = () => {
                   updatedBpm.confidence,
                   updatedBpm.source
                 );
-                const cfg = RoutingStore.getInstance().getConfig();
-                if (cfg.autoBpmSpotlightSpawning !== false && updatedBpm.bpm) {
-                  const count = mapBpmToSpotlightCount(updatedBpm.bpm, cfg.minSpotlightCount, cfg.maxSpotlightCount);
-                  visualEngineRef.current?.setSpotlightCount(count);
-                  RoutingStore.getInstance().setSpotlightCount(count);
+                const asyncSa = stems.spotlightAnalysis;
+                const asyncEnergyCount = asyncSa?.spotlightCount ||
+                  asyncSa?.musicalEnergy?.spotlightCount ||
+                  (asyncSa?.energyLevel === 'high' ? 10 : (asyncSa?.energyLevel ? 4 : undefined));
+                if (typeof asyncEnergyCount === 'number') {
+                  visualEngineRef.current?.setSpotlightCount(asyncEnergyCount);
+                  RoutingStore.getInstance().setSpotlightCount(asyncEnergyCount);
+                } else if (updatedBpm.bpm) {
+                  const fallbackCount = updatedBpm.bpm >= 115 ? 10 : 4;
+                  visualEngineRef.current?.setSpotlightCount(fallbackCount);
+                  RoutingStore.getInstance().setSpotlightCount(fallbackCount);
                 }
               }
             }
@@ -666,10 +681,17 @@ export const App: React.FC = () => {
     setHasPlaybackStarted(false);
     hasPlaybackStartedRef.current = false;
     setIsBottomBarVisible(false);
+    setCurrentTime(0);
+    setDuration(0);
 
-    // Stop current playback while new stage track is prepared
+    // Stop current playback & completely reset visual and audio engine states
     audioEngineRef.current?.pause();
+    audioEngineRef.current?.stop();
+    audioEngineRef.current?.setDemucsStems(null);
+    audioEngineRef.current?.setTrackAnalysis(null);
+    visualEngineRef.current?.resetStageState();
     visualEngineRef.current?.setIsPlaying(false);
+    visualEngineRef.current?.setHasPlaybackStarted(false);
     setIsPlaying(false);
 
     // 2. Activate Stage STEMs & Audio Extraction Loader
@@ -714,6 +736,7 @@ export const App: React.FC = () => {
             averageAmplitude: result.stems.averageAmplitude || result.averageAmplitude,
             aboveAverageSections: result.stems.aboveAverageSections || result.aboveAverageSections || [],
             triStemDropSections: result.stems.triStemDropSections || result.triStemDropSections || [],
+            spotlightAnalysis: result.spotlightAnalysis || result.stems.spotlightAnalysis,
           }
         : undefined;
 
@@ -752,15 +775,19 @@ export const App: React.FC = () => {
           resolvedBpm.source
         );
       }
-      const routingCfg = RoutingStore.getInstance().getConfig();
-      if (routingCfg.autoBpmSpotlightSpawning !== false && resolvedBpm.bpm) {
-        const count = mapBpmToSpotlightCount(
-          resolvedBpm.bpm,
-          routingCfg.minSpotlightCount,
-          routingCfg.maxSpotlightCount
-        );
-        visualEngineRef.current?.setSpotlightCount(count);
-        RoutingStore.getInstance().setSpotlightCount(count);
+
+      // Update spotlight count according to song's musical energy classification (10 for high, 4 for smooth/low)
+      const sa = fullDemucsStems?.spotlightAnalysis || result.spotlightAnalysis;
+      const energyCount = sa?.spotlightCount ||
+        sa?.musicalEnergy?.spotlightCount ||
+        (sa?.energyLevel === 'high' ? 10 : (sa?.energyLevel ? 4 : undefined));
+      if (typeof energyCount === 'number') {
+        visualEngineRef.current?.setSpotlightCount(energyCount);
+        RoutingStore.getInstance().setSpotlightCount(energyCount);
+      } else if (resolvedBpm.bpm) {
+        const fallbackCount = resolvedBpm.bpm >= 115 ? 10 : 4;
+        visualEngineRef.current?.setSpotlightCount(fallbackCount);
+        RoutingStore.getInstance().setSpotlightCount(fallbackCount);
       }
 
       // Update persistent stage playlist with freshly processed track

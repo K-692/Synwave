@@ -13,6 +13,7 @@ import {
   ClipboardPaste,
   ListMusic,
   SlidersHorizontal,
+  X,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -47,13 +48,15 @@ export const Header: React.FC<HeaderProps> = ({
   onYouTubeUrlSubmit,
 }) => {
   const [urlInput, setUrlInput] = useState('');
-  const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen || isPlaylistOpen;
+  const [isFocused, setIsFocused] = useState(false);
+  const isMenuVisible = isVisible || isRoutingOpen || isDiagnosticOpen || isPlaylistOpen || isFocused;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = urlInput.trim();
     if (clean && onYouTubeUrlSubmit && !isLoading) {
       onYouTubeUrlSubmit(clean);
+      setUrlInput('');
     }
   };
 
@@ -62,9 +65,11 @@ export const Header: React.FC<HeaderProps> = ({
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim()) {
-          setUrlInput(text.trim());
+          const clean = text.trim();
+          setUrlInput(clean);
           if (onYouTubeUrlSubmit && !isLoading) {
-            onYouTubeUrlSubmit(text.trim());
+            onYouTubeUrlSubmit(clean);
+            setUrlInput('');
           }
         }
       }
@@ -91,7 +96,7 @@ export const Header: React.FC<HeaderProps> = ({
         <span className="brand-title">SYNWAVE</span>
       </div>
 
-      {/* Center Top: YouTube URL Input Floating Bar (Auto-hides with upper menus) */}
+      {/* Center Top: YouTube URL Input Floating Bar (Always accessible, persistent on focus) */}
       {onYouTubeUrlSubmit && (
         <div className={`header-center-loader-wrapper menu-anim ${isMenuVisible ? 'visible' : 'hidden'}`}>
           <form
@@ -110,11 +115,25 @@ export const Header: React.FC<HeaderProps> = ({
               className="header-youtube-input"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="Paste YouTube Link (e.g. https://www.youtube.com/watch?v=...)"
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="Paste YouTube Link to switch video..."
               disabled={isLoading}
               spellCheck={false}
               autoComplete="off"
             />
+
+            {Boolean(urlInput.trim()) && (
+              <button
+                type="button"
+                className="header-clear-btn"
+                onClick={() => setUrlInput('')}
+                title="Clear input"
+                disabled={isLoading}
+              >
+                <X size={13} />
+              </button>
+            )}
 
             {Boolean(navigator.clipboard?.readText) && (
               <button

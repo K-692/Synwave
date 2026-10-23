@@ -478,11 +478,18 @@ async def get_spotlight_analysis(video_id: str):
             except Exception:
                 pass
 
-    if wav_path.exists():
+    # Check if raw WAV file exists in audio cache for on-demand generation
+    wav_candidates = [
+        AUDIO_CACHE_DIR / f"{unique_id}.wav",
+        AUDIO_CACHE_DIR / f"yt_{clean_id}.wav",
+        AUDIO_CACHE_DIR / f"{clean_id}.wav",
+    ]
+    target_wav = next((p for p in wav_candidates if p.exists()), None)
+    if target_wav is not None and target_wav.exists():
         try:
             from spotlight_analysis import get_spotlight_analyzer
             analyzer = get_spotlight_analyzer()
-            analysis = analyzer.analyze_audio_file(wav_path, save_to_cache=True)
+            analysis = analyzer.analyze_audio_file(target_wav, save_to_cache=True)
             return {
                 "success": True,
                 "videoId": clean_id,

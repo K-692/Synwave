@@ -235,10 +235,22 @@ export interface SpotlightAnalysisData {
       top: [number, number, number];
     };
   }>;
+  energyLevel?: 'high' | 'low' | 'smooth';
+  spotlightCount?: 10 | 4 | number;
+  musicalEnergy?: {
+    score: number;
+    level: 'high' | 'low' | 'smooth';
+    spotlightCount: 10 | 4;
+    kickDensityPerSec: number;
+    drumEnergyRatio: number;
+    activeDrumCoverage: number;
+    instrumentalIntensity: number;
+    spectralActivity?: number;
+  };
   segments?: Array<{
     label: string;
     classification?: string;
-    category?: 'verse' | 'solo' | 'inactive';
+    category?: 'verse' | 'solo' | 'inst' | 'inactive';
     confidence?: number;
     isEligible?: boolean;
     start: number;
@@ -248,6 +260,7 @@ export interface SpotlightAnalysisData {
   }>;
   verseSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number; confidence?: number }>;
   soloSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number; confidence?: number }>;
+  instSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number; confidence?: number }>;
   eligibleIntervals?: Array<{
     start: number;
     end: number;
@@ -362,6 +375,8 @@ export interface VisualEffectContext {
   directorState?: ShowDirectorState;
   routingConfig?: AudioVisualRoutingConfig;
   hasVideo?: boolean;
+  isPlaying?: boolean;
+  hasPlaybackStarted?: boolean;
   /** Full Demucs stem data for per-track pre-analysis (e.g. IPOP on instrument stem). */
   demucsStems?: DemucsStemData;
   /** Pre-computed spotlight frequency and 360-degree movement trajectory */

@@ -2454,7 +2454,8 @@ html, body, #root {
   font-size: 0.75rem;
 }
 
-.header-paste-btn {
+.header-paste-btn,
+.header-clear-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2469,7 +2470,8 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.header-paste-btn:hover {
+.header-paste-btn:hover,
+.header-clear-btn:hover {
   background: rgba(0, 240, 255, 0.2);
   color: var(--neon-cyan);
   border-color: var(--neon-cyan);

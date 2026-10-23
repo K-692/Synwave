@@ -289,18 +289,27 @@ flowchart TD
 
 ## ✨ Key Features
 
-- **All-In-One Music Structure Segmentation & Verses-Only Spotlight Turn ON:**
-  Uses `all-in-one` (`mir-aidj/all-in-one`) to identify functional structural blocks (`verse`, `chorus`, `bridge`, `break`, `intro`, `outro`). All spotlights (colouring fixtures and white sky searchlights) turn ON strictly during verses and stay cleanly OFF everywhere else.
+- **Dynamic Symmetrical Spotlight Population (10 vs 4 Fixtures):**
+  Synwave automatically gauges the track's musical energy through pre-analysis across kick transient density, drum stem ratio, active temporal coverage, and instrumental intensity:
+  - **High-Energy Tracks:** Activates all 10 primary concert moving heads (4 along top overhead truss, 3 along left vertical tower, 3 along right vertical tower).
+  - **Smooth / Low-Energy Tracks:** Symmetrically activates 4 primary moving heads (inner pair flanking the iframe center at top, and middle fixtures on left and right vertical towers).
+  - Fixture mounting origins remain stationary and geometrically balanced across all viewport sizes.
+- **Section-Based Spotlight Activation (`verse`, `solo`, `inst`):**
+  Uses `mir-aidj/all-in-one` structural classification with direct stem inputs to segment songs into functional blocks. Primary coloured spotlights illuminate with smooth attack/release fades ($0.3\text{s}$) exclusively during sections labeled `verse`, `solo`, or `inst` (instrumental passages). Outside eligible sections, coloured spotlight beams remain cleanly off; kick transients outside eligible sections never reactivate coloured spotlights.
+- **Dedicated White Bottom Sky Searchlights:**
+  Two bottom corner searchlights operate independently outside the 10-primary count. They remain enabled continuously once playback begins, projecting upward into the arena sky and surging dynamically in glow (+1.8 to +2.8x) on kick transient beats without changing beam direction.
+- **Initial Loading State (All Spotlights Off):**
+  Merely loading or selecting a video leaves all spotlights completely dark (opacity 0.0), including both primary coloured fixtures and the white searchlights. Spotlights only activate once media playback begins and authoritatively enters an eligible section.
+- **Seamless In-Place YouTube Video Switching:**
+  Switch between any YouTube videos directly in the top navigation bar without refreshing the page or restarting the app. Immediately cleans up previous player instances, purges previous audio analysis, resets kick-event tracking, centers the iframe, and isolates lighting envelopes so no state leaks between songs.
 - **STEM Frequency Pre-Analysis & 360° Spotlight Choreography:**
-  Offline pre-analysis computes timestamped frequencies (in ms) for both the Instrument and Bass STEMs. Frequencies are linearly distributed across 360 degrees to direct spotlight pan/tilt trajectories.
-- **Unified Synchronized Spotlight Movement:**
-  All spotlights on the left side of the YouTube screen move in sync together in an elliptical cone sweep; all spotlights on the right side move in sync with opposite angles; all spotlights on the top side move in sync together.
+  Offline pre-analysis computes continuous timestamped frequencies for both the Instrument and Bass STEMs. Instrument frequency is linearly mapped to a 360° reference angle directing coordinated full-screen beam trajectories across 10 distinct path families.
 - **Continuous Bass Glow Factor ($0.0 \to 1.0$):**
   Spotlight glowing factor is continuously driven by the normalized Bass STEM frequency ($f_{\min} \to 0.0$, $f_{\max} \to 1.0$), ensuring organic, non-stepped beam luminance.
 - **Kick-Synced Coordinated Spotlight Scattering:**
-  Kick hits from the Demucs Kick STEM trigger coordinated random beam projections across the stage: Left spotlights synchronize together; Right spotlights mirror with opposite angles; Top spotlights synchronize together.
-- **Dual Bottom White Sky Spotlights with Kick Flares:**
-  Two bottom corner searchlights project strictly upward into the arena sky, governed by the $360^\circ$ frequency distribution and verses-only ON/OFF gate. Drum kicks trigger high-intensity white beam flares rather than angular scattering.
+  Kick hits from the Demucs Kick STEM trigger coordinated beam projections across the stage strictly during eligible sections: Left spotlights synchronize together; Right spotlights mirror with opposite angles; Top spotlights synchronize along the overhead truss.
+- **Isolated YouTube Iframe Kick Shake:**
+  Percussive drum kicks drive a distinct 2D screen shake **strictly isolated to the DOM YouTube stage video iframe element** (`#synwave-youtube-stage-screen`) via `style.transform`. The spotlight rig, Three.js canvas, and fixture origins remain completely steady.
 - **Stage Playlist Drawer & Instant Concert Loading:**
   Access your library of processed songs with the top-right `ListMusic` button or the `P` hotkey. Search by track title or artist, preview 16:9 thumbnails, and load any cached song into Synwave with sub-20ms instant startup.
 - **High-Definition 1K Stage Video Playback:**

@@ -186,6 +186,11 @@ export class AudioEngine {
     this.audioElement.pause();
   }
 
+  public stop(): void {
+    this.pause();
+    this.seek(0);
+  }
+
   public seek(seconds: number): void {
     if (isFinite(seconds)) {
       this.audioElement.currentTime = Math.max(0, Math.min(seconds, this.audioElement.duration || 0));

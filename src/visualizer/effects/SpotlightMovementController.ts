@@ -90,14 +90,14 @@ export class SpotlightMovementController {
    * Evaluates the active path selection based on musical context (verse vs solo vs calm).
    */
   public updatePathSelection(
-    sectionType: 'verse' | 'solo' | 'inactive',
+    sectionType: 'verse' | 'solo' | 'inst' | 'inactive',
     trackTimeSeconds: number,
     deltaSeconds: number
   ): void {
     if (deltaSeconds <= 0) return;
 
-    if (sectionType === 'solo') {
-      // Solos favor slow cinematic, wide horizontal, or broad arc-fan sweeps
+    if (sectionType === 'solo' || sectionType === 'inst') {
+      // Solos and instrumental sections favor slow cinematic, wide horizontal, or broad arc-fan sweeps
       const soloCycle = Math.floor(trackTimeSeconds / 18.0) % 3;
       const soloPaths: MovementPathFamily[] = ['slow-cinematic', 'arc-fan', 'wide-horizontal'];
       const desired = soloPaths[soloCycle];

@@ -109,6 +109,7 @@ export class VisualEngine {
   private quality: QualityPreset = 'high';
   private effectIntensity = 1.0;
   private isPlaying = false;
+  private hasPlaybackStarted = false;
 
   // Kick-Activated Screen Flash State (Pure Palette Colors + 1/2 Bar White Anchor)
   private currentFlashOpacity = 0;
@@ -147,7 +148,9 @@ export class VisualEngine {
 
   public setIsPlaying(playing: boolean): void {
     this.isPlaying = playing;
-    if (!playing) {
+    if (playing) {
+      this.hasPlaybackStarted = true;
+    } else {
       this.currentFlashOpacity = 0;
       this.currentHalfBarIndex = -1;
       this.kicksInCurrentHalfBar = 0;
@@ -160,6 +163,40 @@ export class VisualEngine {
         this.onWindowFlash(0, '#ffffff');
         this.hasDispatchedZeroFlash = true;
       }
+    }
+  }
+
+  public setHasPlaybackStarted(started: boolean): void {
+    this.hasPlaybackStarted = started;
+  }
+
+  /**
+   * Resets all stage visual state, lighting, envelopes, and palettes when loading a new video.
+   */
+  public resetStageState(): void {
+    this.isPlaying = false;
+    this.hasPlaybackStarted = false;
+    this.demucsStems = null;
+    this.trackAnalysis = null;
+    this.customSongPalette = null;
+    this.thumbnailFlashColors = null;
+    this.screenShakeImpulse = 0;
+    this.currentFlashOpacity = 0;
+    this.wasKickLastFrame = false;
+    this.prevKickStem = 0;
+    this.lastKickTimestamp = 0;
+    this.currentHalfBarIndex = -1;
+    this.kicksInCurrentHalfBar = 0;
+    if (this.onStageShake) {
+      this.onStageShake(0, 0);
+    }
+    if (this.onWindowFlash) {
+      this.onWindowFlash(0, '#ffffff');
+      this.hasDispatchedZeroFlash = true;
+    }
+    const stageLights = this.effects.find((e) => e.id === 'stage-lights') as StageLightsEffect | undefined;
+    if (stageLights) {
+      stageLights.resetPlaybackState();
     }
   }
 
@@ -343,6 +380,8 @@ export class VisualEngine {
       directorState: directorState || this.currentDirectorState || undefined,
       routingConfig: routingConfig || RoutingStore.getInstance().getConfig(),
       hasVideo: this.hasActiveVideo,
+      isPlaying: this.isPlaying,
+      hasPlaybackStarted: this.hasPlaybackStarted,
       demucsStems: this.demucsStems || undefined,
       spotlightAnalysis: this.demucsStems?.spotlightAnalysis,
     };

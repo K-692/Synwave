@@ -275,6 +275,93 @@ class SpotlightAnalyzer:
 
         return kicks
 
+    def compute_musical_energy(
+        self,
+        drums_mono: Optional[np.ndarray],
+        inst_mono: np.ndarray,
+        bass_mono: np.ndarray,
+        kick_events: List[Dict[str, Any]],
+        duration_sec: float,
+        sr: int = 44100,
+    ) -> Dict[str, Any]:
+        """
+        Dynamically estimates musical energy from song pre-analysis to select the symmetrical spotlight configuration:
+        - High Energy (10 primary spotlights): dance music, intense electronic, driving rock with frequent repeated beats,
+          strong rhythmic activity, high kick transient density, and intense instrumental passages.
+        - Smooth / Low Energy (4 primary spotlights): ambient, slow ballad, smooth acoustic, lower rhythmic activity.
+
+        Evaluates multi-feature acoustic characteristics (never solely overall loudness):
+        1. Kick and drum transient event density (events/sec)
+        2. Rhythmic onset frequency and drum energy ratio (drum RMS / total RMS)
+        3. Active drum coverage (percentage of song with active rhythmic drive)
+        4. Instrumental intensity & spectral activity
+        """
+        dur = max(1.0, float(duration_sec))
+        kick_density = len(kick_events) / dur
+
+        inst_rms = float(np.sqrt(np.mean(inst_mono ** 2) + 1e-9)) if len(inst_mono) > 0 else 0.0
+        bass_rms = float(np.sqrt(np.mean(bass_mono ** 2) + 1e-9)) if len(bass_mono) > 0 else 0.0
+
+        if drums_mono is not None and len(drums_mono) > 0:
+            drum_rms = float(np.sqrt(np.mean(drums_mono ** 2) + 1e-9))
+            # Compute active drum coverage in 250ms chunks
+            chunk_size = max(1, int(sr * 0.25))
+            num_chunks = len(drums_mono) // chunk_size
+            active_chunks = 0
+            if num_chunks > 0:
+                for c in range(num_chunks):
+                    chunk = drums_mono[c * chunk_size : (c + 1) * chunk_size]
+                    c_rms = np.sqrt(np.mean(chunk ** 2) + 1e-9)
+                    if c_rms > 0.035:
+                        active_chunks += 1
+                active_coverage = active_chunks / float(num_chunks)
+            else:
+                active_coverage = 1.0 if drum_rms > 0.035 else 0.0
+        else:
+            drum_rms = 0.0
+            active_coverage = 0.0
+
+        total_rms = inst_rms + bass_rms + drum_rms + 1e-6
+        drum_energy_ratio = drum_rms / total_rms
+
+        # Normalized feature scores in [0.0, 1.0]
+        kick_score = min(1.0, kick_density / 1.75)
+        drum_score = min(1.0, drum_energy_ratio / 0.32)
+        coverage_score = min(1.0, active_coverage / 0.55)
+        inst_score = min(1.0, inst_rms / 0.14)
+        bass_score = min(1.0, bass_rms / 0.16)
+
+        # Composite energy score combining rhythmic drive, event density, and instrumental activity
+        composite = (
+            kick_score * 0.35
+            + drum_score * 0.25
+            + coverage_score * 0.15
+            + inst_score * 0.15
+            + bass_score * 0.10
+        )
+
+        # Configurable classification threshold with hysteresis to prevent flicker:
+        # High energy: composite score >= 0.46 OR kick density >= 0.95/s with drum ratio >= 0.18 OR kick density >= 1.25/s
+        is_high = (
+            composite >= 0.46
+            or (kick_density >= 0.95 and drum_energy_ratio >= 0.18)
+            or (kick_density >= 1.25)
+        )
+
+        level: str = "high" if is_high else "smooth"
+        spotlight_count: int = 10 if is_high else 4
+
+        return {
+            "score": round(float(composite), 3),
+            "level": level,
+            "spotlightCount": spotlight_count,
+            "kickDensityPerSec": round(float(kick_density), 2),
+            "drumEnergyRatio": round(float(drum_energy_ratio), 3),
+            "activeDrumCoverage": round(float(active_coverage), 3),
+            "instrumentalIntensity": round(float(inst_rms), 4),
+            "spectralActivity": round(float(bass_rms), 4),
+        }
+
     def classify_song_segments(
         self,
         audio_path: Optional[Union[str, Path]] = None,
@@ -286,9 +373,8 @@ class SpotlightAnalyzer:
         Uses mir-aidj/all-in-one (via allin1_infer) to analyze music structure and segments.
         Classifies functional sections:
         - Verses ('verse')
-        - Instrumental Solos ('instrumental_solo')
-        - Lead-Instrument Solos ('lead_instrument_solo')
-        - Vocal Solos ('vocal_solo')
+        - Instrumental Solos ('solo')
+        - Instrumental Sections ('inst')
         - Inactive sections ('chorus', 'intro', 'outro', 'break', 'bridge', etc.)
 
         When stems_dict is supplied, direct stems input is utilized to bypass redundant CPU Demucs separation.
@@ -345,7 +431,7 @@ class SpotlightAnalyzer:
             if result is not None and hasattr(result, "segments"):
                 for s in result.segments:
                     raw_segments.append({
-                        "label": str(s.label).lower().strip(),
+                        "label": str(s.label).strip(),
                         "start": round(float(s.start), 3),
                         "end": round(float(s.end), 3),
                         "startMs": int(round(s.start * 1000.0)),
@@ -359,7 +445,8 @@ class SpotlightAnalyzer:
 
         if raw_segments:
             for seg in raw_segments:
-                lbl = seg["label"]
+                raw_lbl = str(seg.get("label", "")).strip()
+                norm_lbl = raw_lbl.lower().replace("-", " ").replace("_", " ").strip()
                 start_sec = seg["start"]
                 end_sec = seg["end"]
                 dur = max(0.1, end_sec - start_sec)
@@ -394,12 +481,12 @@ class SpotlightAnalyzer:
                 confidence = 0.85
                 is_eligible = False
 
-                if lbl == "verse":
+                if norm_lbl == "verse" or norm_lbl.startswith("verse"):
                     classification = "verse"
                     category = "verse"
                     confidence = 0.95
                     is_eligible = True
-                elif lbl == "solo":
+                elif norm_lbl == "solo" or norm_lbl.startswith("solo"):
                     if inst_ratio > 0.40 and inst_energy > 0.15:
                         classification = "lead_instrument_solo"
                     elif vocal_ratio > 0.45:
@@ -409,19 +496,13 @@ class SpotlightAnalyzer:
                     category = "solo"
                     confidence = 0.92
                     is_eligible = True
-                elif lbl == "inst":
-                    # Instrumental passage: if instrument energy is prominent and sustained, classify as instrumental solo
-                    if inst_energy > 0.25 and inst_ratio > 0.35:
-                        classification = "instrumental_solo"
-                        category = "solo"
-                        confidence = 0.80
-                        is_eligible = True
-                    else:
-                        classification = "inactive"
-                        category = "inactive"
-                        confidence = 0.80
-                        is_eligible = False
-                elif lbl == "break":
+                elif norm_lbl == "inst" or norm_lbl.startswith("inst") or "instrumental" in norm_lbl:
+                    # Explicit handling for 'inst' (instrumental) sections
+                    classification = "inst"
+                    category = "inst"
+                    confidence = 0.92
+                    is_eligible = True
+                elif norm_lbl == "break" or norm_lbl.startswith("break"):
                     # Break passage: check if it's a vocal solo or instrumental lead break
                     if vocal_ratio > 0.55 and vocal_energy > 0.20:
                         classification = "vocal_solo"
@@ -440,13 +521,13 @@ class SpotlightAnalyzer:
                         is_eligible = False
                 else:
                     # Chorus, Intro, Outro, Bridge, Start, End
-                    classification = lbl
+                    classification = raw_lbl
                     category = "inactive"
                     confidence = 0.90
                     is_eligible = False
 
                 classified_segments.append({
-                    "label": lbl,
+                    "label": raw_lbl,
                     "classification": classification,
                     "category": category,
                     "confidence": round(confidence, 2),
@@ -458,7 +539,7 @@ class SpotlightAnalyzer:
                 })
         else:
             # Fallback heuristic if all-in-one is not available or returned no segments
-            print("[SpotlightAnalyzer] Using acoustic stem energy distribution for verse/solo detection fallback.")
+            print("[SpotlightAnalyzer] Using acoustic stem energy distribution for verse/solo/inst detection fallback.")
             if stems_dict and track_duration > 0:
                 mono_inst = self._to_mono(stems_dict.get('other', np.zeros(100)))
                 mono_voc = self._to_mono(stems_dict.get('vocals', np.zeros(100)))
@@ -473,14 +554,16 @@ class SpotlightAnalyzer:
                     i_rms = float(np.sqrt(np.mean(sub_inst ** 2) + 1e-9)) if len(sub_inst) > 0 else 0.0
 
                     is_verse = v_rms > 0.08 and i_rms > 0.05
-                    is_solo = not is_verse and i_rms > 0.20
+                    is_solo = not is_verse and i_rms > 0.22 and v_rms <= 0.08
+                    is_inst = not is_verse and not is_solo and i_rms > 0.16
 
-                    if is_verse or is_solo:
+                    if is_verse or is_solo or is_inst:
+                        cat = "verse" if is_verse else ("solo" if is_solo else "inst")
                         classified_segments.append({
-                            "label": "verse" if is_verse else "solo",
-                            "classification": "verse" if is_verse else "instrumental_solo",
-                            "category": "verse" if is_verse else "solo",
-                            "confidence": 0.70,
+                            "label": cat,
+                            "classification": cat,
+                            "category": cat,
+                            "confidence": 0.72,
                             "isEligible": True,
                             "start": s_sec,
                             "end": e_sec,
@@ -597,12 +680,12 @@ class SpotlightAnalyzer:
         glowing_factors = [round(float(g), 4) for g in norm_bass]
 
         # 7. Spotlight Activation Policy:
-        # Eligible spotlight timeline = Union of confidently identified verse and solo segments.
+        # Eligible spotlight timeline = Union of verse, solo, and instrumental (inst) segments.
         # Merge overlapping/adjacent intervals (gap <= 0.35s) to avoid flicker.
         raw_eligible = [
             (s["start"], s["end"], s.get("label", ""), s.get("category", "verse"), s.get("confidence", 0.9))
             for s in classified_segments
-            if s.get("isEligible", False) or s.get("category") in ["verse", "solo"]
+            if s.get("isEligible", False) or s.get("category") in ["verse", "solo", "inst"]
         ]
 
         # Interval merging
@@ -616,6 +699,9 @@ class SpotlightAnalyzer:
                     # Merge touching/overlapping intervals
                     cur_end = max(cur_end, s_end)
                     cur_conf = max(cur_conf, s_conf)
+                    if s_cat in ["solo", "inst"] and cur_cat == "verse":
+                        cur_cat = s_cat
+                        cur_label = s_label
                 else:
                     merged_intervals.append({
                         "start": round(cur_start, 3),
@@ -658,8 +744,19 @@ class SpotlightAnalyzer:
             else []
         )
 
+        # 9. Multi-feature Musical Energy Classification (High Energy: 10 spotlights, Smooth: 4 spotlights)
+        musical_energy = self.compute_musical_energy(
+            drums_mono=drums_mono,
+            inst_mono=inst_mono,
+            bass_mono=bass_mono,
+            kick_events=kick_events,
+            duration_sec=duration_sec,
+            sr=sr,
+        )
+
         verse_segments = [s for s in classified_segments if s.get("category") == "verse"]
         solo_segments = [s for s in classified_segments if s.get("category") == "solo"]
+        inst_segments = [s for s in classified_segments if s.get("category") == "inst"]
 
         return {
             "fps": self.target_fps,
@@ -681,9 +778,13 @@ class SpotlightAnalyzer:
             "glowingFactors": glowing_factors,
             "spotlightsActive": spotlights_active,
             "kickEvents": kick_events,
+            "energyLevel": musical_energy["level"],
+            "spotlightCount": musical_energy["spotlightCount"],
+            "musicalEnergy": musical_energy,
             "segments": classified_segments,
             "verseSegments": verse_segments,
             "soloSegments": solo_segments,
+            "instSegments": inst_segments,
             "eligibleIntervals": merged_intervals,
         }
 
@@ -835,6 +936,8 @@ def main():
     print(f"Segments Detected: {len(result['segments'])} total")
     print(f"Verse Segments:    {len(result['verseSegments'])}")
     print(f"Solo Segments:     {len(result['soloSegments'])}")
+    print(f"Inst Segments:     {len(result.get('instSegments', []))}")
+    print(f"Musical Energy:    {result.get('energyLevel', 'smooth').upper()} (Score: {result.get('musicalEnergy', {}).get('score')}) -> {result.get('spotlightCount', 4)} Primary Spotlights")
     print(f"Eligible Timeline: {len(result['eligibleIntervals'])} merged intervals")
     active_pct = round(sum(result['spotlightsActive']) / len(result['spotlightsActive']) * 100, 1) if result['spotlightsActive'] else 0
     print(f"Spotlights Active: {active_pct}% of track timeline")

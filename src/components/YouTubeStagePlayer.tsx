@@ -158,12 +158,9 @@ export const YouTubeStagePlayer: React.FC<YouTubeStagePlayerProps> = ({
         playerRef.current = null;
       }
 
-      // Ensure target element exists in DOM before initializing (recreates if destroyed)
-      if (cropContainerRef.current && !document.getElementById(containerId)) {
-        const div = document.createElement('div');
-        div.id = containerId;
-        div.className = 'yt-iframe-target';
-        cropContainerRef.current.appendChild(div);
+      // Ensure target element is cleanly recreated in DOM before initializing new video
+      if (cropContainerRef.current) {
+        cropContainerRef.current.innerHTML = `<div id="${containerId}" class="yt-iframe-target"></div>`;
       }
 
       try {

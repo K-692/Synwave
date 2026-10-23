@@ -83,9 +83,9 @@ export class StageLightsEffect extends BaseEffect {
   readonly cost = 'medium';
 
   // ── Spotlight configuration ─────────────────────────────────────────────────
-  private targetSpotlightCount = 8;
+  private targetSpotlightCount = 10;
   private minSpotlightCount = 1;
-  private maxSpotlightCount = 8;
+  private maxSpotlightCount = 10;
   private autoBpmSpawning = true;
   private customSpotlightColors: THREE.Color[] = [];
   private currentDimensions: StageDimensions = calculateStageDimensions(
@@ -106,7 +106,8 @@ export class StageLightsEffect extends BaseEffect {
   private isSpotlightsTurnedOn: boolean = false;
   private currentMovementAngle: number = 0; // radians
   private currentGlowingFactor: number = 0.5; // 0.0 to 1.0 continuous
-  private smoothTurnOnFactor: number = 0; // 0.0 to 1.0 smooth fade
+  private smoothTurnOnFactor: number = 0; // 0.0 to 1.0 smooth fade for primary coloured lights
+  private whitePlaybackFactor: number = 0; // 0.0 before playback, 1.0 once playback starts
   private lastTrackTimeSeconds: number = -1.0;
 
   // ── White spotlight kick-glow impulse ───────────────────────────────────────
@@ -118,7 +119,7 @@ export class StageLightsEffect extends BaseEffect {
   // ─────────────────────────────────────────────────────────────────────────────
 
   public setSpotlightCount(count: number): void {
-    this.targetSpotlightCount = Math.max(1, Math.min(8, Math.round(count)));
+    this.targetSpotlightCount = Math.max(1, Math.min(10, Math.round(count)));
   }
 
   public getSpotlightCount(): number {
@@ -130,8 +131,8 @@ export class StageLightsEffect extends BaseEffect {
   }
 
   public setSpotlightLimits(min: number, max: number): void {
-    this.minSpotlightCount = Math.max(1, Math.min(8, Math.round(min)));
-    this.maxSpotlightCount = Math.max(this.minSpotlightCount, Math.min(8, Math.round(max)));
+    this.minSpotlightCount = Math.max(1, Math.min(10, Math.round(min)));
+    this.maxSpotlightCount = Math.max(this.minSpotlightCount, Math.min(10, Math.round(max)));
   }
 
   public setAutoBpmSpawning(enabled: boolean): void {
@@ -144,13 +145,53 @@ export class StageLightsEffect extends BaseEffect {
     }
   }
 
+  /**
+   * Complete reset of lighting playback state when switching videos or returning to initial state.
+   */
+  public resetPlaybackState(): void {
+    this.isSpotlightsTurnedOn = false;
+    this.smoothTurnOnFactor = 0.0;
+    this.whitePlaybackFactor = 0.0;
+    this.currentMovementAngle = 0.0;
+    this.currentGlowingFactor = 0.0;
+    this.whiteKickIntensity = 1.0;
+    this.wasKickTriggered = false;
+    this.lastTrackTimeSeconds = -1.0;
+    this.turnOffAllLights();
+    for (const fix of this.fixtures) {
+      fix.activationFactor = 0.0;
+    }
+  }
+
+  /**
+   * Symmetrical fixture index selection based on musical energy / spotlight count.
+   * - High Energy (10 lights): 4 Top (0, 1, 2, 3), 3 Left (4, 5, 6), 3 Right (7, 8, 9).
+   * - Smooth / Low Energy (4 lights): 2 Top (inner pair 1 & 2 around iframe center), 1 Left (5), 1 Right (8).
+   */
+  public static getSymmetricalIndices(count: number): number[] {
+    if (count >= 10) {
+      return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    }
+    if (count >= 8) {
+      return [0, 1, 2, 3, 4, 6, 7, 9];
+    }
+    if (count >= 6) {
+      return [1, 2, 4, 6, 7, 9];
+    }
+    // Default smooth / low-energy configuration: 4 primary spotlights
+    return [1, 2, 5, 8];
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Symmetrical Spotlight Mount Layout (Fixed Origins)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Generates fixed, stationary mounting coordinates for the 8 concert fixtures
-   * surrounding the YouTube stage screen (Top truss, Left vertical tower, Right vertical tower).
+   * Generates fixed, stationary mounting coordinates for the 10 concert fixtures
+   * positioned symmetrically around the YouTube iframe:
+   * - Top: 4 spotlights along the overhead truss
+   * - Left: 3 spotlights along the left vertical tower (upper, middle, lower)
+   * - Right: 3 spotlights along the right vertical tower (upper, middle, lower)
    */
   public static getStationarySpotlightLayout(
     dims?: StageDimensions
@@ -168,11 +209,11 @@ export class StageLightsEffect extends BaseEffect {
     const zPos    = d.screenZ + 0.5;
     const leftX   = d.leftX - 1.55;
     const rightX  = d.rightX + 1.55;
-    const upperY  = d.screenCenterY + 0.55 * halfH;
-    const lowerY  = d.screenCenterY - 0.35 * halfH;
+    const upperY  = d.screenCenterY + 0.65 * halfH;
+    const middleY = d.screenCenterY;
+    const lowerY  = d.screenCenterY - 0.65 * halfH;
 
-    // 8 fixed mounting locations with individual geometric offsets
-    // Top fixtures (0, 1, 2, 3)
+    // Top fixtures (0, 1, 2, 3) - 4 spotlights along overhead truss
     layout.push(
       { pos: new THREE.Vector3(-0.65 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(-3.0, 0, 0) },
       { pos: new THREE.Vector3(-0.22 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(-1.0, 0, 0) },
@@ -180,16 +221,18 @@ export class StageLightsEffect extends BaseEffect {
       { pos: new THREE.Vector3(0.65 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(3.0, 0, 0) }
     );
 
-    // Left fixtures (4, 5)
+    // Left fixtures (4, 5, 6) - 3 spotlights along left vertical tower
     layout.push(
-      { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, 1.5, 0) },
-      { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, -1.5, 0) }
+      { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, 2.0, 0) },
+      { pos: new THREE.Vector3(leftX, middleY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, 0.0, 0) },
+      { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, -2.0, 0) }
     );
 
-    // Right fixtures (6, 7)
+    // Right fixtures (7, 8, 9) - 3 spotlights along right vertical tower (symmetrically mirrored)
     layout.push(
-      { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, 1.5, 0) },
-      { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, -1.5, 0) }
+      { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, 2.0, 0) },
+      { pos: new THREE.Vector3(rightX, middleY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, 0.0, 0) },
+      { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, -2.0, 0) }
     );
 
     return layout;
@@ -480,35 +523,50 @@ export class StageLightsEffect extends BaseEffect {
       ? this.customSpotlightColors
       : [primaryCol, secondaryCol, accentCol];
 
-    // ── Auto BPM Spotlight Count Mapping (Dynamic Spawning) ─────────────────────
-    if (routingConfig?.minSpotlightCount !== undefined) this.minSpotlightCount = routingConfig.minSpotlightCount;
-    if (routingConfig?.maxSpotlightCount !== undefined) this.maxSpotlightCount = routingConfig.maxSpotlightCount;
-    if (routingConfig?.autoBpmSpotlightSpawning !== undefined) this.autoBpmSpawning = routingConfig.autoBpmSpotlightSpawning;
+    // ── Pre-Playback Initial Gate: All Spotlights Start Completely OFF ─────────
+    if (!context.hasPlaybackStarted) {
+      this.turnOffAllLights();
+      this.smoothTurnOnFactor = 0.0;
+      this.whitePlaybackFactor = 0.0;
+      return;
+    }
 
-    if (this.autoBpmSpawning && features.estimatedBpm && features.estimatedBpm > 0 && features.bpmSource !== 'unavailable') {
-      const mappedCount = mapBpmToSpotlightCount(
-        features.estimatedBpm,
-        this.minSpotlightCount,
-        this.maxSpotlightCount
-      );
-      if (mappedCount !== this.targetSpotlightCount) {
-        this.targetSpotlightCount = mappedCount;
-      }
+    // ── Update White Spotlight Playback Readiness ──────────────────────────────
+    if (deltaSeconds > 0) {
+      this.whitePlaybackFactor = Math.min(1.0, this.whitePlaybackFactor + deltaSeconds * 3.5);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 1. PRE-ANALYZED FREQUENCY, GLOW & VERSE/SOLO SEGMENT EVALUATION
+    // 1. PRE-ANALYZED FREQUENCY, GLOW & VERSE/SOLO/INST SEGMENT EVALUATION
     // ═══════════════════════════════════════════════════════════════════════════
     const spotlightAnalysis = context.spotlightAnalysis || context.demucsStems?.spotlightAnalysis;
     let targetThetaRad = 0;
     let targetGlowFactor = 0.5;
     let isTurnedOn = false;
-    let activeSectionType: 'verse' | 'solo' | 'inactive' = 'inactive';
+    let activeSectionType: 'verse' | 'solo' | 'inst' | 'inactive' = 'inactive';
     let currentKickTarget: {
       left: [number, number, number];
       right: [number, number, number];
       top: [number, number, number];
     } | undefined = undefined;
+
+    // Dynamically select spotlight count based on song's musical energy classification
+    if (spotlightAnalysis) {
+      const energyCount = spotlightAnalysis.spotlightCount ??
+        spotlightAnalysis.musicalEnergy?.spotlightCount ??
+        (spotlightAnalysis.energyLevel === 'high' ? 10 : (spotlightAnalysis.energyLevel ? 4 : undefined));
+      if (typeof energyCount === 'number' && (energyCount === 10 || energyCount === 4)) {
+        this.targetSpotlightCount = energyCount;
+      }
+    } else if (this.autoBpmSpawning && features.estimatedBpm && features.estimatedBpm > 0 && features.bpmSource !== 'unavailable') {
+      // Dynamic fallback mapping if precomputed energy analysis is unavailable
+      const mappedCount = mapBpmToSpotlightCount(
+        features.estimatedBpm,
+        this.minSpotlightCount,
+        this.maxSpotlightCount
+      );
+      this.targetSpotlightCount = mappedCount >= 8 ? 10 : 4;
+    }
 
     if (spotlightAnalysis && spotlightAnalysis.frameCount > 0 && spotlightAnalysis.timestampsMs?.length > 0) {
       const fps = spotlightAnalysis.fps || 25;
@@ -531,18 +589,40 @@ export class StageLightsEffect extends BaseEffect {
       const glowB = spotlightAnalysis.glowingFactors[nextIdx] ?? glowA;
       targetGlowFactor = Math.max(0.0, Math.min(1.0, glowA + (glowB - glowA) * frac));
 
-      // Spotlight Activation Policy: Union of confidently identified verse and solo segments
+      // Spotlight Activation Policy: Eligible sections are verse, solo, and inst segments
       if (spotlightAnalysis.eligibleIntervals && spotlightAnalysis.eligibleIntervals.length > 0) {
         const matchingInterval = spotlightAnalysis.eligibleIntervals.find(
           (iv) => tSec >= iv.start && tSec <= iv.end
         );
         if (matchingInterval) {
           isTurnedOn = true;
-          activeSectionType = matchingInterval.category === 'solo' ? 'solo' : 'verse';
+          const cat = (matchingInterval.category || matchingInterval.label || '').trim().toLowerCase();
+          if (cat.includes('solo')) {
+            activeSectionType = 'solo';
+          } else if (cat.includes('inst')) {
+            activeSectionType = 'inst';
+          } else {
+            activeSectionType = 'verse';
+          }
         }
-      } else if (spotlightAnalysis.verseSegments && spotlightAnalysis.verseSegments.length > 0) {
-        isTurnedOn = spotlightAnalysis.verseSegments.some((v) => tSec >= v.start && tSec <= v.end);
-        if (isTurnedOn) activeSectionType = 'verse';
+      } else if (
+        (spotlightAnalysis.verseSegments && spotlightAnalysis.verseSegments.length > 0) ||
+        (spotlightAnalysis.soloSegments && spotlightAnalysis.soloSegments.length > 0) ||
+        (spotlightAnalysis.instSegments && spotlightAnalysis.instSegments.length > 0)
+      ) {
+        const inVerse = spotlightAnalysis.verseSegments?.some((v) => tSec >= v.start && tSec <= v.end);
+        const inSolo = spotlightAnalysis.soloSegments?.some((s) => tSec >= s.start && tSec <= s.end);
+        const inInst = spotlightAnalysis.instSegments?.some((i) => tSec >= i.start && tSec <= i.end);
+        if (inVerse) {
+          isTurnedOn = true;
+          activeSectionType = 'verse';
+        } else if (inSolo) {
+          isTurnedOn = true;
+          activeSectionType = 'solo';
+        } else if (inInst) {
+          isTurnedOn = true;
+          activeSectionType = 'inst';
+        }
       } else if (spotlightAnalysis.spotlightsActive && spotlightAnalysis.spotlightsActive.length > 0) {
         isTurnedOn = spotlightAnalysis.spotlightsActive[frameIdx] ?? false;
         if (isTurnedOn) activeSectionType = 'verse';
@@ -570,7 +650,7 @@ export class StageLightsEffect extends BaseEffect {
 
     this.isSpotlightsTurnedOn = isTurnedOn;
 
-    // ── Kick Transient Response (Active Strictly During Verses & Solos) ────────
+    // ── Kick Transient Response (Active Strictly During Verses, Solos & Inst) ─
     const kickPower = Math.max(
       features.stems?.kick ?? 0,
       features.isKick ? (features.kickIntensity || 1.0) : 0
@@ -578,12 +658,15 @@ export class StageLightsEffect extends BaseEffect {
     const isKickOnset = (features.isKick || kickPower > 0.36) && !this.wasKickTriggered;
     this.wasKickTriggered = features.isKick || kickPower > 0.36;
 
-    if (isKickOnset && deltaSeconds > 0 && isTurnedOn) {
-      // 1. Main coloured spotlights jump to new direction target
-      this.movementController.triggerKickDirectionChange(tSec, kickPower, currentKickTarget);
-
+    if (isKickOnset && deltaSeconds > 0) {
+      if (isTurnedOn) {
+        // 1. Main coloured spotlights jump to new direction target strictly during eligible sections
+        this.movementController.triggerKickDirectionChange(tSec, kickPower, currentKickTarget);
+      }
       // 2. Two white bottom spotlights surge in glow intensity ONLY (NEVER change beam direction)
-      this.whiteKickIntensity = Math.min(2.8, 1.0 + 1.8 * Math.max(kickPower, 0.65));
+      if (this.whitePlaybackFactor > 0.1) {
+        this.whiteKickIntensity = Math.min(2.8, 1.0 + 1.8 * Math.max(kickPower, 0.65));
+      }
     }
 
     // ── Dynamic Interpolation & Time Progression (Zero Drift When Paused) ──────
@@ -594,7 +677,7 @@ export class StageLightsEffect extends BaseEffect {
       this.currentMovementAngle += (targetThetaRad - this.currentMovementAngle) * Math.min(1.0, deltaSeconds * 12.0);
       this.currentGlowingFactor += (targetGlowFactor - this.currentGlowingFactor) * Math.min(1.0, deltaSeconds * 14.0);
 
-      // Smooth attack/release for verse/solo spotlight activation (prevents flicker)
+      // Smooth attack/release for verse/solo/inst spotlight activation (prevents flicker)
       if (isTurnedOn) {
         this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 6.5);
       } else {
@@ -608,7 +691,7 @@ export class StageLightsEffect extends BaseEffect {
     // Explicit continuous glow factor blending
     const baseGlow = 0.15;
     const continuousBassGlow = this.currentGlowingFactor * 0.85;
-    const effectiveGlow = Math.min(1.0, (baseGlow + continuousBassGlow) * this.smoothTurnOnFactor);
+    const continuousGlow = Math.min(1.0, baseGlow + continuousBassGlow);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 2. COORDINATED FULL-SCREEN SPOTLIGHT MOVEMENT EXECUTION
@@ -619,15 +702,18 @@ export class StageLightsEffect extends BaseEffect {
       this.currentDimensions
     );
 
-    // Update 8 Stationary Moving Heads (Top, Left, Right)
+    // Symmetrical fixture slot selection (10 for high energy, 4 for smooth/low energy)
+    const activeSlots = StageLightsEffect.getSymmetricalIndices(this.targetSpotlightCount);
+
+    // Update 10 Stationary Moving Heads (Top, Left, Right)
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
-      const isSlotActive = i < this.targetSpotlightCount;
+      const isSlotActive = activeSlots.includes(i);
 
       // Architectural Rule: Fixture origins stay completely stationary at fixed mounting slots!
       fix.group.position.copy(fix.basePos);
 
-      // Smooth activation factor lerp for dynamic BPM spotlight spawning
+      // Smooth activation factor lerp for dynamic energy spotlight spawning
       if (isSlotActive) {
         if (deltaSeconds > 0) {
           fix.activationFactor = Math.min(1.0, fix.activationFactor + deltaSeconds * 4.0);
@@ -645,7 +731,7 @@ export class StageLightsEffect extends BaseEffect {
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
 
-      // Spotlights turn OFF outside verses & solos or when slot despawned
+      // Spotlights turn OFF outside eligible sections (verse, solo, inst) or when slot despawned
       if (fix.activationFactor <= 0.001 || this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
@@ -683,12 +769,12 @@ export class StageLightsEffect extends BaseEffect {
       }
       fix.group.lookAt(fix.currentTarget);
 
-      // Apply color and continuous bass-frequency-driven glow
+      // Apply color and continuous bass-frequency-driven glow modulated by section activation
       const lightCol = colorPaletteArray[i % colorPaletteArray.length];
       lensMat.color.copy(lightCol);
       coneMat.color.copy(lightCol);
 
-      const combinedIntensity = effectiveGlow * fix.activationFactor;
+      const combinedIntensity = continuousGlow * fix.activationFactor * this.smoothTurnOnFactor;
       lensMat.opacity = Math.min(0.98, 0.88 * maxBri * combinedIntensity);
       coneMat.opacity = Math.min(0.38, 0.22 * maxBri * combinedIntensity);
     }
@@ -696,6 +782,7 @@ export class StageLightsEffect extends BaseEffect {
     // ═══════════════════════════════════════════════════════════════════════════
     // 3. TWO WHITE BOTTOM SPOTLIGHTS (Sky Searchlights & Kick Glow Accent)
     // ═══════════════════════════════════════════════════════════════════════════
+    // White spotlights remain enabled throughout playback once started, even outside verses!
     for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
       const spot = this.whiteSkySpotlights[i];
       const isLeft = spot.corner === 'left';
@@ -706,8 +793,8 @@ export class StageLightsEffect extends BaseEffect {
       spot.fixedBaseMesh.position.copy(spot.basePos);
       spot.headGroup.position.copy(spot.basePos);
 
-      // Turn OFF when outside verses & solos
-      if (this.smoothTurnOnFactor <= 0.001) {
+      // Turn OFF if playback has not started
+      if (this.whitePlaybackFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
         continue;
@@ -725,8 +812,8 @@ export class StageLightsEffect extends BaseEffect {
       }
       spot.headGroup.lookAt(spot.currentTarget);
 
-      // Kick Transient Glow Accent: Kick sharply increases white spotlight glow!
-      const whiteGlow = Math.min(1.0, effectiveGlow * this.whiteKickIntensity);
+      // Continuous Bass-driven glow + sharp kick transient impulse
+      const whiteGlow = Math.min(1.0, continuousGlow * this.whiteKickIntensity) * this.whitePlaybackFactor;
 
       lensMat.opacity = Math.min(1.0, 0.92 * maxBri * whiteGlow);
       coneMat.opacity = Math.min(0.85, 0.28 * maxBri * whiteGlow);
@@ -740,10 +827,10 @@ export class StageLightsEffect extends BaseEffect {
     // 4. WASH LIGHTS (Dynamic Stage Ambient Lighting)
     // ═══════════════════════════════════════════════════════════════════════════
     this.washLight1.color.copy(primaryCol);
-    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * effectiveGlow) * maxBri);
+    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * continuousGlow) * maxBri) * this.whitePlaybackFactor;
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * effectiveGlow) * maxBri);
+    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * continuousGlow) * maxBri) * this.whitePlaybackFactor;
   }
 
   private turnOffAllLights(): void {

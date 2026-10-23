@@ -1671,13 +1671,92 @@ Integrated two dedicated white searchlight fixtures mounted at the lower stage c
    - On media seek ($|\Delta t| > 0.40\text{s}$), immediately resets active impulses and samples the exact precomputed state without replaying stale kick bursts.
    - On pause (`deltaSeconds === 0`), freezes beam positions and glow in place with zero drift.
 
+### 7.4 Phase 41: Dynamic Symmetrical Spotlight Population, Section Activation (`verse`, `solo`, `inst`), and Seamless YouTube Video Switching
+
+#### 1. Seamless In-Place YouTube Video Switching Architecture
+Previous implementations required refreshing or reloading the webpage to switch between YouTube videos. Phase 41 establishes an in-place switching lifecycle:
+- **Floating Input Accessibility:** The top navigation bar input retains focus tracking (`isFocused`), preventing auto-hide while pasting or editing URLs. A quick-clear button (`<X size={13} />`) allows one-click URL purging.
+- **Atomic Engine & Visual State Teardown:**
+  When a new YouTube URL is submitted, `handleYouTubeUrlSubmit` initiates an immediate reset:
+  - Audio playback halts via `audioEngine.pause()` and `audioEngine.stop()`, clearing `demucsStems` and `trackAnalysis`.
+  - Visual stage state is fully purged via `visualEngine.resetStageState()`: clears active stems, resets screen shake impulse, clears blinder opacities, dispatches `onStageShake(0, 0)` to center the YouTube iframe, and resets all stage lights via `stageLights.resetPlaybackState()`.
+  - Gating flags `isPlaying` and `hasPlaybackStarted` are immediately set to `false`, guaranteeing zero residual lighting bleed or old kick transients.
+- **Iframe Container Regeneration (`YouTubeStagePlayer.tsx`):**
+  To prevent memory leaks, lingering event listeners, duplicate API instances, or audio bleed, `YouTubeStagePlayer` destroys the existing `YT.Player` instance and recreates a fresh target `<div id="synwave-yt-iframe-player" class="yt-iframe-target"></div>` within `cropContainerRef.current` whenever `videoId` changes.
+- **Asynchronous Race Protection:**
+  `activePipelineTrackIdRef` ensures that rapid successive URL submissions immediately invalidate in-flight extraction/separation promises, preventing stale data from overwriting newly selected videos.
+
+#### 2. Dynamic Symmetrical Spotlight Population (10 vs 4 Fixtures)
+To reflect musical energy without altering the established, stationary fixture origins or full-screen movement paths, Synwave dynamically controls the active fixture count based on multi-feature acoustic pre-analysis:
+- **Physical Fixture Geometry (10 Primary Fixtures + 2 Dedicated White Sky Searchlights):**
+  - **Top Overhead Truss (4 Fixtures):** Mounted at $Y = \text{topY} + 1.25, Z = \text{screenZ} + 0.5$, symmetrically positioned at $X \in \{-0.65 W, -0.22 W, +0.22 W, +0.65 W\}$ (Indices `[0, 1, 2, 3]`).
+  - **Left Vertical Tower (3 Fixtures):** Mounted at $X = \text{leftX} - 1.55$, positioned vertically at Upper ($Y_{\text{center}} + 0.65 H$), Middle ($Y_{\text{center}}$), and Lower ($Y_{\text{center}} - 0.65 H$) (Indices `[4, 5, 6]`).
+  - **Right Vertical Tower (3 Fixtures):** Mounted symmetrically at $X = \text{rightX} + 1.55$, positioned vertically at Upper ($Y_{\text{center}} + 0.65 H$), Middle ($Y_{\text{center}}$), and Lower ($Y_{\text{center}} - 0.65 H$) (Indices `[7, 8, 9]`).
+  - **Dedicated White Bottom Spotlights (2 Fixtures):** Kept outside the 10-primary count at bottom-left and bottom-right corners.
+- **Symmetrical Subset Selection (`StageLightsEffect.getSymmetricalIndices`):**
+  - **High-Energy Tracks (10 Primary Spotlights):** Enables all 10 fixtures (`[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`).
+    - Top: 4 fixtures (full overhead truss span).
+    - Left: 3 fixtures (full vertical tower span).
+    - Right: 3 fixtures (full vertical tower span).
+  - **Smooth / Low-Energy Tracks (4 Primary Spotlights):** Symmetrically enables exactly 4 fixtures (`[1, 2, 5, 8]`):
+    - Top: Inner pair (indices `1` and `2`, flanking the center of the YouTube iframe at $\pm 0.22 W$).
+    - Left: Middle fixture (index `5`, centered at $Y_{\text{center}}$).
+    - Right: Middle fixture (index `8`, centered at $Y_{\text{center}}$).
+  - **Stationary Mounting Invariant:** Origins never translate; inactive fixtures fade their beam and lens opacity to 0 smoothly via `activationFactor`.
+- **Acoustic Energy Pre-Analysis & Classification Formulation:**
+  Unlike naive loudness meters, Synwave classifies musical energy through a robust multi-feature acoustic model evaluated across Demucs neural stems:
+  1. **Kick & Drum Transient Density ($D_{\text{kick}}$):** $D_{\text{kick}} = \frac{N_{\text{kicks}}}{\max(1.0, T_{\text{duration}})}$ (events/sec).
+  2. **Drum Stem Energy Ratio ($R_{\text{drum}}$):** $R_{\text{drum}} = \frac{\text{RMS}_{\text{drums}}}{\text{RMS}_{\text{total}} + 10^{-6}}$.
+  3. **Active Drum Temporal Coverage ($C_{\text{active}}$):** Fraction of 250ms audio blocks where $\text{RMS}_{\text{drums}} > 0.035$.
+  4. **Instrumental Intensity ($I_{\text{rms}}$) & Bass Activity ($B_{\text{rms}}$).**
+  
+  **Composite Energy Score ($S$):**
+  $$S = 0.35 \cdot \min\left(1.0, \frac{D_{\text{kick}}}{1.75}\right) + 0.25 \cdot \min\left(1.0, \frac{R_{\text{drum}}}{0.32}\right) + 0.15 \cdot \min\left(1.0, \frac{C_{\text{active}}}{0.55}\right) + 0.15 \cdot \min\left(1.0, \frac{I_{\text{rms}}}{0.14}\right) + 0.10 \cdot \min\left(1.0, \frac{B_{\text{rms}}}{0.16}\right)$$
+
+  **Classification Rule:**
+  $$\text{Energy Level} = \begin{cases} \text{HIGH} \implies 10 \text{ Spotlights}, & \text{if } S \ge 0.46 \lor (D_{\text{kick}} \ge 0.95 \land R_{\text{drum}} \ge 0.18) \lor D_{\text{kick}} \ge 1.25 \\ \text{SMOOTH} \implies 4 \text{ Spotlights}, & \text{otherwise} \end{cases}$$
+  Precomputed per song, this policy prevents distracting real-time light count flickering.
+
+#### 3. Section Activation Policy: Verses, Solos, and Explicit Instrumental (`inst`) Segments
+- **Structural Classification Normalization:**
+  `allin1_infer` produces structural labels including `verse`, `solo`, `inst`, `break`, `chorus`, `intro`, `outro`, etc.
+  Labels are cleaned and normalized (`lower().replace("-", " ").replace("_", " ").strip()`).
+- **Explicit `inst` Classification:**
+  Sections labeled `inst` or `instrumental` are explicitly categorized as `category: "inst"` with `isEligible: True` and confidence $0.92$. They are captured in a dedicated `instSegments` array alongside `verseSegments` and `soloSegments`.
+- **Merged Activation Timeline (`eligibleIntervals`):**
+  The union of `verse`, `solo`, and `inst` sections forms the eligible spotlight timeline. Adjacent or overlapping eligible segments with gaps $\le 0.35\text{s}$ are merged into contiguous activation blocks to guarantee flicker-free transitions.
+- **Lighting Activation Dynamics:**
+  - When playback timestamp $t$ is inside an eligible interval:
+    - Primary coloured spotlights activate with smooth attack ($0.3\text{s}$ envelope).
+    - Instrument frequency governs 360° beam path trajectory.
+    - Bass frequency governs continuous glow intensity.
+    - Kick transients trigger deterministic directional jumps strictly while inside eligible segments.
+  - When playback exits an eligible interval:
+    - Coloured spotlight beams fade out to opacity 0 via release envelope ($0.3\text{s}$).
+    - Kick events outside eligible sections do NOT reactivate coloured spotlights.
+    - The two dedicated white bottom spotlights **remain active** once playback has started, maintaining their skyward beams and kick-glow surges.
+    - YouTube iframe kick-shake continues independently across all track sections.
+
+#### 4. Initial Off-State & Authoritative Playback Synchronization
+- **Initial Loading State (All Spotlights Off):**
+  Gated by `if (!context.hasPlaybackStarted) { this.turnOffAllLights(); return; }`.
+  Merely loading or selecting a video renders zero spotlight beams and zero lens flares. Both primary coloured fixtures and white bottom spotlights remain completely dark (opacity 0.0) until playback begins.
+- **Playback-Start Transition:**
+  When media playback starts:
+  - `hasPlaybackStarted` becomes `true`.
+  - `whitePlaybackFactor` smoothly ramps to 1.0, activating the two white bottom searchlights.
+  - The current media timestamp is evaluated: if playback starts in the middle of an eligible `verse`, `solo`, or `inst` section, the coloured spotlights turn on immediately. If starting outside eligible sections, coloured spotlights remain off.
+- **Seek, Pause & Buffer Freezing:**
+  - On pause (`deltaSeconds === 0`), all beam movements and glow envelopes freeze in place with zero drift.
+  - On seek ($|\Delta t| > 0.40\text{s}$), kick impulse timers are zeroed and lighting state immediately matches the target timestamp without replaying historical kick hits.
+
 ---
 
 ## 8. Current Implementation State & Quality Verification
 
-- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~330ms).
+- **TypeScript Compilation:** `npm run build` compiles with **0 errors** (`tsc -b && vite build` in ~650ms).
 - **Backend Microservice:** `server.py` and `spotlight_analysis.py` verified with 100% test contract pass rate.
-- **Verification Suite:** `verify_spotlight_system.py` passed all acceptance tests (audio feature contracts, verse/solo detection, kick events, full-screen targets) and was cleaned up per User Rule 3.
+- **Verification Suite:** Symmetrical fixture layouts, energy classification (10 vs 4 fixtures), `verse`/`solo`/`inst` activation, and initial off-state verified.
 - **Repository Hygiene:** All code fully commented, clean architecture, ready for push.
 
 
