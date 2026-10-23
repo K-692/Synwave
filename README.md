@@ -40,10 +40,8 @@
 ## 🎬 Live Demo Preview
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/2b475ec5-99e2-4cbe-8975-9841f29ee006" width="100%" controls="controls" poster="demo/poster.png" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);"></video>
+  <video src="demo/demo.mp4" width="100%" controls="controls" style="max-width: 960px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);"></video>
 </div>
-
-https://github.com/user-attachments/assets/2b475ec5-99e2-4cbe-8975-9841f29ee006
 
 > [!NOTE]
 > ### 🎵 Music & Visual Attribution

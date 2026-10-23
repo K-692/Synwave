@@ -1789,7 +1789,7 @@ To reflect musical energy without altering the established, stationary fixture o
   - In-place seamless YouTube switching verified.
   - Volumetric beam brightness amplification and interactive slider calibration verified.
   - Documentation, safety alerts, and community roadmap synchronized.
-  - Video asset synchronization: Uploaded latest 1080p concert demonstration to GitHub user-attachments (`2b475ec5-99e2-4cbe-8975-9841f29ee006`), embedded via HTML5 video player with poster fallback in `README.md`.
+  - Video asset synchronization: Embedded repository demo video (`demo/demo.mp4`) as single responsive video player in `README.md`.
 - **Repository Hygiene:** All code fully commented, clean architecture, documentation synchronized. Ready for deployment and git synchronization.
 
 
