@@ -1,21 +1,39 @@
 /**
  * Synwave Concert Moving-Head Stage Lights Effect
+ * ===============================================
  *
- * Concert stage lighting rig with dynamic BPM spotlight spawning:
+ * Concert stage lighting rig with music-synchronized full-screen movement:
  *
- * ─── Colouring Spotlights ─────────────────────────────────────────────────────
- *   - Symmetrical spawning around YouTube screen dynamically mapped from track BPM.
- *   - Smooth mount position and activation lerping on spawn/despawn.
- *   - Static stage aiming at default targets (no audio-driven movement).
+ * 1. Stationary Fixtures & Attachment Layer:
+ *    - All spotlight chassis, mounting bases, and attachment origins remain strictly
+ *      FIXED at designated physical stage positions throughout playback.
+ *    - Zero physical lerping or translation of fixture origins during audio playback.
+ *    - Activation state (verse/solo sections) controls beam and lens opacity smoothly.
  *
- * ─── Perimeter Lights & White Sky Spotlights ──────────────────────────────────
- *   - Static stage perimeter fixtures framing the arena.
- *   - Static upward white sky beams at bottom corners of YouTube screen.
- *   - Audio manipulation of spotlight movements removed.
+ * 2. Full-Screen Trajectories & Synchronized Groups:
+ *    - Coordinated full-screen movement paths powered by SpotlightMovementController:
+ *      horizontal sweeps, vertical sweeps, perimeter, diagonal, arc-fan, asymmetric,
+ *      elliptical, and slow-cinematic paths traversing the entire viewport outside the iframe.
+ *    - All Left-side spotlights move in synchronization with each other.
+ *    - All Right-side spotlights move in synchronization with opposite angular reference (-theta)
+ *      and spatial elevation offsets, avoiding repetitive central "X" criss-crossing.
+ *    - All Top-side spotlights move in synchronization along the overhead truss.
+ *    - Two White Bottom Spotlights project skyward searchlights across the viewport.
+ *      They NEVER change beam direction on kick events.
  *
- * ─── General ──────────────────────────────────────────────────────────────────
- *   - Freeze support: when playback is paused (deltaSeconds === 0), all lights
- *     freeze in place with zero animation drift.
+ * 3. Kick Transient Synchronization:
+ *    - Main coloured spotlights smoothly deflect to deterministic target directions on kicks during verses/solos.
+ *    - Two white bottom spotlights surge in glow intensity only on kicks, then decay smoothly.
+ *    - Outside verses and solos, kick events do NOT reactivate spotlights.
+ *
+ * 4. Continuous Frequency-Driven Glow:
+ *    - Continuous Bass STEM frequency drives silky-smooth glow intensity across [0.0, 1.0].
+ *    - Blended with base glow, kick glow envelope, and verse/solo activation fades.
+ *
+ * 5. Media Clock Synchronization:
+ *    - Synchronized with authoritative media clock.
+ *    - Immediate state restoration on seek without replaying stale impulses.
+ *    - Freeze in place on pause (deltaSeconds === 0).
  */
 
 import * as THREE from 'three';
@@ -23,6 +41,10 @@ import { BaseEffect } from './BaseEffect';
 import type { VisualEffectContext } from '../../types';
 import { mapBpmToSpotlightCount } from '../../services/tempoService';
 import { calculateStageDimensions, type StageDimensions } from '../stage/stageDimensions';
+import {
+  SpotlightMovementController,
+  type SpotlightTargetCoordinates,
+} from './SpotlightMovementController';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -34,22 +56,11 @@ interface MovingHead {
   basePos: THREE.Vector3;
   targetPos: THREE.Vector3;
   currentTarget: THREE.Vector3;
-  targetSlotPos: THREE.Vector3;
   side: 'top' | 'left' | 'right';
   activationFactor: number;
   index: number;
-}
-
-interface PerimeterBassLight {
-  group: THREE.Group;
-  lensMesh: THREE.Mesh;
-  coneMesh: THREE.Mesh;
-  basePos: THREE.Vector3;
-  baseTarget: THREE.Vector3;
-  currentTarget: THREE.Vector3;
-  side: 'left' | 'right' | 'top' | 'bottom';
-  phaseOffset: number;
-  index: number;
+  // Spatial offset relative to group target for cohesive array spread
+  offsetVector: THREE.Vector3;
 }
 
 interface WhiteSkySpotlight {
@@ -67,14 +78,14 @@ interface WhiteSkySpotlight {
 
 export class StageLightsEffect extends BaseEffect {
   readonly id = 'stage-lights';
-  readonly name = 'Concert Moving Head Lights & 360° Perimeter Bass Beams';
+  readonly name = 'Concert Moving Head Lights & Coordinated Full-Screen Beams';
   readonly family = 'Stage Lighting';
   readonly cost = 'medium';
 
   // ── Spotlight configuration ─────────────────────────────────────────────────
-  private targetSpotlightCount = 3;
+  private targetSpotlightCount = 8;
   private minSpotlightCount = 1;
-  private maxSpotlightCount = 7;
+  private maxSpotlightCount = 8;
   private autoBpmSpawning = true;
   private customSpotlightColors: THREE.Color[] = [];
   private currentDimensions: StageDimensions = calculateStageDimensions(
@@ -84,22 +95,21 @@ export class StageLightsEffect extends BaseEffect {
 
   // ── Three.js scene objects ──────────────────────────────────────────────────
   private fixtures: MovingHead[] = [];
-  private perimeterBassLights: PerimeterBassLight[] = [];
   private whiteSkySpotlights: WhiteSkySpotlight[] = [];
   private washLight1!: THREE.PointLight;
   private washLight2!: THREE.PointLight;
 
-  // ── Frequency pre-analysis & audio-reactive spotlight state ─────────────────
+  // ── Coordinated Movement Controller ─────────────────────────────────────────
+  private movementController = new SpotlightMovementController();
+
+  // ── Audio-reactive spotlight state ──────────────────────────────────────────
   private isSpotlightsTurnedOn: boolean = false;
   private currentMovementAngle: number = 0; // radians
-  private currentGlowingFactor: number = 0; // 0.0 to 1.0 continuous
-  private smoothTurnOnFactor: number = 0;   // 0.0 to 1.0 smooth fade
+  private currentGlowingFactor: number = 0.5; // 0.0 to 1.0 continuous
+  private smoothTurnOnFactor: number = 0; // 0.0 to 1.0 smooth fade
+  private lastTrackTimeSeconds: number = -1.0;
 
-  // ── Kick trigger & intense white flash state ─────────────────────────────────
-  private leftKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
-  private rightKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
-  private topKickOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
-  private kickImpulseTime: number = 0;
+  // ── White spotlight kick-glow impulse ───────────────────────────────────────
   private whiteKickIntensity: number = 1.0;
   private wasKickTriggered: boolean = false;
 
@@ -135,24 +145,21 @@ export class StageLightsEffect extends BaseEffect {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Symmetrical Spotlight Layout
+  // Symmetrical Spotlight Mount Layout (Fixed Origins)
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Phase 4 & 10: Symmetrical spotlight mount positions around the YouTube stage
-   * screen (Top, Left, Right). Generates a perfectly balanced, non-clustered,
-   * bilateral layout relative to current player stage dimensions.
+   * Generates fixed, stationary mounting coordinates for the 8 concert fixtures
+   * surrounding the YouTube stage screen (Top truss, Left vertical tower, Right vertical tower).
    */
-  public static getSymmetricalSpotlightLayout(
-    count: number,
+  public static getStationarySpotlightLayout(
     dims?: StageDimensions
   ): {
     pos: THREE.Vector3;
     side: 'top' | 'left' | 'right';
-    defaultTarget: THREE.Vector3;
+    offsetVector: THREE.Vector3;
   }[] {
-    const c = Math.max(1, Math.min(8, Math.round(count)));
-    const layout: { pos: THREE.Vector3; side: 'top' | 'left' | 'right'; defaultTarget: THREE.Vector3 }[] = [];
+    const layout: { pos: THREE.Vector3; side: 'top' | 'left' | 'right'; offsetVector: THREE.Vector3 }[] = [];
 
     const d = dims || calculateStageDimensions(1920, 1080);
     const halfW   = d.halfWidth;
@@ -161,90 +168,29 @@ export class StageLightsEffect extends BaseEffect {
     const zPos    = d.screenZ + 0.5;
     const leftX   = d.leftX - 1.55;
     const rightX  = d.rightX + 1.55;
-    const midY    = d.screenCenterY + 0.15 * halfH;
-    const upperY  = d.screenCenterY + 0.60 * halfH;
-    const lowerY  = d.screenCenterY - 0.25 * halfH;
+    const upperY  = d.screenCenterY + 0.55 * halfH;
+    const lowerY  = d.screenCenterY - 0.35 * halfH;
 
-    switch (c) {
-      case 1:
-        layout.push({
-          pos: new THREE.Vector3(0.0, topY, zPos),
-          side: 'top',
-          defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0),
-        });
-        break;
+    // 8 fixed mounting locations with individual geometric offsets
+    // Top fixtures (0, 1, 2, 3)
+    layout.push(
+      { pos: new THREE.Vector3(-0.65 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(-3.0, 0, 0) },
+      { pos: new THREE.Vector3(-0.22 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(-1.0, 0, 0) },
+      { pos: new THREE.Vector3(0.22 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(1.0, 0, 0) },
+      { pos: new THREE.Vector3(0.65 * halfW, topY, zPos), side: 'top', offsetVector: new THREE.Vector3(3.0, 0, 0) }
+    );
 
-      case 2:
-        layout.push(
-          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
-          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
-        );
-        break;
+    // Left fixtures (4, 5)
+    layout.push(
+      { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, 1.5, 0) },
+      { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', offsetVector: new THREE.Vector3(-1.0, -1.5, 0) }
+    );
 
-      case 3:
-        layout.push(
-          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
-          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
-        );
-        break;
-
-      case 4:
-        layout.push(
-          { pos: new THREE.Vector3(-0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-2.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(2.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
-          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
-        );
-        break;
-
-      case 5:
-        layout.push(
-          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(-0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-3.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(3.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, midY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.5, 2.0, 14.0) },
-          { pos: new THREE.Vector3(rightX, midY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.5, 2.0, 14.0) }
-        );
-        break;
-
-      case 6:
-        layout.push(
-          { pos: new THREE.Vector3(-0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-2.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.48 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(2.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
-        );
-        break;
-
-      case 7:
-        layout.push(
-          { pos: new THREE.Vector3(0.0, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(0.0, 1.8, 14.0) },
-          { pos: new THREE.Vector3(-0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-3.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.60 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(3.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
-        );
-        break;
-
-      case 8:
-      default:
-        layout.push(
-          { pos: new THREE.Vector3(-0.30 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-1.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.30 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(1.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(-0.75 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(-4.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(0.75 * halfW, topY, zPos), side: 'top', defaultTarget: new THREE.Vector3(4.5, 1.8, 14.0) },
-          { pos: new THREE.Vector3(leftX, upperY, zPos), side: 'left', defaultTarget: new THREE.Vector3(3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-3.0, 2.5, 14.0) },
-          { pos: new THREE.Vector3(leftX, lowerY, zPos), side: 'left', defaultTarget: new THREE.Vector3(4.5, 1.5, 14.0) },
-          { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', defaultTarget: new THREE.Vector3(-4.5, 1.5, 14.0) }
-        );
-        break;
-    }
+    // Right fixtures (6, 7)
+    layout.push(
+      { pos: new THREE.Vector3(rightX, upperY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, 1.5, 0) },
+      { pos: new THREE.Vector3(rightX, lowerY, zPos), side: 'right', offsetVector: new THREE.Vector3(1.0, -1.5, 0) }
+    );
 
     return layout;
   }
@@ -256,8 +202,13 @@ export class StageLightsEffect extends BaseEffect {
   public initialize(context: VisualEffectContext): void {
     super.initialize(context);
 
-    // Chassis geometry
-    const baseGeo = new THREE.CylinderGeometry(0.25, 0.32, 0.35, 10);
+    // Ensure the attachment layer stays completely stationary
+    this.group.position.set(0, 0, 0);
+    this.group.rotation.set(0, 0, 0);
+    this.group.scale.set(1, 1, 1);
+
+    // Chassis geometry for stationary moving-head bases
+    const baseGeo = new THREE.CylinderGeometry(0.28, 0.35, 0.38, 12);
     const baseMat = new THREE.MeshStandardMaterial({
       color: 0x141824,
       roughness: 0.4,
@@ -269,38 +220,41 @@ export class StageLightsEffect extends BaseEffect {
     const lensGeo = new THREE.SphereGeometry(0.24, 12, 12);
     this.disposables.push(lensGeo);
 
-    // Volumetric Light Cone thrown forward along local +Z axis
-    const coneLength = 26;
-    const coneGeo = new THREE.ConeGeometry(1.3, coneLength, 16, 1, true);
+    // Volumetric Light Cone thrown forward across the entire viewport (length = 34 units)
+    const coneLength = 34;
+    const coneGeo = new THREE.ConeGeometry(1.65, coneLength, 16, 1, true);
     coneGeo.translate(0, -coneLength / 2, 0);
-    coneGeo.rotateX(-Math.PI / 2); // Body extends along +Z
+    coneGeo.rotateX(-Math.PI / 2); // Cone body projects along +Z
     this.disposables.push(coneGeo);
 
-    // 1. Colouring Spotlights (8 fixtures with symmetrical default layout)
-    const baseLayout = StageLightsEffect.getSymmetricalSpotlightLayout(8, this.currentDimensions);
+    // 1. Eight Stationary Moving-Head Fixtures
+    const fixedLayout = StageLightsEffect.getStationarySpotlightLayout(this.currentDimensions);
 
-    for (let i = 0; i < baseLayout.length; i++) {
-      const slot = baseLayout[i];
+    for (let i = 0; i < fixedLayout.length; i++) {
+      const slot = fixedLayout[i];
       const fixtureGroup = new THREE.Group();
       fixtureGroup.position.copy(slot.pos);
 
+      // Chassis base
       const baseMesh = new THREE.Mesh(baseGeo, baseMat);
       fixtureGroup.add(baseMesh);
 
+      // Optical lens
       const lensMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.0,
       });
       this.disposables.push(lensMat);
       const lensMesh = new THREE.Mesh(lensGeo, lensMat);
       lensMesh.position.set(0, 0, 0.1);
       fixtureGroup.add(lensMesh);
 
+      // Volumetric beam cone
       const coneMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.12,
+        opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.FrontSide,
@@ -311,7 +265,8 @@ export class StageLightsEffect extends BaseEffect {
       coneMesh.position.set(0, 0, 0.1);
       fixtureGroup.add(coneMesh);
 
-      fixtureGroup.lookAt(slot.defaultTarget);
+      const defaultAim = new THREE.Vector3(slot.pos.x * 1.5, slot.pos.y - 2.0, 14.0);
+      fixtureGroup.lookAt(defaultAim);
       this.group.add(fixtureGroup);
 
       this.fixtures.push({
@@ -320,97 +275,19 @@ export class StageLightsEffect extends BaseEffect {
         lensMesh,
         coneMesh,
         basePos: slot.pos.clone(),
-        targetSlotPos: slot.pos.clone(),
-        targetPos: slot.defaultTarget.clone(),
-        currentTarget: slot.defaultTarget.clone(),
+        targetPos: defaultAim.clone(),
+        currentTarget: defaultAim.clone(),
         side: slot.side,
-        activationFactor: i < this.targetSpotlightCount ? 1.0 : 0.0,
+        activationFactor: 0.0,
         index: i,
+        offsetVector: slot.offsetVector.clone(),
       });
     }
 
-    // 2. High-Intensity 360° Perimeter Bass Lights Framing the YouTube Screen
-    const periConeLength = 28;
-    const periConeGeo = new THREE.ConeGeometry(1.4, periConeLength, 16, 1, true);
-    periConeGeo.translate(0, -periConeLength / 2, 0);
-    periConeGeo.rotateX(-Math.PI / 2);
-    this.disposables.push(periConeGeo);
-
-    const perimeterConfigs: {
-      pos: THREE.Vector3;
-      target: THREE.Vector3;
-      side: 'left' | 'right' | 'top' | 'bottom';
-      phaseOffset: number;
-    }[] = [
-      // Left tower fixtures
-      { pos: new THREE.Vector3(-12.0, 2.2, -4.1), target: new THREE.Vector3(12.0, 2.0, 12.0), side: 'left', phaseOffset: 0.0 },
-      { pos: new THREE.Vector3(-12.0, 4.6, -4.1), target: new THREE.Vector3(11.0, 3.8, 14.0), side: 'left', phaseOffset: 0.8 },
-      { pos: new THREE.Vector3(-12.0, 7.0, -4.1), target: new THREE.Vector3(10.0, 5.5, 16.0), side: 'left', phaseOffset: 1.6 },
-      { pos: new THREE.Vector3(-12.0, 9.4, -4.1), target: new THREE.Vector3(9.0, 7.0, 18.0), side: 'left', phaseOffset: 2.4 },
-      // Right tower fixtures
-      { pos: new THREE.Vector3(12.0, 2.2, -4.1), target: new THREE.Vector3(-12.0, 2.0, 12.0), side: 'right', phaseOffset: 3.2 },
-      { pos: new THREE.Vector3(12.0, 4.6, -4.1), target: new THREE.Vector3(-11.0, 3.8, 14.0), side: 'right', phaseOffset: 4.0 },
-      { pos: new THREE.Vector3(12.0, 7.0, -4.1), target: new THREE.Vector3(-10.0, 5.5, 16.0), side: 'right', phaseOffset: 4.8 },
-      { pos: new THREE.Vector3(12.0, 9.4, -4.1), target: new THREE.Vector3(-9.0, 7.0, 18.0), side: 'right', phaseOffset: 5.6 },
-      // Top truss fixtures
-      { pos: new THREE.Vector3(-6.5, 11.4, -4.2), target: new THREE.Vector3(7.5, 0.8, 14.0), side: 'top', phaseOffset: 1.2 },
-      { pos: new THREE.Vector3(6.5, 11.4, -4.2), target: new THREE.Vector3(-7.5, 0.8, 14.0), side: 'top', phaseOffset: 4.4 },
-      // Bottom screen frame fixtures
-      { pos: new THREE.Vector3(-8.0, 0.8, -4.1), target: new THREE.Vector3(8.0, 6.0, 15.0), side: 'bottom', phaseOffset: 2.0 },
-      { pos: new THREE.Vector3(8.0, 0.8, -4.1), target: new THREE.Vector3(-8.0, 6.0, 15.0), side: 'bottom', phaseOffset: 5.2 },
-    ];
-
-    for (let i = 0; i < perimeterConfigs.length; i++) {
-      const cfg = perimeterConfigs[i];
-      const pGroup = new THREE.Group();
-      pGroup.position.copy(cfg.pos);
-
-      const pLensMat = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        transparent: true,
-        opacity: 0.95,
-      });
-      this.disposables.push(pLensMat);
-      const pLens = new THREE.Mesh(lensGeo, pLensMat);
-      pLens.position.set(0, 0, 0.1);
-      pGroup.add(pLens);
-
-      const pConeMat = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        transparent: true,
-        opacity: 0.32,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.FrontSide,
-      });
-      this.disposables.push(pConeMat);
-      const pCone = new THREE.Mesh(periConeGeo, pConeMat);
-      pCone.position.set(0, 0, 0.1);
-      pGroup.add(pCone);
-
-      pGroup.lookAt(cfg.target);
-      this.group.add(pGroup);
-
-      this.perimeterBassLights.push({
-        group: pGroup,
-        lensMesh: pLens,
-        coneMesh: pCone,
-        basePos: cfg.pos.clone(),
-        baseTarget: cfg.target.clone(),
-        currentTarget: cfg.target.clone(),
-        side: cfg.side,
-        phaseOffset: cfg.phaseOffset,
-        index: i,
-      });
-    }
-
-    // Align perimeter lights with current dimensions
-    this.recalculatePerimeterPositions(this.currentDimensions);
-
-    // 3. White Stage Sky Spotlights at Bottom Corners of YouTube Screen
-    // Strictly project upward (never downward)
-    const skyConeLength = 55;
-    const skyConeGeo = new THREE.ConeGeometry(2.4, skyConeLength, 18, 1, true);
+    // 2. White Stage Sky Spotlights at Bottom Corners of YouTube Screen
+    // High-altitude searchlights (length = 60 units) projecting skyward
+    const skyConeLength = 60;
+    const skyConeGeo = new THREE.ConeGeometry(2.5, skyConeLength, 18, 1, true);
     skyConeGeo.translate(0, -skyConeLength / 2, 0);
     skyConeGeo.rotateX(-Math.PI / 2);
     this.disposables.push(skyConeGeo);
@@ -428,8 +305,8 @@ export class StageLightsEffect extends BaseEffect {
           this.currentDimensions.screenZ + 0.55
         ),
         defaultTarget: new THREE.Vector3(
-          this.currentDimensions.leftX - 3.0,
-          Math.max(16.0, this.currentDimensions.topY + 6.0),
+          -(this.currentDimensions.halfWidth + 4.0),
+          this.currentDimensions.topY + 7.0,
           14.0
         ),
       },
@@ -441,8 +318,8 @@ export class StageLightsEffect extends BaseEffect {
           this.currentDimensions.screenZ + 0.55
         ),
         defaultTarget: new THREE.Vector3(
-          this.currentDimensions.rightX + 3.0,
-          Math.max(16.0, this.currentDimensions.topY + 6.0),
+          this.currentDimensions.halfWidth + 4.0,
+          this.currentDimensions.topY + 7.0,
           14.0
         ),
       },
@@ -451,12 +328,12 @@ export class StageLightsEffect extends BaseEffect {
     for (let i = 0; i < whiteCorners.length; i++) {
       const cfg = whiteCorners[i];
 
-      // Fixed base chassis
+      // Stationary base chassis
       const fixedBaseMesh = new THREE.Mesh(baseGeo, baseMat);
       fixedBaseMesh.position.copy(cfg.pos);
       this.group.add(fixedBaseMesh);
 
-      // Optical head group
+      // Optical head group with stationary origin
       const headGroup = new THREE.Group();
       headGroup.position.copy(cfg.pos);
 
@@ -467,7 +344,6 @@ export class StageLightsEffect extends BaseEffect {
       });
       this.disposables.push(lensMat);
       const lensMesh = new THREE.Mesh(lensGeo, lensMat);
-      lensMesh.position.set(0, 0, 0);
       headGroup.add(lensMesh);
 
       const coneMat = new THREE.MeshBasicMaterial({
@@ -480,7 +356,6 @@ export class StageLightsEffect extends BaseEffect {
       });
       this.disposables.push(coneMat);
       const coneMesh = new THREE.Mesh(skyConeGeo, coneMat);
-      coneMesh.position.set(0, 0, 0);
       headGroup.add(coneMesh);
 
       headGroup.lookAt(cfg.defaultTarget);
@@ -498,18 +373,18 @@ export class StageLightsEffect extends BaseEffect {
       });
     }
 
-    // 4. Dynamic Stage Wash Point Lights
-    this.washLight1 = new THREE.PointLight(0xff6600, 0.6, 25, 1.8);
+    // 3. Stage Wash Point Lights (Atmospheric stage ambient lighting)
+    this.washLight1 = new THREE.PointLight(0xff6600, 0.0, 28, 1.8);
     this.washLight1.position.set(
-      -0.45 * this.currentDimensions.halfWidth,
+      -0.5 * this.currentDimensions.halfWidth,
       this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
       -1.0
     );
     this.group.add(this.washLight1);
 
-    this.washLight2 = new THREE.PointLight(0xff0077, 0.6, 25, 1.8);
+    this.washLight2 = new THREE.PointLight(0xff0077, 0.0, 28, 1.8);
     this.washLight2.position.set(
-      0.45 * this.currentDimensions.halfWidth,
+      0.5 * this.currentDimensions.halfWidth,
       this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
       -1.0
     );
@@ -517,149 +392,51 @@ export class StageLightsEffect extends BaseEffect {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Resize
+  // Viewport Resize (Updates Stationary Mounting Locations)
   // ─────────────────────────────────────────────────────────────────────────────
 
   public override resize(width: number, height: number): void {
     this.currentDimensions = calculateStageDimensions(width, height);
-    this.recalculateSpotlightPositions(this.currentDimensions);
-    this.recalculatePerimeterPositions(this.currentDimensions);
-    this.recalculateWhiteSkySpotlightPositions(this.currentDimensions);
-    if (this.washLight1 && this.washLight2) {
-      this.washLight1.position.set(
-        -0.45 * this.currentDimensions.halfWidth,
-        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
-        -1.0
-      );
-      this.washLight2.position.set(
-        0.45 * this.currentDimensions.halfWidth,
-        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
-        -1.0
-      );
-    }
-  }
+    const layout = StageLightsEffect.getStationarySpotlightLayout(this.currentDimensions);
 
-  private recalculateWhiteSkySpotlightPositions(dims: StageDimensions): void {
+    for (let i = 0; i < this.fixtures.length && i < layout.length; i++) {
+      const fix = this.fixtures[i];
+      const slot = layout[i];
+      fix.basePos.copy(slot.pos);
+      fix.group.position.copy(slot.pos);
+      fix.side = slot.side;
+      fix.offsetVector.copy(slot.offsetVector);
+    }
+
     if (this.whiteSkySpotlights.length >= 2) {
       this.whiteSkySpotlights[0].basePos.set(
-        dims.leftX - 0.45,
-        dims.bottomY + 0.15,
-        dims.screenZ + 0.55
+        this.currentDimensions.leftX - 0.45,
+        this.currentDimensions.bottomY + 0.15,
+        this.currentDimensions.screenZ + 0.55
       );
       this.whiteSkySpotlights[0].fixedBaseMesh.position.copy(this.whiteSkySpotlights[0].basePos);
       this.whiteSkySpotlights[0].headGroup.position.copy(this.whiteSkySpotlights[0].basePos);
 
       this.whiteSkySpotlights[1].basePos.set(
-        dims.rightX + 0.45,
-        dims.bottomY + 0.15,
-        dims.screenZ + 0.55
+        this.currentDimensions.rightX + 0.45,
+        this.currentDimensions.bottomY + 0.15,
+        this.currentDimensions.screenZ + 0.55
       );
       this.whiteSkySpotlights[1].fixedBaseMesh.position.copy(this.whiteSkySpotlights[1].basePos);
       this.whiteSkySpotlights[1].headGroup.position.copy(this.whiteSkySpotlights[1].basePos);
     }
-  }
 
-  private recalculateSpotlightPositions(dims: StageDimensions): void {
-    const layout = StageLightsEffect.getSymmetricalSpotlightLayout(this.targetSpotlightCount, dims);
-    for (let i = 0; i < this.fixtures.length; i++) {
-      const fix = this.fixtures[i];
-      if (i < layout.length) {
-        fix.targetSlotPos.copy(layout[i].pos);
-        fix.side = layout[i].side;
-        fix.targetPos.copy(layout[i].defaultTarget);
-        fix.group.position.copy(layout[i].pos);
-      }
-    }
-  }
-
-  private recalculatePerimeterPositions(dims: StageDimensions): void {
-    const configs: {
-      pos: THREE.Vector3;
-      target: THREE.Vector3;
-      side: 'left' | 'right' | 'top' | 'bottom';
-      phaseOffset: number;
-    }[] = [
-      // Left tower fixtures
-      {
-        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.65 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.70 * dims.halfHeight, 12.0),
-        side: 'left', phaseOffset: 0.0,
-      },
-      {
-        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.20 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.rightX, dims.screenCenterY - 0.20 * dims.halfHeight, 14.0),
-        side: 'left', phaseOffset: 0.8,
-      },
-      {
-        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY + 0.25 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.rightX - 1.0, dims.screenCenterY + 0.20 * dims.halfHeight, 16.0),
-        side: 'left', phaseOffset: 1.6,
-      },
-      {
-        pos: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY + 0.70 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.rightX - 2.0, dims.screenCenterY + 0.55 * dims.halfHeight, 18.0),
-        side: 'left', phaseOffset: 2.4,
-      },
-      // Right tower fixtures
-      {
-        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.65 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.leftX - 1.2, dims.screenCenterY - 0.70 * dims.halfHeight, 12.0),
-        side: 'right',
-        phaseOffset: 3.2,
-      },
-      {
-        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY - 0.20 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.leftX, dims.screenCenterY - 0.20 * dims.halfHeight, 14.0),
-        side: 'right',
-        phaseOffset: 4.0,
-      },
-      {
-        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.25 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.leftX + 1.0, dims.screenCenterY + 0.20 * dims.halfHeight, 16.0),
-        side: 'right',
-        phaseOffset: 4.8,
-      },
-      {
-        pos: new THREE.Vector3(dims.rightX + 1.2, dims.screenCenterY + 0.70 * dims.halfHeight, dims.screenZ + 0.4),
-        target: new THREE.Vector3(dims.leftX + 2.0, dims.screenCenterY + 0.55 * dims.halfHeight, 18.0),
-        side: 'right',
-        phaseOffset: 5.6,
-      },
-      // Top truss fixtures
-      {
-        pos: new THREE.Vector3(-0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
-        target: new THREE.Vector3(0.65 * dims.halfWidth, 0.8, 14.0),
-        side: 'top',
-        phaseOffset: 1.2,
-      },
-      {
-        pos: new THREE.Vector3(0.65 * dims.halfWidth, dims.topY + 0.6, dims.screenZ + 0.3),
-        target: new THREE.Vector3(-0.65 * dims.halfWidth, 0.8, 14.0),
-        side: 'top',
-        phaseOffset: 4.4,
-      },
-      // Bottom screen frame fixtures
-      {
-        pos: new THREE.Vector3(-0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
-        target: new THREE.Vector3(0.70 * dims.halfWidth, 6.0, 15.0),
-        side: 'bottom',
-        phaseOffset: 2.0,
-      },
-      {
-        pos: new THREE.Vector3(0.70 * dims.halfWidth, dims.bottomY - 0.4, dims.screenZ + 0.4),
-        target: new THREE.Vector3(-0.70 * dims.halfWidth, 6.0, 15.0),
-        side: 'bottom',
-        phaseOffset: 5.2,
-      },
-    ];
-
-    for (let i = 0; i < this.perimeterBassLights.length && i < configs.length; i++) {
-      const p = this.perimeterBassLights[i];
-      const cfg = configs[i];
-      p.basePos.copy(cfg.pos);
-      p.baseTarget.copy(cfg.target);
-      p.group.position.copy(cfg.pos);
-      p.side = cfg.side;
+    if (this.washLight1 && this.washLight2) {
+      this.washLight1.position.set(
+        -0.5 * this.currentDimensions.halfWidth,
+        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+        -1.0
+      );
+      this.washLight2.position.set(
+        0.5 * this.currentDimensions.halfWidth,
+        this.currentDimensions.screenCenterY + 0.15 * this.currentDimensions.halfHeight,
+        -1.0
+      );
     }
   }
 
@@ -675,26 +452,22 @@ export class StageLightsEffect extends BaseEffect {
       (directorState?.allowedEffects?.lights ?? true);
 
     if (!isLightsEnabled) {
-      for (const fix of this.fixtures) {
-        (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      for (const p of this.perimeterBassLights) {
-        (p.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (p.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      for (const s of this.whiteSkySpotlights) {
-        (s.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        (s.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      }
-      this.washLight1.intensity = 0;
-      this.washLight2.intensity = 0;
+      this.turnOffAllLights();
       return;
     }
 
     const maxBri = routingConfig?.maxBrightnessLimit ?? 1.0;
+    const tSec = Math.max(0, context.trackTimeSeconds);
 
-    // ─── Colour palette ──────────────────────────────────────────────────────
+    // ── Seek Detection & Immediate State Restoration ───────────────────────────
+    if (this.lastTrackTimeSeconds >= 0 && Math.abs(tSec - this.lastTrackTimeSeconds) > 0.40) {
+      // Direct media seek occurred: immediately reset transient kick timers to avoid burst shakes/jumps
+      this.movementController.resetImpulses();
+      this.whiteKickIntensity = 1.0;
+    }
+    this.lastTrackTimeSeconds = tSec;
+
+    // ── Colour Palette ─────────────────────────────────────────────────────────
     const hasCustomColors   = this.customSpotlightColors.length > 0;
     const primaryCol        = hasCustomColors ? this.customSpotlightColors[0] : new THREE.Color(palette.primary);
     const secondaryCol      = hasCustomColors
@@ -707,11 +480,7 @@ export class StageLightsEffect extends BaseEffect {
       ? this.customSpotlightColors
       : [primaryCol, secondaryCol, accentCol];
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 1. FREQUENCY PRE-ANALYSIS EVALUATION & AUDIO-REACTIVE TRACKING
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Auto BPM-based spotlight count mapping (preserves dynamic spawning)
+    // ── Auto BPM Spotlight Count Mapping (Dynamic Spawning) ─────────────────────
     if (routingConfig?.minSpotlightCount !== undefined) this.minSpotlightCount = routingConfig.minSpotlightCount;
     if (routingConfig?.maxSpotlightCount !== undefined) this.maxSpotlightCount = routingConfig.maxSpotlightCount;
     if (routingConfig?.autoBpmSpotlightSpawning !== undefined) this.autoBpmSpawning = routingConfig.autoBpmSpotlightSpawning;
@@ -727,26 +496,28 @@ export class StageLightsEffect extends BaseEffect {
       }
     }
 
-    const currentLayout = StageLightsEffect.getSymmetricalSpotlightLayout(
-      this.targetSpotlightCount,
-      this.currentDimensions
-    );
-
-    // Retrieve pre-analyzed frequency movement data from Demucs stem pre-analysis
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 1. PRE-ANALYZED FREQUENCY, GLOW & VERSE/SOLO SEGMENT EVALUATION
+    // ═══════════════════════════════════════════════════════════════════════════
     const spotlightAnalysis = context.spotlightAnalysis || context.demucsStems?.spotlightAnalysis;
     let targetThetaRad = 0;
     let targetGlowFactor = 0.5;
     let isTurnedOn = false;
+    let activeSectionType: 'verse' | 'solo' | 'inactive' = 'inactive';
+    let currentKickTarget: {
+      left: [number, number, number];
+      right: [number, number, number];
+      top: [number, number, number];
+    } | undefined = undefined;
 
     if (spotlightAnalysis && spotlightAnalysis.frameCount > 0 && spotlightAnalysis.timestampsMs?.length > 0) {
       const fps = spotlightAnalysis.fps || 25;
-      const t = Math.max(0, context.trackTimeSeconds);
-      const exactFrame = t * fps;
+      const exactFrame = tSec * fps;
       const frameIdx = Math.min(spotlightAnalysis.frameCount - 1, Math.floor(exactFrame));
       const nextIdx = Math.min(spotlightAnalysis.frameCount - 1, frameIdx + 1);
       const frac = exactFrame - frameIdx;
 
-      // 360° frequency movement distribution (remember 1)
+      // 360° Instrument frequency angular reference: theta(t) = 360 * f_norm(t)
       const degA = spotlightAnalysis.movementAnglesDeg[frameIdx] ?? 0;
       const degB = spotlightAnalysis.movementAnglesDeg[nextIdx] ?? degA;
       let dDeg = degB - degA;
@@ -755,31 +526,51 @@ export class StageLightsEffect extends BaseEffect {
       const interpDeg = (degA + dDeg * frac + 360) % 360;
       targetThetaRad = (interpDeg * Math.PI) / 180.0;
 
-      // Continuous glowing factor (0.0 to 1.0) based on Bass STEM min/max
+      // Continuous Bass STEM glowing factor G(t) in [0.0, 1.0]
       const glowA = spotlightAnalysis.glowingFactors[frameIdx] ?? 0.5;
       const glowB = spotlightAnalysis.glowingFactors[nextIdx] ?? glowA;
       targetGlowFactor = Math.max(0.0, Math.min(1.0, glowA + (glowB - glowA) * frac));
 
-      // The spotlights should get turned on only in verses (mir-aidj/all-in-one segmentation)
-      if (spotlightAnalysis.verseSegments && spotlightAnalysis.verseSegments.length > 0) {
-        isTurnedOn = spotlightAnalysis.verseSegments.some(
-          (v) => t >= v.start && t <= v.end
+      // Spotlight Activation Policy: Union of confidently identified verse and solo segments
+      if (spotlightAnalysis.eligibleIntervals && spotlightAnalysis.eligibleIntervals.length > 0) {
+        const matchingInterval = spotlightAnalysis.eligibleIntervals.find(
+          (iv) => tSec >= iv.start && tSec <= iv.end
         );
+        if (matchingInterval) {
+          isTurnedOn = true;
+          activeSectionType = matchingInterval.category === 'solo' ? 'solo' : 'verse';
+        }
+      } else if (spotlightAnalysis.verseSegments && spotlightAnalysis.verseSegments.length > 0) {
+        isTurnedOn = spotlightAnalysis.verseSegments.some((v) => tSec >= v.start && tSec <= v.end);
+        if (isTurnedOn) activeSectionType = 'verse';
       } else if (spotlightAnalysis.spotlightsActive && spotlightAnalysis.spotlightsActive.length > 0) {
         isTurnedOn = spotlightAnalysis.spotlightsActive[frameIdx] ?? false;
+        if (isTurnedOn) activeSectionType = 'verse';
+      }
+
+      // Check precomputed kick transient matching current timestamp (within 40ms window)
+      if (spotlightAnalysis.kickEvents && spotlightAnalysis.kickEvents.length > 0) {
+        const curMs = tSec * 1000.0;
+        const matchedKick = spotlightAnalysis.kickEvents.find(
+          (ke) => Math.abs(ke.timestampMs - curMs) < 40
+        );
+        if (matchedKick && matchedKick.directionTarget) {
+          currentKickTarget = matchedKick.directionTarget;
+        }
       }
     } else {
-      // Graceful real-time DSP fallback if pre-analysis is still generating
+      // Controlled real-time DSP fallback if pre-analysis is not present
       const instSig = Math.max(features.highMid * 0.4 + features.treble * 0.6, features.stems?.instruments ?? 0);
       const bassSig = Math.max(features.bass * 0.7 + features.subBass * 0.3, features.stems?.bass ?? 0);
       targetThetaRad = ((instSig * 360.0) * Math.PI) / 180.0;
       targetGlowFactor = Math.max(0.0, Math.min(1.0, bassSig));
       isTurnedOn = instSig > 0.28 && bassSig > 0.28;
+      activeSectionType = isTurnedOn ? 'verse' : 'inactive';
     }
 
     this.isSpotlightsTurnedOn = isTurnedOn;
 
-    // ── Kick Transient Detection from Kick STEM ────────────────────────────────
+    // ── Kick Transient Response (Active Strictly During Verses & Solos) ────────
     const kickPower = Math.max(
       features.stems?.kick ?? 0,
       features.isKick ? (features.kickIntensity || 1.0) : 0
@@ -787,289 +578,184 @@ export class StageLightsEffect extends BaseEffect {
     const isKickOnset = (features.isKick || kickPower > 0.36) && !this.wasKickTriggered;
     this.wasKickTriggered = features.isKick || kickPower > 0.36;
 
-    if (isKickOnset && deltaSeconds > 0) {
-      // If Kick/drum hits from Kick STEM, all spotlight light beams take a random position synced with kicks
-      const randAngle = Math.random() * Math.PI * 2;
-      const randDist = 4.0 + Math.random() * 3.5;
-      const randElev = (Math.random() - 0.5) * 3.0;
+    if (isKickOnset && deltaSeconds > 0 && isTurnedOn) {
+      // 1. Main coloured spotlights jump to new direction target
+      this.movementController.triggerKickDirectionChange(tSec, kickPower, currentKickTarget);
 
-      const kX = Math.cos(randAngle) * randDist;
-      const kY = randElev;
-      const kZ = Math.sin(randAngle) * randDist;
-
-      // Spotlights at left side will be in sync together
-      this.leftKickOffset.set(kX, kY, kZ);
-
-      // Spotlights at right side will be in sync together, opposite movement angles to left
-      this.rightKickOffset.set(-kX, kY, -kZ);
-
-      // Spotlights at top side will be in sync together
-      const topAngle = Math.random() * Math.PI * 2;
-      const topDist = 3.6 + Math.random() * 2.8;
-      this.topKickOffset.set(
-        Math.cos(topAngle) * topDist,
-        -1.2 - Math.random() * 2.0,
-        Math.sin(topAngle) * topDist
-      );
-
-      this.kickImpulseTime = 1.0;
-
-      // The 2 white spotlights at bottom: Kick will make those 2 spotlights glow intensely when kick hits
+      // 2. Two white bottom spotlights surge in glow intensity ONLY (NEVER change beam direction)
       this.whiteKickIntensity = Math.min(2.8, 1.0 + 1.8 * Math.max(kickPower, 0.65));
     }
 
-    // Dynamic interpolation & continuous updates (strictly zero drift when paused)
+    // ── Dynamic Interpolation & Time Progression (Zero Drift When Paused) ──────
     if (deltaSeconds > 0) {
-      this.kickImpulseTime = Math.max(0.0, this.kickImpulseTime - deltaSeconds * 3.2);
-      this.whiteKickIntensity = Math.max(1.0, this.whiteKickIntensity - deltaSeconds * 5.5);
+      this.whiteKickIntensity = Math.max(1.0, this.whiteKickIntensity - deltaSeconds * 5.2);
 
-      // Continuous movement angle and glowing factor lerping
+      // Smooth interpolation for angular reference and continuous glow
       this.currentMovementAngle += (targetThetaRad - this.currentMovementAngle) * Math.min(1.0, deltaSeconds * 12.0);
       this.currentGlowingFactor += (targetGlowFactor - this.currentGlowingFactor) * Math.min(1.0, deltaSeconds * 14.0);
 
-      // Smooth attack/release for verse-only spotlight activation
+      // Smooth attack/release for verse/solo spotlight activation (prevents flicker)
       if (isTurnedOn) {
-        this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 8.0);
+        this.smoothTurnOnFactor = Math.min(1.0, this.smoothTurnOnFactor + deltaSeconds * 6.5);
       } else {
-        this.smoothTurnOnFactor = Math.max(0.0, this.smoothTurnOnFactor - deltaSeconds * 5.0);
+        this.smoothTurnOnFactor = Math.max(0.0, this.smoothTurnOnFactor - deltaSeconds * 4.5);
       }
+
+      // Update movement controller path rotation and transitions
+      this.movementController.updatePathSelection(activeSectionType, tSec, deltaSeconds);
     }
 
-    // Effective continuous glowing factor (0.0 to 1.0) scaled by verse activation
-    const effectiveGlow = this.currentGlowingFactor * this.smoothTurnOnFactor;
+    // Explicit continuous glow factor blending
+    const baseGlow = 0.15;
+    const continuousBassGlow = this.currentGlowingFactor * 0.85;
+    const effectiveGlow = Math.min(1.0, (baseGlow + continuousBassGlow) * this.smoothTurnOnFactor);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // UNIFIED SPOTLIGHT CHOREOGRAPHY ACROSS 360 DEGREES
+    // 2. COORDINATED FULL-SCREEN SPOTLIGHT MOVEMENT EXECUTION
     // ═══════════════════════════════════════════════════════════════════════════
-    // The 3rd left side spotlight moved with phase 1.6 in an elliptical sweep.
-    // Every spotlight on the left side now moves in sync together with this exact sweep.
-    // Every spotlight on the right side moves in sync together with opposite angle (-thetaRad).
-    // Every spotlight on the top side moves in sync together.
-    const thetaRad = this.currentMovementAngle;
-    const baseSweepPhase = 1.6;
+    const targets: SpotlightTargetCoordinates = this.movementController.computeGroupTargets(
+      this.currentMovementAngle,
+      tSec,
+      this.currentDimensions
+    );
 
-    // Left side: in sync together with thetaRad across 360 degrees
-    const leftAngle = thetaRad + baseSweepPhase;
-    const leftOffsetX = Math.cos(leftAngle) * 2.8;
-    const leftOffsetY = Math.sin(leftAngle) * 1.8;
-    const leftOffsetZ = Math.sin(2.0 * leftAngle) * 2.4;
-
-    // Right side: in sync together, movement angles opposite to left (-thetaRad)
-    const rightAngle = -thetaRad + baseSweepPhase;
-    const rightOffsetX = -Math.cos(rightAngle) * 2.8;
-    const rightOffsetY = Math.sin(rightAngle) * 1.8;
-    const rightOffsetZ = -Math.sin(2.0 * rightAngle) * 2.4;
-
-    // Top side: in sync together across 360 degrees
-    const topAngle = thetaRad + baseSweepPhase;
-    const topOffsetX = Math.sin(topAngle) * 3.4;
-    const topOffsetY = Math.cos(topAngle) * 2.0;
-    const topOffsetZ = Math.cos(2.0 * topAngle) * 2.6;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 2. COLOURING SPOTLIGHTS (Symmetrical Moving Heads)
-    // ═══════════════════════════════════════════════════════════════════════════
+    // Update 8 Stationary Moving Heads (Top, Left, Right)
     for (let i = 0; i < this.fixtures.length; i++) {
       const fix = this.fixtures[i];
-      const isActive = i < currentLayout.length;
+      const isSlotActive = i < this.targetSpotlightCount;
 
-      // Activation factor lerping
-      if (isActive) {
-        const slot = currentLayout[i];
-        fix.targetSlotPos.copy(slot.pos);
-        fix.side = slot.side;
-        fix.targetPos.copy(slot.defaultTarget);
+      // Architectural Rule: Fixture origins stay completely stationary at fixed mounting slots!
+      fix.group.position.copy(fix.basePos);
+
+      // Smooth activation factor lerp for dynamic BPM spotlight spawning
+      if (isSlotActive) {
         if (deltaSeconds > 0) {
-          fix.activationFactor = Math.min(1.0, fix.activationFactor + deltaSeconds * 3.5);
+          fix.activationFactor = Math.min(1.0, fix.activationFactor + deltaSeconds * 4.0);
         } else {
           fix.activationFactor = 1.0;
         }
       } else {
         if (deltaSeconds > 0) {
-          fix.activationFactor = Math.max(0.0, fix.activationFactor - deltaSeconds * 3.0);
+          fix.activationFactor = Math.max(0.0, fix.activationFactor - deltaSeconds * 3.5);
         } else {
           fix.activationFactor = 0.0;
         }
       }
 
-      // Smooth mount position lerp to target slot
-      if (deltaSeconds > 0) {
-        fix.group.position.lerp(fix.targetSlotPos, deltaSeconds * 4.5);
-      } else {
-        fix.group.position.copy(fix.targetSlotPos);
-      }
-
       const lensMat = fix.lensMesh.material as THREE.MeshBasicMaterial;
       const coneMat = fix.coneMesh.material as THREE.MeshBasicMaterial;
 
-      // Fully turned OFF when slot deactivated OR spotlights not active (only turned ON in verses)
+      // Spotlights turn OFF outside verses & solos or when slot despawned
       if (fix.activationFactor <= 0.001 || this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
         continue;
       }
 
-      // Target aiming with 360° frequency movement & synced Kick jumps
-      if (isActive) {
-        const slot = currentLayout[i];
-        if (fix.side === 'left') {
-          // Left side spotlights in sync together
-          const targetX = slot.defaultTarget.x + leftOffsetX + this.leftKickOffset.x * this.kickImpulseTime;
-          const targetY = slot.defaultTarget.y + leftOffsetY + this.leftKickOffset.y * this.kickImpulseTime;
-          const targetZ = slot.defaultTarget.z + leftOffsetZ + this.leftKickOffset.z * this.kickImpulseTime;
-          fix.targetPos.set(targetX, targetY, targetZ);
-        } else if (fix.side === 'right') {
-          // Right side spotlights in sync together, opposite movement angles to left
-          const targetX = slot.defaultTarget.x + rightOffsetX + this.rightKickOffset.x * this.kickImpulseTime;
-          const targetY = slot.defaultTarget.y + rightOffsetY + this.rightKickOffset.y * this.kickImpulseTime;
-          const targetZ = slot.defaultTarget.z + rightOffsetZ + this.rightKickOffset.z * this.kickImpulseTime;
-          fix.targetPos.set(targetX, targetY, targetZ);
-        } else {
-          // Top side spotlights in sync together
-          const targetX = slot.defaultTarget.x + topOffsetX + this.topKickOffset.x * this.kickImpulseTime;
-          const targetY = slot.defaultTarget.y + topOffsetY + this.topKickOffset.y * this.kickImpulseTime;
-          const targetZ = slot.defaultTarget.z + topOffsetZ + this.topKickOffset.z * this.kickImpulseTime;
-          fix.targetPos.set(targetX, targetY, targetZ);
-        }
+      // Assign target direction based on synchronized group:
+      // All fixtures within each group move in sync, offset by their fixture offset vector
+      if (fix.side === 'left') {
+        fix.targetPos.set(
+          targets.left.x + fix.offsetVector.x,
+          targets.left.y + fix.offsetVector.y,
+          targets.left.z
+        );
+      } else if (fix.side === 'right') {
+        // Right group uses opposite angular relationship (-theta) with spatial elevation offsets
+        fix.targetPos.set(
+          targets.right.x + fix.offsetVector.x,
+          targets.right.y + fix.offsetVector.y,
+          targets.right.z
+        );
+      } else {
+        // Top group synchronized together along top truss
+        fix.targetPos.set(
+          targets.top.x + fix.offsetVector.x,
+          targets.top.y + fix.offsetVector.y,
+          targets.top.z
+        );
       }
 
       if (deltaSeconds > 0) {
-        fix.currentTarget.lerp(fix.targetPos, Math.min(1.0, deltaSeconds * 9.5));
+        fix.currentTarget.lerp(fix.targetPos, Math.min(1.0, deltaSeconds * 10.0));
+      } else {
+        fix.currentTarget.copy(fix.targetPos);
       }
       fix.group.lookAt(fix.currentTarget);
 
-      // Colors & continuous glowing intensity factor (0.0 to 1.0) based on Bass STEM
+      // Apply color and continuous bass-frequency-driven glow
       const lightCol = colorPaletteArray[i % colorPaletteArray.length];
       lensMat.color.copy(lightCol);
       coneMat.color.copy(lightCol);
 
-      const glow = effectiveGlow * fix.activationFactor;
-      lensMat.opacity = Math.min(0.98, 0.88 * maxBri * glow);
-      coneMat.opacity = Math.min(0.35, 0.22 * maxBri * glow);
+      const combinedIntensity = effectiveGlow * fix.activationFactor;
+      lensMat.opacity = Math.min(0.98, 0.88 * maxBri * combinedIntensity);
+      coneMat.opacity = Math.min(0.38, 0.22 * maxBri * combinedIntensity);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 3. PERIMETER SPOTLIGHTS (All Left in Sync, All Right Opposite, All Top Sync)
+    // 3. TWO WHITE BOTTOM SPOTLIGHTS (Sky Searchlights & Kick Glow Accent)
     // ═══════════════════════════════════════════════════════════════════════════
-    for (let i = 0; i < this.perimeterBassLights.length; i++) {
-      const pLight = this.perimeterBassLights[i];
-      const pLensMat = pLight.lensMesh.material as THREE.MeshBasicMaterial;
-      const pConeMat = pLight.coneMesh.material as THREE.MeshBasicMaterial;
-
-      // Turn OFF when outside verses
-      if (this.smoothTurnOnFactor <= 0.001) {
-        pLensMat.opacity = 0;
-        pConeMat.opacity = 0;
-        continue;
-      }
-
-      pLight.group.position.copy(pLight.basePos);
-
-      let pTargetX = pLight.baseTarget.x;
-      let pTargetY = pLight.baseTarget.y;
-      let pTargetZ = pLight.baseTarget.z;
-
-      if (pLight.side === 'left') {
-        // All spotlights at left side move in sync together in the exact manner of the 3rd left spotlight
-        pTargetX += leftOffsetX + this.leftKickOffset.x * this.kickImpulseTime;
-        pTargetY += leftOffsetY + this.leftKickOffset.y * this.kickImpulseTime;
-        pTargetZ += leftOffsetZ + this.leftKickOffset.z * this.kickImpulseTime;
-      } else if (pLight.side === 'right') {
-        // All spotlights at right side move in sync together, opposite movement angles to left
-        pTargetX += rightOffsetX + this.rightKickOffset.x * this.kickImpulseTime;
-        pTargetY += rightOffsetY + this.rightKickOffset.y * this.kickImpulseTime;
-        pTargetZ += rightOffsetZ + this.rightKickOffset.z * this.kickImpulseTime;
-      } else if (pLight.side === 'top') {
-        // All spotlights at top side move in sync together
-        pTargetX += topOffsetX + this.topKickOffset.x * this.kickImpulseTime;
-        pTargetY += topOffsetY + this.topKickOffset.y * this.kickImpulseTime;
-        pTargetZ += topOffsetZ + this.topKickOffset.z * this.kickImpulseTime;
-      } else {
-        // Bottom frame perimeter fixtures: sweep upward-forward in sync
-        pTargetX += Math.cos(leftAngle) * 2.4;
-        pTargetY += Math.sin(leftAngle) * 1.6;
-        pTargetZ += Math.sin(2.0 * leftAngle) * 2.0;
-      }
-
-      pLight.currentTarget.set(pTargetX, pTargetY, pTargetZ);
-      pLight.group.lookAt(pLight.currentTarget);
-
-      const crossCol = colorPaletteArray[(i + 1) % colorPaletteArray.length];
-      pLensMat.color.copy(crossCol);
-      pConeMat.color.copy(crossCol);
-
-      // Continuous Bass STEM glowing factor (0.0 to 1.0)
-      pLensMat.opacity = Math.min(0.95, 0.76 * maxBri * effectiveGlow);
-      pConeMat.opacity = Math.min(0.32, 0.20 * maxBri * effectiveGlow);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 4. WHITE SKY SPOTLIGHTS (Bottom Corners, 360° Sweeps, Intense Kick Glow)
-    // ═══════════════════════════════════════════════════════════════════════════
-    const skyBaseY = Math.max(16.0, this.currentDimensions.topY + 6.0);
-    const minTargetY = this.currentDimensions.topY + 4.5;
-
     for (let i = 0; i < this.whiteSkySpotlights.length; i++) {
       const spot = this.whiteSkySpotlights[i];
       const isLeft = spot.corner === 'left';
       const lensMat = spot.lensMesh.material as THREE.MeshBasicMaterial;
       const coneMat = spot.coneMesh.material as THREE.MeshBasicMaterial;
 
-      // Turn OFF when outside verses
+      // Architectural Rule: White spotlight origins remain completely stationary
+      spot.fixedBaseMesh.position.copy(spot.basePos);
+      spot.headGroup.position.copy(spot.basePos);
+
+      // Turn OFF when outside verses & solos
       if (this.smoothTurnOnFactor <= 0.001) {
         lensMat.opacity = 0;
         coneMat.opacity = 0;
         continue;
       }
 
-      // Left follows left movement angle (leftAngle), Right follows opposite angle (rightAngle)
-      const baseCornerX = isLeft
-        ? this.currentDimensions.leftX - 3.0
-        : this.currentDimensions.rightX + 3.0;
-
-      let sweepX: number;
-      let sweepY: number;
-      let sweepZ: number;
-
-      if (isLeft) {
-        sweepX = baseCornerX + Math.cos(leftAngle) * 3.6;
-        sweepY = skyBaseY + Math.sin(2.0 * leftAngle) * 2.2;
-        sweepZ = 14.0 + Math.sin(leftAngle) * 3.2;
-      } else {
-        sweepX = baseCornerX - Math.cos(rightAngle) * 3.6;
-        sweepY = skyBaseY + Math.sin(2.0 * rightAngle) * 2.2;
-        sweepZ = 14.0 - Math.sin(rightAngle) * 3.2;
-      }
-
-      spot.targetPos.set(sweepX, Math.max(minTargetY, sweepY), sweepZ);
+      // Trajectories follow full-screen sky searchlight coordinates from movement controller
+      // Crucial: White spotlights NEVER change beam direction on kick events!
+      const skyTarget = isLeft ? targets.whiteLeft : targets.whiteRight;
+      spot.targetPos.copy(skyTarget);
 
       if (deltaSeconds > 0) {
         spot.currentTarget.lerp(spot.targetPos, Math.min(1.0, deltaSeconds * 9.5));
+      } else {
+        spot.currentTarget.copy(spot.targetPos);
       }
-      spot.currentTarget.y = Math.max(minTargetY, spot.currentTarget.y);
-
-      spot.fixedBaseMesh.position.copy(spot.basePos);
-      spot.headGroup.position.copy(spot.basePos);
       spot.headGroup.lookAt(spot.currentTarget);
 
-      // The Kick makes these 2 bottom white spotlights glow intensely when kick hits!
-      const whiteGlow = effectiveGlow * this.whiteKickIntensity;
+      // Kick Transient Glow Accent: Kick sharply increases white spotlight glow!
+      const whiteGlow = Math.min(1.0, effectiveGlow * this.whiteKickIntensity);
 
-      lensMat.opacity = Math.min(1.0, 0.90 * maxBri * whiteGlow);
+      lensMat.opacity = Math.min(1.0, 0.92 * maxBri * whiteGlow);
       coneMat.opacity = Math.min(0.85, 0.28 * maxBri * whiteGlow);
 
-      // Beam flare expansion on intense kick glow
-      const kickScale = 1.0 + (this.whiteKickIntensity - 1.0) * 0.20;
-      spot.coneMesh.scale.set(kickScale, kickScale, 1.0);
+      // Subtle volumetric beam flare expansion on intense kick glow
+      const flareScale = 1.0 + (this.whiteKickIntensity - 1.0) * 0.18;
+      spot.coneMesh.scale.set(flareScale, flareScale, 1.0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 5. WASH LIGHTS (Dynamic Stage Ambient Illumination)
+    // 4. WASH LIGHTS (Dynamic Stage Ambient Lighting)
     // ═══════════════════════════════════════════════════════════════════════════
     this.washLight1.color.copy(primaryCol);
-    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.35 + 0.55 * effectiveGlow) * maxBri);
+    this.washLight1.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * effectiveGlow) * maxBri);
 
     this.washLight2.color.copy(secondaryCol);
-    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.35 + 0.55 * effectiveGlow) * maxBri);
+    this.washLight2.intensity = Math.min(1.2 * maxBri, (0.25 + 0.65 * effectiveGlow) * maxBri);
+  }
+
+  private turnOffAllLights(): void {
+    for (const fix of this.fixtures) {
+      (fix.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      (fix.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
+    for (const s of this.whiteSkySpotlights) {
+      (s.lensMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      (s.coneMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
+    if (this.washLight1) this.washLight1.intensity = 0;
+    if (this.washLight2) this.washLight2.intensity = 0;
   }
 }

@@ -453,22 +453,30 @@ async def get_spotlight_analysis(video_id: str):
     """
     clean_id = video_id.strip()
     unique_id = get_unique_identifier(clean_id)
-    stems_path = STEMS_CACHE_DIR / f"stems_{unique_id}.json"
-    wav_path = AUDIO_CACHE_DIR / f"{unique_id}.wav"
+    from demucs_service import load_stems_index
+    index = load_stems_index()
+    candidates = [
+        STEMS_CACHE_DIR / f"stems_{unique_id}.json",
+        STEMS_CACHE_DIR / index.get(unique_id, ""),
+        STEMS_CACHE_DIR / index.get(clean_id, ""),
+        STEMS_CACHE_DIR / f"spotlight_{unique_id}.json",
+    ]
 
-    if stems_path.exists():
-        try:
-            with open(stems_path, "r") as f:
-                stems_data = json.load(f)
-            if stems_data and "spotlightAnalysis" in stems_data:
-                return {
-                    "success": True,
-                    "videoId": clean_id,
-                    "cached": True,
-                    "spotlightAnalysis": stems_data["spotlightAnalysis"],
-                }
-        except Exception:
-            pass
+    for stems_path in candidates:
+        if stems_path.name and stems_path.exists():
+            try:
+                with open(stems_path, "r") as f:
+                    stems_data = json.load(f)
+                analysis = stems_data.get("spotlightAnalysis") if "spotlightAnalysis" in stems_data else stems_data
+                if analysis and "frameCount" in analysis:
+                    return {
+                        "success": True,
+                        "videoId": clean_id,
+                        "cached": True,
+                        "spotlightAnalysis": analysis,
+                    }
+            except Exception:
+                pass
 
     if wav_path.exists():
         try:

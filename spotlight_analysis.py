@@ -5,47 +5,62 @@ Synwave Spotlight Audio-Reactive Movement & Frequency Pre-Analysis Engine
 Performs offline DSP acoustic pre-analysis on neural audio STEMs (Demucs) to coordinate
 concert moving-head stage lights framing the YouTube stage screen:
 
-1. Frequency Extraction:
-   - Tracks continuous spectral frequencies of Instrument and Bass stems across all
+1. Continuous Frequency Trajectories & Normalization:
+   - Tracks continuous spectral frequencies of Instrument (other) and Bass stems across all
      timestamps (in milliseconds) throughout the entire track.
-   - Computes global min, max, and midpoint average ((max + min) / 2) frequencies.
+   - Computes robust per-song minimum and maximum frequency bounds (filtering silence/outliers).
+   - Maps Instrument frequency to a 360° angular reference:
+       f_norm(t) = clamp((f_inst(t) - f_min) / (f_max - f_min), 0.0, 1.0)
+       theta(t)  = 360.0 * f_norm(t)
+   - Maps Bass frequency to continuous spotlight glow:
+       G(t) = clamp((f_bass(t) - f_min) / (f_max - f_min), 0.0, 1.0)
 
-2. 360° Angular Distribution:
-   - Distributes the continuous Instrument frequency range into full [0°, 360°] rotation angles.
-   - Synchronizes Left side spotlights together.
-   - Synchronizes Right side spotlights together with opposite rotation angles (-θ).
-   - Synchronizes Top side spotlights together.
+2. Musical Structure & Section Detection (mir-aidj/all-in-one):
+   - Uses allin1_infer (mir-aidj/all-in-one architecture) with direct stems input for rapid
+     spectrogram and structure inference.
+   - Identifies and classifies:
+       - Verses
+       - Instrumental solos
+       - Lead-instrument solos
+       - Clearly identifiable vocal solos
+       - Inactive intervals (chorus, intro, outro, break, bridge)
+   - Assigns confidence scores, start/end timestamps (seconds and milliseconds).
+   - Spotlight activation policy:
+       The eligible spotlight timeline is the union of confidently identified verse and solo segments.
+       During verses and solos: spotlights active, frequency-driven beam movement, continuous bass glow,
+       kick direction response on main spotlights, kick glow surge on white bottom spotlights.
+       Outside eligible sections: spotlights inactive (faded out), no kick reactivation.
 
-3. Activation Threshold Logic:
-   - Evaluates simultaneous threshold crossing: when both Instrument and Bass frequencies
-     cross and rise above their respective average frequencies ((max + min) / 2) at the same
-     time, all spotlights (including the 2 bottom white sky spotlights) turn ON.
-   - Before this initial crossing, spotlights remain OFF.
-   - When both frequencies drop below their respective averages, spotlights turn OFF.
-
-4. Continuous Bass Glowing Factor:
-   - Maps continuous Bass STEM frequency between min (0.0) and max (1.0).
-   - Ensures continuous, silky-smooth glowing intensity across the timeline.
-
-5. Kick STEM Transients:
-   - Pinpoints drum / kick transient impacts from the Drums/Kick STEM.
-   - Used by stage lights to snap to synchronized random projection directions and trigger
-     intense white flash flare bursts on the 2 bottom white sky spotlights.
+3. Kick / Drum Transient Detection & Precomputed Deterministic Direction Targets:
+   - Pinpoints drum / kick transient impacts from the Drums/Kick STEM with millisecond accuracy.
+   - Debounces onsets (minimum event separation >= 120ms) to avoid duplicate triggers.
+   - Precomputes deterministic 3D direction targets for main coloured spotlights across the complete
+     viewport, preserving group synchronization and opposite angular relationships.
 """
 
 import os
 import sys
 import json
+import random
+import hashlib
 import argparse
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import numpy as np
 import torch
+import soundfile as sf
 
 BASE_DIR = Path(__file__).resolve().parent
 CACHE_BASE_DIR = BASE_DIR / ".synwave_cache"
 AUDIO_CACHE_DIR = CACHE_BASE_DIR / "audio"
 STEMS_CACHE_DIR = CACHE_BASE_DIR / "stems"
+STEMS_AUDIO_DIR = CACHE_BASE_DIR / "stems_audio"
+
+# Ensure cache directories exist
+CACHE_BASE_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+STEMS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+STEMS_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class SpotlightAnalyzer:
@@ -58,11 +73,15 @@ class SpotlightAnalyzer:
         self.win_length = win_length
 
     @staticmethod
-    def _to_mono(audio: np.ndarray | torch.Tensor) -> np.ndarray:
+    def _to_mono(audio: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
         """Convert multi-channel audio (torch.Tensor or np.ndarray) to 1D mono float32."""
         if isinstance(audio, torch.Tensor):
             if audio.ndim == 2:
-                mono = audio.mean(dim=0).cpu().numpy()
+                # Channels first [channels, samples] or samples first
+                if audio.shape[0] <= 4:
+                    mono = audio.mean(dim=0).cpu().numpy()
+                else:
+                    mono = audio.mean(dim=1).cpu().numpy()
             elif audio.ndim == 1:
                 mono = audio.cpu().numpy()
             else:
@@ -70,7 +89,6 @@ class SpotlightAnalyzer:
         else:
             arr = np.asarray(audio, dtype=np.float32)
             if arr.ndim == 2:
-                # Average across channels
                 mono = np.mean(arr, axis=0 if arr.shape[0] <= 4 else 1)
             else:
                 mono = arr.flatten()
@@ -85,16 +103,22 @@ class SpotlightAnalyzer:
         num_target_frames: int,
         centroid_weight: float = 0.65,
         peak_weight: float = 0.35,
-    ) -> np.ndarray:
+        energy_threshold: float = 0.005,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculates a continuous frequency trajectory (Hz) across target frame intervals
         using short-time Fourier transforms (STFT), bounded spectral centroids, and peak picking.
         Applies a temporal smoothing filter to guarantee mathematically continuous motion.
+        Returns: (smooth_freq, validity_mask)
         """
         hop_length = int(sr / self.target_fps)
         total_samples = len(mono_audio)
+        mid_freq = (min_freq_bound + max_freq_bound) / 2.0
         if total_samples == 0:
-            return np.full(num_target_frames, (min_freq_bound + max_freq_bound) / 2.0, dtype=np.float32)
+            return (
+                np.full(num_target_frames, mid_freq, dtype=np.float32),
+                np.zeros(num_target_frames, dtype=bool),
+            )
 
         # Pad or trim to fit num_target_frames
         expected_samples = num_target_frames * hop_length
@@ -135,28 +159,57 @@ class SpotlightAnalyzer:
         # Blend centroid and peak for rich harmonic sensitivity
         blended = centroid_weight * centroids + peak_weight * peaks
 
+        # Compute frame RMS energy to establish validity (silence detection)
+        # Using reshaped audio blocks
+        n_frames = min(num_target_frames, mag.shape[1])
+        blocks = mono_audio[:n_frames * hop_length].reshape(n_frames, hop_length)
+        rms = np.sqrt(np.mean(blocks ** 2, axis=1) + 1e-9)
+        max_rms = float(np.max(rms)) if len(rms) > 0 else 1.0
+        rel_rms = rms / max(1e-6, max_rms)
+        validity = rel_rms > energy_threshold
+
         # Match exact target frames count
         if len(blended) < num_target_frames:
             blended = np.pad(blended, (0, num_target_frames - len(blended)), mode="edge")
+            validity = np.pad(validity, (0, num_target_frames - len(validity)), mode="constant", constant_values=False)
         elif len(blended) > num_target_frames:
             blended = blended[:num_target_frames]
+            validity = validity[:num_target_frames]
+
+        # Interpolate across invalid silent sections to avoid arbitrary frequency shifts
+        valid_indices = np.where(validity)[0]
+        if len(valid_indices) > 0:
+            if len(valid_indices) < num_target_frames:
+                blended = np.interp(
+                    np.arange(num_target_frames),
+                    valid_indices,
+                    blended[valid_indices],
+                    left=blended[valid_indices[0]],
+                    right=blended[valid_indices[-1]],
+                )
+        else:
+            blended = np.full(num_target_frames, mid_freq, dtype=np.float32)
 
         # Apply continuous temporal smoothing (Hann window convolution)
         kernel_size = 5
         kernel = np.hanning(kernel_size)
         kernel = kernel / np.sum(kernel)
         smooth_freq = np.convolve(blended, kernel, mode="same")
+        # Ensure values stay bounded within specified range
+        smooth_freq = np.clip(smooth_freq, min_freq_bound, max_freq_bound)
 
-        return smooth_freq.astype(np.float32)
+        return smooth_freq.astype(np.float32), validity
 
     def extract_kick_transients(
         self,
         drums_mono: np.ndarray,
         sr: int,
         num_target_frames: int,
+        seed_key: str = "synwave_default",
     ) -> List[Dict[str, Any]]:
         """
-        Extracts synchronized kick events from Drums/Kick stem with exact millisecond timestamps.
+        Extracts synchronized kick events from Drums/Kick stem with exact millisecond timestamps,
+        minimum event separation (debouncing >= 120ms), and precomputed deterministic direction targets.
         """
         hop_length = int(sr / self.target_fps)
         total_samples = len(drums_mono)
@@ -175,85 +228,319 @@ class SpotlightAnalyzer:
         diff = np.diff(norm_rms, prepend=norm_rms[0])
         kicks: List[Dict[str, Any]] = []
 
+        # Minimum event separation: 3 frames @ 25fps = 120ms debouncing
+        min_separation_frames = 3
+        last_kick_frame = -min_separation_frames
+
+        # Deterministic random generator seeded with track key
+        seed_int = int(hashlib.md5(seed_key.encode("utf-8")).hexdigest()[:8], 16)
+        rng = random.Random(seed_int)
+
         for i, d in enumerate(diff):
             if d > 0.16 and norm_rms[i] > 0.28:
-                t_sec = round(i / self.target_fps, 3)
-                t_ms = int(round(i * 1000.0 / self.target_fps))
-                kicks.append({
-                    "time": t_sec,
-                    "timestampMs": t_ms,
-                    "intensity": round(float(norm_rms[i]), 3),
-                })
+                if (i - last_kick_frame) >= min_separation_frames:
+                    last_kick_frame = i
+                    t_sec = round(i / self.target_fps, 3)
+                    t_ms = int(round(i * 1000.0 / self.target_fps))
+                    intensity = round(float(norm_rms[i]), 3)
+
+                    # Generate deterministic full-screen targets for left, right, top groups:
+                    # Viewport bounds: X in [-18, 18], Y in [1, 13], Z in [12, 16]
+                    # Left group target (sweeps wide across viewport)
+                    kx_left = round(rng.uniform(-17.0, 15.0), 2)
+                    ky_left = round(rng.uniform(1.2, 13.0), 2)
+                    kz_left = round(rng.uniform(12.5, 15.5), 2)
+
+                    # Right group target: opposite angular relationship with geometry offset
+                    kx_right = round(-kx_left + rng.uniform(-2.0, 2.0), 2)
+                    ky_right = round(ky_left + rng.uniform(-1.5, 1.5), 2)
+                    kz_right = round(kz_left, 2)
+
+                    # Top group target: downward/forward broad fan across stage
+                    kx_top = round(rng.uniform(-14.0, 14.0), 2)
+                    ky_top = round(rng.uniform(0.8, 8.5), 2)
+                    kz_top = round(rng.uniform(12.5, 15.5), 2)
+
+                    kicks.append({
+                        "time": t_sec,
+                        "timestampMs": t_ms,
+                        "intensity": intensity,
+                        "onsetStrength": round(float(d), 3),
+                        "directionTarget": {
+                            "left": [kx_left, ky_left, kz_left],
+                            "right": [kx_right, ky_right, kz_right],
+                            "top": [kx_top, ky_top, kz_top],
+                        },
+                    })
 
         return kicks
 
-    def analyze_song_segments(self, audio_path: str | Path) -> List[Dict[str, Any]]:
+    def classify_song_segments(
+        self,
+        audio_path: Optional[Union[str, Path]] = None,
+        stems_dict: Optional[Dict[str, np.ndarray]] = None,
+        sr: int = 44100,
+        track_duration: float = 0.0,
+    ) -> List[Dict[str, Any]]:
         """
-        Uses mir-aidj/all-in-one (allin1_infer) to find timestamps of particular segments in a song.
-        Extracts functional music structure segments (verse, chorus, bridge, break, inst, etc.).
+        Uses mir-aidj/all-in-one (via allin1_infer) to analyze music structure and segments.
+        Classifies functional sections:
+        - Verses ('verse')
+        - Instrumental Solos ('instrumental_solo')
+        - Lead-Instrument Solos ('lead_instrument_solo')
+        - Vocal Solos ('vocal_solo')
+        - Inactive sections ('chorus', 'intro', 'outro', 'break', 'bridge', etc.)
+
+        When stems_dict is supplied, direct stems input is utilized to bypass redundant CPU Demucs separation.
         """
-        path = Path(audio_path)
-        if not path.exists():
-            return []
+        raw_segments: List[Dict[str, Any]] = []
 
         try:
-            try:
-                import allin1_infer as allin1_mod
-            except ImportError:
-                import allin1 as allin1_mod
+            import allin1_infer
 
-            print(f"[SpotlightAnalyzer] Running all-in-one music structure segmentation on {path.name}...")
-            result = allin1_mod.analyze(str(path), device="cpu")
-            segments: List[Dict[str, Any]] = []
-            for s in result.segments:
-                segments.append({
-                    "label": s.label,
-                    "start": round(float(s.start), 3),
-                    "end": round(float(s.end), 3),
-                    "startMs": int(round(s.start * 1000.0)),
-                    "endMs": int(round(s.end * 1000.0)),
-                })
-            verse_count = sum(1 for s in segments if str(s.get("label", "")).lower() == "verse")
-            print(f"[SpotlightAnalyzer] all-in-one detected {len(segments)} segments ({verse_count} verses).")
-            return segments
+            # Fast path: use StemsInput if stems are provided as audio files or written to stems_audio
+            stems_input_obj = None
+            temp_stems_dir = None
+
+            if stems_dict and audio_path:
+                stem_id = Path(audio_path).stem
+                target_dir = STEMS_AUDIO_DIR / stem_id
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+                required_stems = ['bass', 'drums', 'other', 'vocals']
+                has_all_files = all((target_dir / f"{s}.wav").exists() for s in required_stems)
+
+                if not has_all_files:
+                    # Write out stems to target_dir for rapid StemsInput consumption
+                    for s_name in required_stems:
+                        wav_data = stems_dict.get(s_name)
+                        if wav_data is not None:
+                            p = target_dir / f"{s_name}.wav"
+                            # Ensure 2D (channels, samples) or (samples, channels)
+                            arr = np.asarray(wav_data, dtype=np.float32)
+                            if arr.ndim == 1:
+                                arr = np.column_stack([arr, arr])
+                            elif arr.ndim == 2 and arr.shape[0] <= 4:
+                                arr = arr.T
+                            sf.write(str(p), arr, sr)
+
+                if all((target_dir / f"{s}.wav").exists() for s in required_stems):
+                    stems_input_obj = allin1_infer.StemsInput(
+                        bass=target_dir / 'bass.wav',
+                        drums=target_dir / 'drums.wav',
+                        other=target_dir / 'other.wav',
+                        vocals=target_dir / 'vocals.wav',
+                        identifier=stem_id,
+                    )
+
+            if stems_input_obj is not None:
+                print(f"[SpotlightAnalyzer] Running rapid all-in-one segmentation on stems_input ({stems_input_obj.name})...")
+                result = allin1_infer.analyze(stems_input=stems_input_obj, device="cpu")
+            elif audio_path and Path(audio_path).exists():
+                print(f"[SpotlightAnalyzer] Running all-in-one segmentation on audio file: {Path(audio_path).name}...")
+                result = allin1_infer.analyze(str(audio_path), device="cpu")
+            else:
+                result = None
+
+            if result is not None and hasattr(result, "segments"):
+                for s in result.segments:
+                    raw_segments.append({
+                        "label": str(s.label).lower().strip(),
+                        "start": round(float(s.start), 3),
+                        "end": round(float(s.end), 3),
+                        "startMs": int(round(s.start * 1000.0)),
+                        "endMs": int(round(s.end * 1000.0)),
+                    })
         except Exception as e:
-            print(f"[SpotlightAnalyzer] Note: all-in-one segmentation skipped or error: {e}")
-            return []
+            print(f"[SpotlightAnalyzer] all-in-one segmentation note/fallback: {e}")
+
+        # Multi-level classification & stem-feature enhancement
+        classified_segments: List[Dict[str, Any]] = []
+
+        if raw_segments:
+            for seg in raw_segments:
+                lbl = seg["label"]
+                start_sec = seg["start"]
+                end_sec = seg["end"]
+                dur = max(0.1, end_sec - start_sec)
+
+                # Compute stem energy distribution across segment interval if stems_dict available
+                vocal_energy = 0.0
+                inst_energy = 0.0
+                bass_energy = 0.0
+
+                if stems_dict:
+                    start_sample = int(start_sec * sr)
+                    end_sample = int(end_sec * sr)
+
+                    def get_stem_rms(key: str) -> float:
+                        arr = stems_dict.get(key)
+                        if arr is None:
+                            return 0.0
+                        mono = SpotlightAnalyzer._to_mono(arr)
+                        sub = mono[start_sample:end_sample]
+                        return float(np.sqrt(np.mean(sub ** 2) + 1e-9)) if len(sub) > 0 else 0.0
+
+                    vocal_energy = get_stem_rms('vocals')
+                    inst_energy = get_stem_rms('other')
+                    bass_energy = get_stem_rms('bass')
+
+                total_sig = vocal_energy + inst_energy + bass_energy + 1e-6
+                vocal_ratio = vocal_energy / total_sig
+                inst_ratio = inst_energy / total_sig
+
+                classification = "inactive"
+                category = "inactive"
+                confidence = 0.85
+                is_eligible = False
+
+                if lbl == "verse":
+                    classification = "verse"
+                    category = "verse"
+                    confidence = 0.95
+                    is_eligible = True
+                elif lbl == "solo":
+                    if inst_ratio > 0.40 and inst_energy > 0.15:
+                        classification = "lead_instrument_solo"
+                    elif vocal_ratio > 0.45:
+                        classification = "vocal_solo"
+                    else:
+                        classification = "instrumental_solo"
+                    category = "solo"
+                    confidence = 0.92
+                    is_eligible = True
+                elif lbl == "inst":
+                    # Instrumental passage: if instrument energy is prominent and sustained, classify as instrumental solo
+                    if inst_energy > 0.25 and inst_ratio > 0.35:
+                        classification = "instrumental_solo"
+                        category = "solo"
+                        confidence = 0.80
+                        is_eligible = True
+                    else:
+                        classification = "inactive"
+                        category = "inactive"
+                        confidence = 0.80
+                        is_eligible = False
+                elif lbl == "break":
+                    # Break passage: check if it's a vocal solo or instrumental lead break
+                    if vocal_ratio > 0.55 and vocal_energy > 0.20:
+                        classification = "vocal_solo"
+                        category = "solo"
+                        confidence = 0.82
+                        is_eligible = True
+                    elif inst_ratio > 0.55 and inst_energy > 0.25:
+                        classification = "lead_instrument_solo"
+                        category = "solo"
+                        confidence = 0.82
+                        is_eligible = True
+                    else:
+                        classification = "inactive"
+                        category = "inactive"
+                        confidence = 0.85
+                        is_eligible = False
+                else:
+                    # Chorus, Intro, Outro, Bridge, Start, End
+                    classification = lbl
+                    category = "inactive"
+                    confidence = 0.90
+                    is_eligible = False
+
+                classified_segments.append({
+                    "label": lbl,
+                    "classification": classification,
+                    "category": category,
+                    "confidence": round(confidence, 2),
+                    "isEligible": is_eligible,
+                    "start": start_sec,
+                    "end": end_sec,
+                    "startMs": seg["startMs"],
+                    "endMs": seg["endMs"],
+                })
+        else:
+            # Fallback heuristic if all-in-one is not available or returned no segments
+            print("[SpotlightAnalyzer] Using acoustic stem energy distribution for verse/solo detection fallback.")
+            if stems_dict and track_duration > 0:
+                mono_inst = self._to_mono(stems_dict.get('other', np.zeros(100)))
+                mono_voc = self._to_mono(stems_dict.get('vocals', np.zeros(100)))
+                frame_len = int(sr * 4.0)  # 4-second blocks
+                total_blocks = int(track_duration / 4.0)
+                for b in range(total_blocks):
+                    s_sec = round(b * 4.0, 3)
+                    e_sec = round(min(track_duration, (b + 1) * 4.0), 3)
+                    sub_inst = mono_inst[int(s_sec * sr):int(e_sec * sr)]
+                    sub_voc = mono_voc[int(s_sec * sr):int(e_sec * sr)]
+                    v_rms = float(np.sqrt(np.mean(sub_voc ** 2) + 1e-9)) if len(sub_voc) > 0 else 0.0
+                    i_rms = float(np.sqrt(np.mean(sub_inst ** 2) + 1e-9)) if len(sub_inst) > 0 else 0.0
+
+                    is_verse = v_rms > 0.08 and i_rms > 0.05
+                    is_solo = not is_verse and i_rms > 0.20
+
+                    if is_verse or is_solo:
+                        classified_segments.append({
+                            "label": "verse" if is_verse else "solo",
+                            "classification": "verse" if is_verse else "instrumental_solo",
+                            "category": "verse" if is_verse else "solo",
+                            "confidence": 0.70,
+                            "isEligible": True,
+                            "start": s_sec,
+                            "end": e_sec,
+                            "startMs": int(round(s_sec * 1000.0)),
+                            "endMs": int(round(e_sec * 1000.0)),
+                        })
+
+        return classified_segments
 
     def analyze_stems_audio(
         self,
-        instruments_audio: np.ndarray | torch.Tensor,
-        bass_audio: np.ndarray | torch.Tensor,
-        drums_audio: Optional[np.ndarray | torch.Tensor] = None,
+        instruments_audio: Union[np.ndarray, torch.Tensor],
+        bass_audio: Union[np.ndarray, torch.Tensor],
+        drums_audio: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        vocals_audio: Optional[Union[np.ndarray, torch.Tensor]] = None,
         sr: int = 44100,
-        audio_path: Optional[str | Path] = None,
+        audio_path: Optional[Union[str, Path]] = None,
         segments: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Performs the complete pre-analysis on extracted Instrument and Bass STEM waveforms:
         - Continuous frequencies of Instrument and Bass stems against timestamp in milliseconds.
-        - Computes min, max, and midpoint average ((max + min) / 2) for both STEMs.
-        - Distributes Instrument frequency across 360 degrees for spotlight movements.
-        - Uses all-in-one (mir-aidj/all-in-one) to detect song segments:
-          The spotlights should get turned on ONLY in verses.
-        - Maps continuous Bass frequency to [0.0, 1.0] glowing intensity factor.
-        - Pinpoints Kick STEM transients for synchronized random beam directions.
+        - Robust independent min, max, and midpoint average ((max + min) / 2) for both STEMs.
+        - Maps Instrument frequency to a 360-degree angular reference for full-screen spotlight paths.
+        - Maps Bass frequency to continuous [0.0, 1.0] glowing intensity factor.
+        - Detects functional song segments (Verses, Solos, and Inactive sections) using mir-aidj/all-in-one.
+        - Derives the eligible spotlight activation timeline as the union of verse and solo segments.
+        - Pinpoints Kick STEM transients with precomputed deterministic direction targets.
         """
         inst_mono = self._to_mono(instruments_audio)
         bass_mono = self._to_mono(bass_audio)
         drums_mono = self._to_mono(drums_audio) if drums_audio is not None else None
+        voc_mono = self._to_mono(vocals_audio) if vocals_audio is not None else None
 
         hop_length = int(sr / self.target_fps)
         total_len = max(len(inst_mono), len(bass_mono))
         num_frames = max(1, total_len // hop_length)
         duration_sec = round(num_frames / self.target_fps, 2)
+        track_key = Path(audio_path).stem if audio_path else f"track_{num_frames}"
 
-        # 0. Segment Analysis using mir-aidj/all-in-one (if audio_path is provided and segments not already supplied)
-        if segments is None and audio_path is not None:
-            segments = self.analyze_song_segments(audio_path)
+        # 0. Multi-Class Segment Analysis (Verses, Solos, Inactive) using mir-aidj/all-in-one
+        stems_dict = {
+            'bass': bass_mono,
+            'other': inst_mono,
+            'drums': drums_mono if drums_mono is not None else np.zeros_like(inst_mono),
+            'vocals': voc_mono if voc_mono is not None else np.zeros_like(inst_mono),
+        }
+
+        if segments is None:
+            classified_segments = self.classify_song_segments(
+                audio_path=audio_path,
+                stems_dict=stems_dict,
+                sr=sr,
+                track_duration=duration_sec,
+            )
+        else:
+            classified_segments = segments
 
         # 1. Frequency calculation for Instrument STEM (150 Hz to 7500 Hz)
-        inst_freqs = self.compute_continuous_frequency_trajectory(
+        inst_freqs, inst_validity = self.compute_continuous_frequency_trajectory(
             inst_mono,
             sr=sr,
             min_freq_bound=150.0,
@@ -261,10 +548,11 @@ class SpotlightAnalyzer:
             num_target_frames=num_frames,
             centroid_weight=0.65,
             peak_weight=0.35,
+            energy_threshold=0.005,
         )
 
         # 2. Frequency calculation for Bass STEM (25 Hz to 450 Hz)
-        bass_freqs = self.compute_continuous_frequency_trajectory(
+        bass_freqs, bass_validity = self.compute_continuous_frequency_trajectory(
             bass_mono,
             sr=sr,
             min_freq_bound=25.0,
@@ -272,64 +560,106 @@ class SpotlightAnalyzer:
             num_target_frames=num_frames,
             centroid_weight=0.55,
             peak_weight=0.45,
+            energy_threshold=0.008,
         )
 
-        # 3. Find max, min, and average ((max + min) / 2) values
-        inst_min = float(np.min(inst_freqs))
-        inst_max = float(np.max(inst_freqs))
+        # 3. Robust Song-Specific Frequency Normalization Bounds
+        # Filtering valid frames to eliminate silence bias or isolated outlier spikes
+        valid_inst_vals = inst_freqs[inst_validity] if np.any(inst_validity) else inst_freqs
+        inst_min = float(np.percentile(valid_inst_vals, 3.0)) if len(valid_inst_vals) > 0 else 150.0
+        inst_max = float(np.percentile(valid_inst_vals, 97.0)) if len(valid_inst_vals) > 0 else 7500.0
+        if inst_max <= inst_min:
+            inst_max = inst_min + 100.0
         inst_span = max(1.0, inst_max - inst_min)
         inst_avg = (inst_min + inst_max) / 2.0
 
-        bass_min = float(np.min(bass_freqs))
-        bass_max = float(np.max(bass_freqs))
+        valid_bass_vals = bass_freqs[bass_validity] if np.any(bass_validity) else bass_freqs
+        bass_min = float(np.percentile(valid_bass_vals, 3.0)) if len(valid_bass_vals) > 0 else 25.0
+        bass_max = float(np.percentile(valid_bass_vals, 97.0)) if len(valid_bass_vals) > 0 else 450.0
+        if bass_max <= bass_min:
+            bass_max = bass_min + 20.0
         bass_span = max(1.0, bass_max - bass_min)
         bass_avg = (bass_min + bass_max) / 2.0
 
         # 4. Generate timestamp array (milliseconds)
         timestamps_ms = [int(round(i * 1000.0 / self.target_fps)) for i in range(num_frames)]
 
-        # 5. Distribute Instrument frequency range across 360 degrees (remember 1)
-        # norm_inst maps smoothly from 0.0 to 1.0; multiplied by 360 degrees
+        # 5. Distribute Instrument frequency range across 360 degrees:
+        # f_norm(t) = clamp((f_t - f_min) / (f_max - f_min), 0, 1)
+        # theta(t)  = 360 * f_norm(t)
         norm_inst = np.clip((inst_freqs - inst_min) / inst_span, 0.0, 1.0)
         movement_angles_deg = [round(float(deg), 2) for deg in (norm_inst * 360.0)]
-
-        # Secondary 360° distribution for bass (for dual-frequency visual dynamics)
-        norm_bass = np.clip((bass_freqs - bass_min) / bass_span, 0.0, 1.0)
-        bass_angles_deg = [round(float(deg), 2) for deg in (norm_bass * 360.0)]
+        movement_angles_rad = [round(float(deg * np.pi / 180.0), 4) for deg in (norm_inst * 360.0)]
 
         # 6. Continuous glowing factor across [0.0, 1.0] based on Bass STEM frequency
-        # Min frequency -> 0.0, Max frequency -> 1.0. Continuous across timeline.
+        # G(t) = clamp((f_bass(t) - f_min) / (f_max - f_min), 0, 1)
+        norm_bass = np.clip((bass_freqs - bass_min) / bass_span, 0.0, 1.0)
         glowing_factors = [round(float(g), 4) for g in norm_bass]
 
-        # 7. Activation state:
-        # "Use this github https://github.com/mir-aidj/all-in-one to find out timestamp of particular
-        #  segments in a song. The spotlights should get turned on only in verses."
-        verse_intervals = [
-            (s["start"], s["end"])
-            for s in (segments or [])
-            if str(s.get("label", "")).lower() == "verse"
+        # 7. Spotlight Activation Policy:
+        # Eligible spotlight timeline = Union of confidently identified verse and solo segments.
+        # Merge overlapping/adjacent intervals (gap <= 0.35s) to avoid flicker.
+        raw_eligible = [
+            (s["start"], s["end"], s.get("label", ""), s.get("category", "verse"), s.get("confidence", 0.9))
+            for s in classified_segments
+            if s.get("isEligible", False) or s.get("category") in ["verse", "solo"]
         ]
+
+        # Interval merging
+        merged_intervals: List[Dict[str, Any]] = []
+        if raw_eligible:
+            sorted_raw = sorted(raw_eligible, key=lambda x: x[0])
+            cur_start, cur_end, cur_label, cur_cat, cur_conf = sorted_raw[0]
+
+            for s_start, s_end, s_label, s_cat, s_conf in sorted_raw[1:]:
+                if s_start <= (cur_end + 0.35):
+                    # Merge touching/overlapping intervals
+                    cur_end = max(cur_end, s_end)
+                    cur_conf = max(cur_conf, s_conf)
+                else:
+                    merged_intervals.append({
+                        "start": round(cur_start, 3),
+                        "end": round(cur_end, 3),
+                        "startMs": int(round(cur_start * 1000.0)),
+                        "endMs": int(round(cur_end * 1000.0)),
+                        "label": cur_label,
+                        "category": cur_cat,
+                        "confidence": round(cur_conf, 2),
+                    })
+                    cur_start, cur_end, cur_label, cur_cat, cur_conf = s_start, s_end, s_label, s_cat, s_conf
+
+            merged_intervals.append({
+                "start": round(cur_start, 3),
+                "end": round(cur_end, 3),
+                "startMs": int(round(cur_start * 1000.0)),
+                "endMs": int(round(cur_end * 1000.0)),
+                "label": cur_label,
+                "category": cur_cat,
+                "confidence": round(cur_conf, 2),
+            })
 
         spotlights_active: List[bool] = []
         for i in range(num_frames):
             t_sec = i / self.target_fps
-            if verse_intervals:
-                # Active strictly when current timestamp is within any verse segment
-                is_active = any(v_start <= t_sec <= v_end for v_start, v_end in verse_intervals)
+            if merged_intervals:
+                is_active = any(iv["start"] <= t_sec <= iv["end"] for iv in merged_intervals)
             else:
-                # Fallback if no verse annotations available: dual-stem average crossing
+                # Controlled fallback if no structural segments detected: dual-stem crossing
                 fi = float(inst_freqs[i])
                 fb = float(bass_freqs[i])
                 is_active = fi >= inst_avg and fb >= bass_avg
 
             spotlights_active.append(is_active)
 
-        # 8. Kick transients from Drums STEM
+        # 8. Kick transients from Drums STEM with deterministic direction targets
         kick_events = (
-            self.extract_kick_transients(drums_mono, sr=sr, num_target_frames=num_frames)
+            self.extract_kick_transients(drums_mono, sr=sr, num_target_frames=num_frames, seed_key=track_key)
             if drums_mono is not None
             else []
         )
+
+        verse_segments = [s for s in classified_segments if s.get("category") == "verse"]
+        solo_segments = [s for s in classified_segments if s.get("category") == "solo"]
 
         return {
             "fps": self.target_fps,
@@ -343,23 +673,28 @@ class SpotlightAnalyzer:
             "bassAvgFreq": round(bass_avg, 2),
             "timestampsMs": timestamps_ms,
             "instFrequencies": [round(float(f), 1) for f in inst_freqs],
+            "instFreqValid": [bool(v) for v in inst_validity],
             "bassFrequencies": [round(float(f), 1) for f in bass_freqs],
+            "bassFreqValid": [bool(v) for v in bass_validity],
             "movementAnglesDeg": movement_angles_deg,
-            "bassAnglesDeg": bass_angles_deg,
+            "movementAnglesRad": movement_angles_rad,
             "glowingFactors": glowing_factors,
             "spotlightsActive": spotlights_active,
             "kickEvents": kick_events,
-            "segments": segments or [],
-            "verseSegments": [s for s in (segments or []) if str(s.get("label", "")).lower() == "verse"],
+            "segments": classified_segments,
+            "verseSegments": verse_segments,
+            "soloSegments": solo_segments,
+            "eligibleIntervals": merged_intervals,
         }
 
     def analyze_audio_file(
         self,
-        audio_path: str | Path,
+        audio_path: Union[str, Path],
         save_to_cache: bool = True,
     ) -> Dict[str, Any]:
         """
-        Runs Demucs separation on an audio file and executes complete spotlight movement analysis.
+        Runs Demucs separation (on GPU/MPS if available) on an audio file and executes complete
+        spotlight movement and frequency pre-analysis.
         """
         from demucs_service import get_demucs_service
 
@@ -370,15 +705,16 @@ class SpotlightAnalyzer:
         print(f"[SpotlightAnalyzer] Processing audio: {path.name}...")
         service = get_demucs_service()
 
-        # Separate audio into 4 stems
+        # Separate audio into 4 stems using MPS acceleration
         origin, separated = service.separator.separate_audio_file(path)
         sr = service.separator.samplerate
 
-        # Perform spotlight analysis on separated stems with all-in-one song segment analysis
+        # Perform spotlight analysis on separated stems with all-in-one music structure analysis
         analysis = self.analyze_stems_audio(
-            instruments_audio=separated["other"],
-            bass_audio=separated["bass"],
-            drums_audio=separated["drums"],
+            instruments_audio=separated.get("other", separated.get("instruments")),
+            bass_audio=separated.get("bass"),
+            drums_audio=separated.get("drums"),
+            vocals_audio=separated.get("vocals"),
             sr=sr,
             audio_path=path,
         )
@@ -407,7 +743,6 @@ class SpotlightAnalyzer:
                     except Exception as e:
                         print(f"[SpotlightAnalyzer] Note updating cache: {e}")
             if not saved:
-                # Save standalone spotlight analysis file for this track
                 out_path = STEMS_CACHE_DIR / f"spotlight_{cache_id}.json"
                 try:
                     with open(out_path, "w") as f:
@@ -431,12 +766,13 @@ def get_spotlight_analyzer(target_fps: int = 25) -> SpotlightAnalyzer:
 
 
 def analyze_spotlight_stems(
-    instruments_audio: np.ndarray | torch.Tensor,
-    bass_audio: np.ndarray | torch.Tensor,
-    drums_audio: Optional[np.ndarray | torch.Tensor] = None,
+    instruments_audio: Union[np.ndarray, torch.Tensor],
+    bass_audio: Union[np.ndarray, torch.Tensor],
+    drums_audio: Optional[Union[np.ndarray, torch.Tensor]] = None,
+    vocals_audio: Optional[Union[np.ndarray, torch.Tensor]] = None,
     sr: int = 44100,
     target_fps: int = 25,
-    audio_path: Optional[str | Path] = None,
+    audio_path: Optional[Union[str, Path]] = None,
     segments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Helper functional API to analyze stem tensors."""
@@ -445,6 +781,7 @@ def analyze_spotlight_stems(
         instruments_audio=instruments_audio,
         bass_audio=bass_audio,
         drums_audio=drums_audio,
+        vocals_audio=vocals_audio,
         sr=sr,
         audio_path=audio_path,
         segments=segments,
@@ -471,7 +808,7 @@ def main():
         for wf in wav_files:
             try:
                 res = analyzer.analyze_audio_file(wf, save_to_cache=True)
-                print(f" -> Completed {wf.name}: Inst Avg={res['instAvgFreq']}Hz, Bass Avg={res['bassAvgFreq']}Hz, Frames={res['frameCount']}")
+                print(f" -> Completed {wf.name}: Inst=[{res['instMinFreq']}-{res['instMaxFreq']}]Hz, Bass=[{res['bassMinFreq']}-{res['bassMaxFreq']}]Hz, Verses={len(res['verseSegments'])}, Solos={len(res['soloSegments'])}, Frames={res['frameCount']}")
             except Exception as e:
                 print(f" -> Error analyzing {wf.name}: {e}")
         return
@@ -495,9 +832,13 @@ def main():
     print(f"Duration: {result['durationSeconds']}s ({result['frameCount']} frames @ {result['fps']} FPS)")
     print(f"Instrument STEM: Min={result['instMinFreq']}Hz, Max={result['instMaxFreq']}Hz, Avg={result['instAvgFreq']}Hz")
     print(f"Bass STEM:       Min={result['bassMinFreq']}Hz, Max={result['bassMaxFreq']}Hz, Avg={result['bassAvgFreq']}Hz")
-    active_pct = round(sum(result['spotlightsActive']) / len(result['spotlightsActive']) * 100, 1)
+    print(f"Segments Detected: {len(result['segments'])} total")
+    print(f"Verse Segments:    {len(result['verseSegments'])}")
+    print(f"Solo Segments:     {len(result['soloSegments'])}")
+    print(f"Eligible Timeline: {len(result['eligibleIntervals'])} merged intervals")
+    active_pct = round(sum(result['spotlightsActive']) / len(result['spotlightsActive']) * 100, 1) if result['spotlightsActive'] else 0
     print(f"Spotlights Active: {active_pct}% of track timeline")
-    print(f"Kick Events: {len(result['kickEvents'])} transient beats")
+    print(f"Kick Events:       {len(result['kickEvents'])} transient beats")
 
     if args.output:
         out_p = Path(args.output)

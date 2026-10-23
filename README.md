@@ -222,31 +222,55 @@ flowchart TD
 - **Mid-Range Spectral Engine ($250\text{Hz}-4\text{kHz}$):** Computes mid-range spectral centroid ($C_{\text{mid}}$), spectral flux ($F_{\text{mid}}$), and dispersion ($D_{\text{mid}}$) fused with Demucs instrumental data to steer intelligent concert spotlight choreographies without bass interference.
 
 #### 3. Stage Director & Visual Choreography Pipeline
-- **Neural STEM Frequency Pre-Analysis & All-In-One Structure Segmentation (`spotlight_analysis.py`):**
-  - Performs an offline DSP/STFT spectral pre-analysis on the extracted audio across the separated `instruments` ($150-7500\text{Hz}$) and `bass` ($25-450\text{Hz}$) stems, generating continuous millisecond-by-millisecond frequency trajectories.
-  - Computes global $f_{\min}$, $f_{\max}$, and midpoint average frequency thresholds ($\bar{f} = \frac{f_{\min} + f_{\max}}{2}$) for both stems.
-  - Distributes the continuous frequency spectrum across a full $360^\circ$ angular movement space ($\theta = \frac{f - f_{\min}}{f_{\max} - f_{\min}} \times 360^\circ$).
-  - **All-In-One Music Structure Segmentation (`mir-aidj/all-in-one`):** Automatically predicts functional music segments (`intro`, `verse`, `chorus`, `bridge`, `break`, `inst`, `solo`, `outro`).
-  - **Verses-Only Spotlight Turn ON Gate:** All spotlights (including the two bottom white sky spotlights) turn ON strictly during song verses. During non-verse segments (chorus, drop, bridge, breakdown, intro, outro), all spotlights turn OFF cleanly with smooth theatrical attack/release envelopes.
-  - **Continuous Bass STEM Glow Factor ($0.0 \to 1.0$):** Continuously scales spotlight glow and beam emission based on the real-time Bass STEM frequency mapped across $[f_{\min}, f_{\max}]$.
-  - **Unified Symmetrical Spotlight Movements (`StageLightsEffect.ts`):**
-    - **Left Side Spotlights:** Symmetrically synchronized together, executing an elliptical cone sweep across the stage into the audience forward in lockstep with the 3rd left spotlight.
-    - **Right Side Spotlights:** Symmetrically synchronized together with **opposite movement angles** ($-\theta_{\text{rad}} + 1.6$), mirroring the left side.
-    - **Top Side Spotlights:** Symmetrically synchronized together across 360°.
-    - **Kick Sync:** On drum/kick hits detected from the Demucs Kick STEM, spotlight light beam projection directions take synchronized random target orientations.
-- **Dual Bottom White Sky Spotlights (`StageLightsEffect.ts`):**
-  - Two high-power white concert searchlights mounted at the lower left and lower right corners flanking the YouTube stage screen aperture.
-  - Strictly project upward into the arena sky ($Y \ge 16.0\text{m}$, never pointing downwards).
-  - Governed by the same $360^\circ$ frequency movement distribution, continuous Bass glow factor, and verses-only ON/OFF gate.
-  - **Kick Intensity Flash Exception:** Kick hits do *not* scatter their beam projection direction; instead, drum kicks trigger an intense white glow flare and high-power emission pulse!
-- **12x 360° Continuous Rotatable Perimeter Bass Lights:**
-  - High-intensity moving heads framing the perimeter of the YouTube screen, driven continuously by bass stem energy and sub-bass frequencies.
-- **Symmetrical BPM Spotlights (`StageLightsEffect.ts`):** Symmetrically frames the YouTube screen across Top, Left, and Right fixtures, scaling dynamically from 2 to 12 fixtures based on detected BPM ($70-160\text{ BPM}$).
+- **Stationary Spotlight Fixtures & Attachment Architecture:**
+  - All spotlight fixtures behave like physical, stationary concert lights mounted permanently around the festival stage (Top box-truss, Left tower, Right tower, and bottom stage corners).
+  - Fixture origins (`basePos`, `fixedBaseMesh.position`, `headGroup.position`) remain **strictly fixed in 3D space** throughout playback. Zero physical translation or lerping of fixture mount origins.
+  - Camera FOV is **permanently locked at 60.0°** (`camera.fov = 60`), completely eliminating unwanted scene zoom-in/zoom-out effects on sub-bass or kicks.
+  - Strict decoupling of Fixture Transforms (fixed origins/orientations), Beam Transforms (audio-reactive trajectories), Glow Controls (continuous intensity factor), and Iframe Shake (isolated strictly to the YouTube video element).
+- **10 Full-Screen Movement Path Families (`SpotlightMovementController.ts`):**
+  - Replaces restrictive central "X" criss-crossing with coordinated paths traversing the **entire visualization viewport** ($X \in [-20, 20]$, $Y \in [0.5, 15.0]$, $Z \in [12.5, 15.5]$), visibly reaching far outside all four sides of the iframe:
+    1. `wide-horizontal`: Horizontal sweeps traversing across the complete viewport from far left to far right.
+    2. `wide-vertical`: Vertical sweeps traversing through the upper and lower screen regions.
+    3. `perimeter`: Sweeps traveling around the outer perimeter of the visualization, framing the stage.
+    4. `diagonal`: Traverses diagonally with varied directions and crossing locations.
+    5. `arc-fan`: Broad curved fan-shaped sweeps radiating outward across the arena.
+    6. `outer-to-inner`: Sweeps starting from outer stadium periphery inward toward intermediate framing.
+    7. `inner-to-outer`: Travels outward from the stage toward the far screen edges.
+    8. `circular-elliptical`: Broad elliptical trajectories surrounding the visualization.
+    9. `asymmetric`: Left and right groups cover distinct independent regions without forming a mirrored X.
+    10. `slow-cinematic`: Gradual, broad, majestic sweeps tailored for solos and calmer passages.
+  - Unified movement controller smoothly transitions between paths over 1.6s with smoothstep interpolation based on musical context (solos favor cinematic/arc-fan sweeps; verses cycle through dynamic wide sweeps).
+- **Synchronized Spotlight Groups:**
+  - **Left-Side Group:** All left-side spotlights move in synchronization with each other, driven by the continuous instrument-frequency angular reference $\theta(t) = 360^\circ \cdot f_{\text{norm}}(t)$ with individual fixture geometric offsets.
+  - **Right-Side Group:** All right-side spotlights move in synchronization with each other, governed by the opposite angular reference $\theta_R(t) = \text{wrap}_{360}(-\theta(t) + \theta_{R0})$ with spatial elevation/lateral offsets, completely preventing central "X" beam collisions.
+  - **Top-Side Group:** All top-side spotlights move in synchronization along the overhead box-truss.
+  - **Two White Bottom Spotlights:** Two corner searchlights projecting broad skyward trajectories across the viewport. They **never change beam direction on kick events**.
+- **Multi-Class Verse and Solo Detection & Activation (`mir-aidj/all-in-one`):**
+  - Uses `allin1_infer` with direct `StemsInput` to feed Demucs neural stems directly into spectrogram extraction, bypassing redundant 4-minute CPU separation and completing inference in ~5 seconds.
+  - Multi-class classification pipeline identifies:
+    - Verses (`verse`): confidence $\ge 0.95$.
+    - Instrumental Solos (`instrumental_solo`): confidence $0.88-0.92$.
+    - Lead-Instrument Solos (`lead_instrument_solo`): confidence $0.92$.
+    - Vocal Solos (`vocal_solo`): confidence $0.90$.
+    - Inactive sections (`chorus`, `intro`, `outro`, `break`, `bridge`, `start`, `end`).
+  - **Activation Policy:** The eligible spotlight timeline is the exact union of confidently identified verse and solo segments. Spotlights illuminate with smooth attack/release fades ($0.3\text{s}$) during verses and solos, and fade out cleanly outside eligible sections. Kick events outside verses/solos do NOT reactivate spotlights.
+- **Kick-Synchronized Direction Changes & White Spotlight Glow:**
+  - On valid kick events during verses/solos, active main coloured spotlights deflect smoothly to precomputed deterministic 3D targets across the full viewport (attack $35\text{ms}$, hold $40\text{ms}$, decay $180\text{ms}$) before resuming ongoing trajectories.
+  - Two white bottom spotlights respond to kicks through **glow intensity only** (+1.8 to +2.8x surge), decaying smoothly back to ongoing bass glow. Beam directions never change.
+- **Continuous Frequency-Driven Glow Factor ($0.0 \to 1.0$):**
+  - Continuous Bass STEM frequency drives continuous glow intensity:
+    $$G(t) = \text{clamp}\left(\frac{f_{\text{bass}}(t) - f_{\min}}{f_{\max} - f_{\min}}, 0, 1\right)$$
+  - Blended with base glow ($0.15$), kick glow surges, and activation envelope.
 - **Kick-Activated Screen Flash Blinder (`flashColorUtils.ts` & `VisualEngine.ts`):**
   - **Pure Color Gradient Isolation:** Full-window radial blinder wash ($100\text{vw} \times 100\text{vh}$ at `z-index: 15`). White frames flash pure brilliant white; colored frames flash 100% pure RGB values from the song palette without central white core washout.
-  - **1/2 Bar Pure White Anchor Rule:** Every 1/2 bar downbeat kick (every 2 beats in 4/4 meter) is guaranteed to flash pure white (`#ffffff`), anchoring the rhythmic structure.
+  - **1/2 Bar Pure White Anchor Rule:** Every 1/2 bar downbeat kick (every 2 beats in 4/4 meter) flashes pure white (`#ffffff`), anchoring the rhythmic structure.
   - **Circular Palette Color Rotation:** Additional kicks occurring within the same 1/2 bar cycle through the extracted song palette one after another in a continuous circular sequence.
   - **Zero Dropped Kicks:** Evaluated with an 80ms refractory interval that supports ultra-fast drum rolls up to 750 BPM with no minimum volume dropouts.
+- **Isolated YouTube Iframe Kick Shake:**
+  - Percussive drum kicks drive a distinct 2D screen shake **strictly isolated to the DOM YouTube stage video iframe element** (`#synwave-youtube-stage-screen`) via `style.transform = translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`.
+  - The complete spotlight assembly, canvas, fixture origins, and blinder do NOT shake.
+  - Returns exactly to `translate(-50%, -50%)` after every shake.
+  - Independent of spotlight activation: iframe shakes on kicks across all song sections.
 
 #### 4. Presentation & Hardware-Accelerated Rendering Layer
 - **Three.js r186 WebGL2 Canvas (`z-index: 2`):** Transparent canvas overlaying the stage video with additive volumetric lighting, stage trusses, moving heads, and atmosphere dust.

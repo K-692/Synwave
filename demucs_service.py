@@ -779,6 +779,7 @@ class DemucsService:
                 instruments_audio=separated.get("other", separated.get("instruments")),
                 bass_audio=separated.get("bass"),
                 drums_audio=separated.get("drums"),
+                vocals_audio=separated.get("vocals"),
                 sr=sr,
                 target_fps=self.target_fps,
                 audio_path=file_path,

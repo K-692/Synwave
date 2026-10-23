@@ -101,7 +101,6 @@ export class VisualEngine {
   private cameraBaseX = 0;
   private cameraBaseY = 1.8;
   private cameraBaseZ = 9.2;
-  private cameraTargetFov = 60;
 
   // Active Video State for Stage Screen Pass-Through
   private hasActiveVideo = false;
@@ -654,18 +653,12 @@ export class VisualEngine {
     // Always look directly at the center of the solid rectangular concert stage screen
     this.camera.lookAt(0, 4.4, -4.5);
 
-    // Dynamic FOV zoom punch driven strictly by isolated deep sub-bass (20-100Hz)
-    // Filters out mid-range frequencies and general kick harmonics entirely
-    const subBassVal = features.subBass || 0;
-    const subBassGate = Math.max(0, subBassVal - 0.28) / 0.72;
-    const subBassPunch = Math.pow(subBassGate, 1.8) * 3.5;
-    const fovPunch = routingConfig.reducedFlash || !this.isPlaying
-      ? 0
-      : (features.isDrop ? 3.5 : subBassPunch);
-    const desiredFov = 60 + fovPunch;
-    this.cameraTargetFov += (desiredFov - this.cameraTargetFov) * (this.isPlaying ? rawDelta * 14.0 : 1.0);
-    this.camera.fov = this.cameraTargetFov;
-    this.camera.updateProjectionMatrix();
+    // Architectural Requirement: The camera and spotlight attachment layer remain completely fixed.
+    // Strictly zero audio-driven camera FOV zoom punch, scaling, or shared scene transform changes.
+    if (this.camera.fov !== 60) {
+      this.camera.fov = 60;
+      this.camera.updateProjectionMatrix();
+    }
 
     // 4. Kick Screen Flash: Pure Color Palette Colors & 1/2 Bar White Anchor
     const flashMult = routingConfig.screenFlashIntensity ?? 1.0;

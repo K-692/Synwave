@@ -216,14 +216,47 @@ export interface SpotlightAnalysisData {
   bassAvgFreq: number;
   timestampsMs: number[];
   instFrequencies: number[];
+  instFreqValid?: boolean[];
   bassFrequencies: number[];
+  bassFreqValid?: boolean[];
   movementAnglesDeg: number[];
+  movementAnglesRad?: number[];
   bassAnglesDeg?: number[];
   glowingFactors: number[];
   spotlightsActive: boolean[];
-  kickEvents?: Array<{ time: number; timestampMs: number; intensity: number }>;
-  segments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number }>;
-  verseSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number }>;
+  kickEvents?: Array<{
+    time: number;
+    timestampMs: number;
+    intensity: number;
+    onsetStrength?: number;
+    directionTarget?: {
+      left: [number, number, number];
+      right: [number, number, number];
+      top: [number, number, number];
+    };
+  }>;
+  segments?: Array<{
+    label: string;
+    classification?: string;
+    category?: 'verse' | 'solo' | 'inactive';
+    confidence?: number;
+    isEligible?: boolean;
+    start: number;
+    end: number;
+    startMs: number;
+    endMs: number;
+  }>;
+  verseSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number; confidence?: number }>;
+  soloSegments?: Array<{ label: string; start: number; end: number; startMs: number; endMs: number; confidence?: number }>;
+  eligibleIntervals?: Array<{
+    start: number;
+    end: number;
+    startMs: number;
+    endMs: number;
+    label: string;
+    category: string;
+    confidence: number;
+  }>;
 }
 
 export interface DemucsStemData {
